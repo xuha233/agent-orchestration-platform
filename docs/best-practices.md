@@ -242,3 +242,128 @@ watchexec -e py "pytest tests/"
 ## 更新日志
 
 - 2026-03-02: 基于 PurifyAI Run 006 经验创建
+
+---
+
+## 🕐 动态超时管理（新功能）
+
+### 超时原因分析（Run 006）
+
+通过分析子 Agent 的执行历史，发现超时的真正原因：
+
+#### 问题 1: 工作目录错误
+- 子 Agent 在 C:\Users\Ywj\.openclaw\workspace 而非项目目录
+- 需要探索项目结构，消耗大量时间
+
+#### 问题 2: 环境差异
+- 使用 ls -la (Linux) 在 PowerShell 中失败
+- g (ripgrep) 未安装
+- 需要多次尝试不同命令
+
+#### 问题 3: 探索性任务
+- 搜索文件、检查代码、理解项目结构
+- 这些都是必要的探索，但消耗时间
+
+#### 结论
+**不是卡在确认等待**，而是探索消耗了大量时间。
+
+### 解决方案：动态超时申请
+
+`python
+from aop.timeout_manager import SubagentTimeoutManager, TaskComplexity
+
+# 创建管理器
+manager = SubagentTimeoutManager("orchestrator-001")
+
+# 子 Agent 申请初始超时
+result = manager.request_timeout(
+    agent_id="agent-ui-001",
+    task_id="h-014",
+    requested_timeout=900,  # 15 分钟
+    reason="需要检查多个 UI 文件",
+    complexity=TaskComplexity.MODERATE
+)
+print(result.message)  # "批准 900s"
+
+# 执行过程中申请延长
+result = manager.request_extension(
+    agent_id="agent-ui-001",
+    task_id="h-014",
+    additional_timeout=600,
+    reason="发现需要探索项目结构",
+    current_progress=0.7
+)
+print(result.message)  # "批准延长 600s"
+`
+
+### 任务复杂度与默认超时
+
+| 复杂度 | 默认超时 | 典型任务 |
+|-------|---------|---------|
+| SIMPLE | 300s (5分钟) | 单文件修改、小修复 |
+| MODERATE | 600s (10分钟) | 多文件修改、UI 组件 |
+| COMPLEX | 1800s (30分钟) | 跨模块重构、架构调整 |
+| EXPLORATORY | 1200s (20分钟) | 代码审查、项目分析 |
+
+### 延长申请条件
+
+- 进度必须超过 50% 才能申请延长
+- 单次延长不超过原超时的 100%
+- 最大总超时限制为 1 小时
+
+---
+
+## 🔧 Orchestrator 最佳实践
+
+### 任务分配流程
+
+`
+1. 估算任务复杂度
+   └─ 根据任务描述关键词判断
+
+2. 计算建议超时
+   └─ 基于复杂度和历史数据
+
+3. 设置工作目录
+   └─ 确保 cwd 是项目根目录
+
+4. 分配任务
+   └─ sessions_spawn(task, timeoutSeconds=timeout)
+
+5. 监控进度
+   └─ 接收子 Agent 的进度报告
+
+6. 处理延长申请
+   └─ 根据进度和原因审批
+
+7. 超时接管
+   └─ 子 Agent 超时后 Orchestrator 接管
+`
+
+### 工作目录设置
+
+**重要**：始终设置 cwd 为项目目录，避免子 Agent 需要探索路径。
+
+`python
+# 正确
+sessions_spawn(
+    task="完善 UI 组件",
+    cwd="G:/docker/diskclean",  # 项目目录
+    timeoutSeconds=600
+)
+
+# 错误
+sessions_spawn(
+    task="完善 UI 组件",
+    # 没有设置 cwd，子 Agent 会从默认目录开始
+    timeoutSeconds=300
+)
+`
+
+---
+
+## 📝 更新日志
+
+- 2026-03-02: 添加动态超时管理功能
+- 2026-03-02: 添加超时原因分析（基于 Run 006 实际数据）
+- 2026-03-01: 初始版本，基于 PurifyAI 开发经验
