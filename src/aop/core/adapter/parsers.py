@@ -1,0 +1,375 @@
+﻿"""Provider output parsers for extracting findings."""
+
+from __future__ import annotations
+
+import re
+import uuid
+from dataclasses import dataclass
+from typing import List, Literal, Optional
+
+from ..types import Evidence, NormalizedFinding, ProviderId
+
+
+# Type aliases for severity and category
+SeverityLevel = Literal["critical", "high", "medium", "low"]
+CategoryType = Literal["bug", "security", "performance", "maintainability"]
+
+
+@dataclass
+class ParsedIssue:
+    """Intermediate parsed issue before normalization."""
+    title: str
+    severity: str = "medium"
+    category: str = "maintainability"
+    file: Optional[str] = None
+    line: Optional[int] = None
+    snippet: str = ""
+    recommendation: str = ""
+
+
+class OutputParser:
+    """Base parser for provider outputs."""
+    
+    def __init__(self, provider_id: ProviderId):
+        self.provider_id = provider_id
+    
+    def parse(self, output: str) -> List[NormalizedFinding]:
+        """Parse provider output into normalized findings."""
+        raise NotImplementedError
+    
+    def _generate_finding_id(self) -> str:
+        """Generate a unique finding ID."""
+        return f"{self.provider_id}-{uuid.uuid4().hex[:8]}"
+    
+    def _normalize_severity(self, severity: str) -> SeverityLevel:
+        """Normalize severity to standard levels."""
+        severity = severity.lower().strip()
+        mapping: dict[str, SeverityLevel] = {
+            "critical": "critical",
+            "crit": "critical",
+            "c": "critical",
+            "high": "high",
+            "h": "high",
+            "major": "high",
+            "error": "high",
+            "medium": "medium",
+            "m": "medium",
+            "med": "medium",
+            "warning": "medium",
+            "warn": "medium",
+            "low": "low",
+            "l": "low",
+            "minor": "low",
+            "info": "low",
+            "information": "low",
+            "suggestion": "low",
+        }
+        return mapping.get(severity, "medium")
+    
+    def _normalize_category(self, category: str) -> CategoryType:
+        """Normalize category to standard types."""
+        category = category.lower().strip()
+        mapping: dict[str, CategoryType] = {
+            "bug": "bug",
+            "bugs": "bug",
+            "security": "security",
+            "sec": "security",
+            "vulnerability": "security",
+            "performance": "performance",
+            "perf": "performance",
+            "maintainability": "maintainability",
+            "style": "maintainability",
+            "code_quality": "maintainability",
+            "refactor": "maintainability",
+        }
+        return mapping.get(category, "maintainability")
+    
+    def _create_finding(self, issue: ParsedIssue) -> NormalizedFinding:
+        """Create a NormalizedFinding from a ParsedIssue."""
+        return NormalizedFinding(
+            finding_id=self._generate_finding_id(),
+            severity=self._normalize_severity(issue.severity),
+            category=self._normalize_category(issue.category),
+            title=issue.title,
+            evidence=Evidence(
+                file=issue.file or "",
+                line=issue.line,
+                snippet=issue.snippet,
+            ),
+            recommendation=issue.recommendation,
+            detected_by=[self.provider_id],
+        )
+
+class ClaudeParser(OutputParser):
+    """Parser for Claude CLI output."""
+    
+    ISSUE_PATTERNS = [
+        re.compile(r"Issue:\s*(.+?)(?:\n|$)", re.IGNORECASE),
+        re.compile(r"-\s*\[(HIGH|MEDIUM|LOW|CRITICAL)\]:\s*(.+?)(?:\n|$)", re.IGNORECASE),
+        re.compile(r"(WARNING|ERROR|CRITICAL):\s*(.+?)(?:\n|$)", re.IGNORECASE),
+    ]
+    
+    FILE_LINE_PATTERN = re.compile(
+        r"(?:file|in):\s*([^:\s]+(?:\.py|\.js|\.ts|\.go|\.rs|\.java|\.cpp|\.c|\.h))?[:\s]*(\d+)?",
+        re.IGNORECASE
+    )
+    
+    def parse(self, output: str) -> List[NormalizedFinding]:
+        """Parse Claude CLI output."""
+        findings: List[NormalizedFinding] = []
+        sections = re.split(r"\n\s*\n", output)
+        
+        for section in sections:
+            issues = self._parse_section(section)
+            for issue in issues:
+                findings.append(self._create_finding(issue))
+        
+        return findings
+    
+    def _parse_section(self, section: str) -> List[ParsedIssue]:
+        """Parse a section of output."""
+        issues: List[ParsedIssue] = []
+        lines = section.strip().split("\n")
+        
+        current_issue: Optional[ParsedIssue] = None
+        severity = "medium"
+        
+        for line in lines:
+            for pattern in self.ISSUE_PATTERNS:
+                match = pattern.search(line)
+                if match:
+                    if current_issue:
+                        issues.append(current_issue)
+                    
+                    groups = match.groups()
+                    if len(groups) == 1:
+                        current_issue = ParsedIssue(title=groups[0].strip(), severity=severity)
+                    elif len(groups) == 2:
+                        if groups[0] in ("WARNING", "ERROR", "CRITICAL"):
+                            severity = self._normalize_severity(groups[0])
+                            current_issue = ParsedIssue(title=groups[1].strip(), severity=severity)
+                        else:
+                            severity = self._normalize_severity(groups[0])
+                            current_issue = ParsedIssue(title=groups[1].strip(), severity=severity)
+                    break
+            
+            if current_issue:
+                file_match = self.FILE_LINE_PATTERN.search(line)
+                if file_match:
+                    current_issue.file = file_match.group(1)
+                    if file_match.group(2):
+                        current_issue.line = int(file_match.group(2))
+                
+                if line.strip().lower().startswith(("recommend", "suggest", "fix", "solution")):
+                    current_issue.recommendation = line.strip()
+        
+        if current_issue:
+            issues.append(current_issue)
+        
+        return issues
+
+
+class CodexParser(OutputParser):
+    """Parser for OpenAI Codex CLI output."""
+    
+    def parse(self, output: str) -> List[NormalizedFinding]:
+        """Parse Codex CLI output."""
+        findings: List[NormalizedFinding] = []
+        lines = output.strip().split("\n")
+        
+        current_issue: Optional[ParsedIssue] = None
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            if line.startswith(("Fix:", "Issue:", "Problem:", "Warning:", "Error:")):
+                if current_issue:
+                    findings.append(self._create_finding(current_issue))
+                
+                severity = "high" if line.startswith(("Error:", "Problem:")) else "medium"
+                if line.startswith("Warning:"):
+                    severity = "medium"
+                elif line.startswith("Fix:"):
+                    severity = "low"
+                
+                title = line.split(":", 1)[1].strip() if ":" in line else line
+                current_issue = ParsedIssue(title=title, severity=severity)
+            
+            elif current_issue:
+                if not current_issue.recommendation:
+                    current_issue.recommendation = line
+                elif not current_issue.snippet:
+                    current_issue.snippet = line
+        
+        if current_issue:
+            findings.append(self._create_finding(current_issue))
+        
+        return findings
+
+class GeminiParser(OutputParser):
+    """Parser for Google Gemini CLI output."""
+    
+    def parse(self, output: str) -> List[NormalizedFinding]:
+        """Parse Gemini CLI output."""
+        findings: List[NormalizedFinding] = []
+        lines = output.strip().split("\n")
+        
+        current_issue: Optional[ParsedIssue] = None
+        in_code_block = False
+        
+        for line in lines:
+            if line.strip().startswith("`"):
+                in_code_block = not in_code_block
+                continue
+            
+            if in_code_block and current_issue:
+                current_issue.snippet += line + "\n"
+                continue
+            
+            bullet_match = re.match(r"^[-*]\s*\[?(\w+)\]?:\s*(.+)$", line)
+            if bullet_match:
+                if current_issue:
+                    findings.append(self._create_finding(current_issue))
+                
+                severity_str = bullet_match.group(1).upper()
+                title = bullet_match.group(2).strip()
+                
+                current_issue = ParsedIssue(
+                    title=title,
+                    severity=self._normalize_severity(severity_str),
+                )
+            
+            elif re.match(r"^\d+\.\s+", line):
+                if current_issue:
+                    findings.append(self._create_finding(current_issue))
+                
+                title = re.sub(r"^\d+\.\s+", "", line).strip()
+                current_issue = ParsedIssue(title=title)
+            
+            elif ": " in line and any(marker in line.lower() for marker in ["issue", "problem", "warning", "error", "bug"]):
+                if current_issue:
+                    findings.append(self._create_finding(current_issue))
+                
+                title = line.split(":", 1)[1].strip()
+                severity = "high" if "error" in line.lower() or "bug" in line.lower() else "medium"
+                current_issue = ParsedIssue(title=title, severity=severity)
+        
+        if current_issue:
+            findings.append(self._create_finding(current_issue))
+        
+        return findings
+
+
+class OpenCodeParser(OutputParser):
+    """Parser for OpenCode CLI output."""
+    
+    def parse(self, output: str) -> List[NormalizedFinding]:
+        """Parse OpenCode CLI output."""
+        findings: List[NormalizedFinding] = []
+        sections = re.split(r"\n#{1,3}\s+", output)
+        
+        for section in sections:
+            if not section.strip():
+                continue
+            
+            lines = section.strip().split("\n")
+            if not lines:
+                continue
+            
+            title = lines[0].strip()
+            if not title:
+                continue
+            
+            severity: SeverityLevel = "medium"
+            content_lower = section.lower()
+            if any(word in content_lower for word in ["critical", "crash", "security"]):
+                severity = "critical"
+            elif any(word in content_lower for word in ["error", "bug", "fail"]):
+                severity = "high"
+            elif any(word in content_lower for word in ["warning", "deprecated"]):
+                severity = "medium"
+            elif any(word in content_lower for word in ["suggest", "recommend", "improve"]):
+                severity = "low"
+            
+            recommendation = ""
+            for line in lines[1:]:
+                if line.strip().lower().startswith(("suggest", "recommend", "should", "could", "fix")):
+                    recommendation = line.strip()
+                    break
+            
+            issue = ParsedIssue(title=title, severity=severity, recommendation=recommendation)
+            findings.append(self._create_finding(issue))
+        
+        return findings
+
+class QwenParser(OutputParser):
+    """Parser for Alibaba Qwen CLI output."""
+    
+    def parse(self, output: str) -> List[NormalizedFinding]:
+        """Parse Qwen CLI output."""
+        findings: List[NormalizedFinding] = []
+        lines = output.strip().split("\n")
+        
+        current_issue: Optional[ParsedIssue] = None
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            en_patterns = [
+                (r"^Issue:\s*(.+)$", "medium"),
+                (r"^Error:\s*(.+)$", "high"),
+                (r"^Warning:\s*(.+)$", "medium"),
+                (r"^Suggestion:\s*(.+)$", "low"),
+                (r"^-\s*(.+)$", "medium"),
+            ]
+            
+            cn_patterns = [
+                (r"^问题[：:]\s*(.+)$", "medium"),
+                (r"^错误[：:]\s*(.+)$", "high"),
+                (r"^警告[：:]\s*(.+)$", "medium"),
+                (r"^建议[：:]\s*(.+)$", "low"),
+            ]
+            
+            matched = False
+            for pattern, severity in en_patterns + cn_patterns:
+                match = re.match(pattern, line)
+                if match:
+                    if current_issue:
+                        findings.append(self._create_finding(current_issue))
+                    
+                    current_issue = ParsedIssue(
+                        title=match.group(1).strip(),
+                        severity=severity,
+                    )
+                    matched = True
+                    break
+            
+            if not matched and current_issue:
+                file_match = re.search(r"([a-zA-Z0-9_/.-]+\.[a-z]{1,4}):(\d+)", line)
+                if file_match:
+                    current_issue.file = file_match.group(1)
+                    current_issue.line = int(file_match.group(2))
+                elif not current_issue.recommendation:
+                    current_issue.recommendation = line
+        
+        if current_issue:
+            findings.append(self._create_finding(current_issue))
+        
+        return findings
+
+
+def get_parser(provider_id: ProviderId) -> OutputParser:
+    """Get the appropriate parser for a provider."""
+    parsers: dict[str, type[OutputParser]] = {
+        "claude": ClaudeParser,
+        "codex": CodexParser,
+        "gemini": GeminiParser,
+        "opencode": OpenCodeParser,
+        "qwen": QwenParser,
+    }
+    parser_class = parsers.get(provider_id, ClaudeParser)
+    return parser_class(provider_id)

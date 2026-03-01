@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Dict, Optional
 
 from ...core.types import ComplexityAssessment, ProjectType, TeamConfig

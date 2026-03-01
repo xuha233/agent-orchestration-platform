@@ -1,10 +1,10 @@
-﻿"""Core type definitions for AOP."""
+"""Core type definitions for AOP."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Literal, Optional
+from typing import List, Literal, Optional
 
 
 ProviderId = Literal["claude", "codex", "gemini", "opencode", "qwen"]

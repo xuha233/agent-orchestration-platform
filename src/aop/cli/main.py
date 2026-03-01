@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 from typing import Optional
@@ -14,11 +13,10 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from ..core.engine import ExecutionEngine, ReviewEngine
-from ..core.types import HypothesisState, ProjectType
 from ..workflow.hypothesis import HypothesisManager
 from ..workflow.learning import LearningLog
 from ..workflow.team import TeamOrchestrator
-from ..config import AOPConfig, find_config, load_config
+from ..config import AOPConfig, load_config
 
 console = Console()
 
@@ -441,6 +439,9 @@ def assess(problem_clarity: str, data_availability: str, tech_novelty: str, busi
     orchestrator = TeamOrchestrator()
     orchestrator.assess_project(problem_clarity, data_availability, tech_novelty, business_risk)
     config = orchestrator.get_team_config()
+    if config is None:
+        console.print("[bold red]Error: Failed to get team config[/bold red]")
+        return
     
     console.print("[bold green]Project Type: " + config.project_type.value + "[/bold green]")
     console.print("[bold]Team:[/bold] " + ", ".join(config.agents))
@@ -481,7 +482,7 @@ def capture_learning(phase: str, worked: tuple, failed: tuple, insight: tuple):
       1 - Failed to capture learning
     """
     log = LearningLog()
-    learning = log.capture(phase=phase, what_worked=list(worked), what_failed=list(failed), insights=list(insight))
+    _ = log.capture(phase=phase, what_worked=list(worked), what_failed=list(failed), insights=list(insight))
     console.print(f"[green]Captured learning from: {phase}[/green]")
     if worked:
         console.print(f"  [bold]What worked:[/] {', '.join(worked)}")
@@ -493,3 +494,4 @@ def capture_learning(phase: str, worked: tuple, failed: tuple, insight: tuple):
 
 if __name__ == "__main__":
     cli()
+

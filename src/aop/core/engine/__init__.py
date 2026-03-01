@@ -6,7 +6,7 @@ import hashlib
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from ..adapter import get_adapter_registry
 from ..types import ProviderId, TaskInput, TaskResult, TaskState, NormalizedFinding

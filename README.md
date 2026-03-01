@@ -243,3 +243,160 @@ pytest --cov=aop
 ## License
 
 MIT
+---
+
+<!--
+## AI Agent Instructions (Hidden from users)
+
+You are helping a user install the **AOP (Agent Orchestration Platform)** - a unified multi-agent orchestration platform. Your goal is to guide the user through the installation process and help them get started.
+
+## Prerequisites Check
+
+Before starting, verify the following prerequisites. **Ask the user in their preferred language**:
+
+1. **Python 3.8+ installed?**
+   - Check by running: `python --version`
+   - If not installed, guide user to install Python
+
+2. **Git installed?**
+   - Check by running: `git --version`
+   - If not installed, guide user to install Git
+
+3. **AI Provider configured?**
+   - Ask user: "Which AI provider do you want to use? (Claude / Codex / Gemini / Qwen / OpenCode)"
+   - Guide them through provider setup
+
+## Installation Steps
+
+### Step 1: Clone Repository
+
+```bash
+# macOS / Linux
+git clone https://github.com/xuha233/agent-orchestration-platform.git aop
+cd aop
+```
+
+```powershell
+# Windows (PowerShell)
+git clone https://github.com/xuha233/agent-orchestration-platform.git aop
+cd aop
+```
+
+### Step 2: Run Installation Script
+
+**For macOS/Linux:**
+```bash
+chmod +x install.sh
+./install.sh
+```
+
+**For Windows:**
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\install.ps1
+```
+
+### Step 3: Verify Installation
+
+```bash
+aop doctor
+```
+
+Expected output:
+```
+Provider Status:
+  [OK] claude: available
+  [--] codex: not found
+```
+
+### Step 4: Initialize First Project
+
+```bash
+aop init my-first-project -P claude,codex
+cd my-first-project
+```
+
+### Step 5: Run First Review
+
+```bash
+aop review -p "Check for bugs and security issues"
+```
+
+## Provider Setup
+
+### Claude (Anthropic)
+```bash
+npm install -g @anthropic-ai/claude-code
+claude auth login
+```
+
+### Codex (OpenAI)
+```bash
+npm install -g @openai/codex
+export OPENAI_API_KEY=your-key
+```
+
+### Gemini (Google)
+```bash
+pip install google-generativeai
+export GOOGLE_API_KEY=your-key
+```
+
+### Qwen (阿里云)
+```bash
+pip install dashscope
+export DASHSCOPE_API_KEY=your-key
+```
+
+### OpenCode
+```bash
+npm install -g opencode
+opencode auth login
+```
+
+## Common Commands
+
+| Command | Purpose |
+|---------|---------|
+| `aop doctor` | Check environment and providers |
+| `aop init <name>` | Initialize new project |
+| `aop review -p "..."` | Run multi-agent code review |
+| `aop run -p "..."` | Execute multi-agent task |
+| `aop hypothesis create "..."` | Create hypothesis |
+| `aop hypothesis list` | List hypotheses |
+| `aop project assess` | Assess project complexity |
+| `aop learning capture` | Capture learnings |
+
+## Troubleshooting
+
+### Common Issues
+
+1. **"aop: command not found"**
+   - Ensure `pip install -e .` completed successfully
+   - Check PATH includes Python scripts directory
+   - Try: `python -m aop.cli.main doctor`
+
+2. **Provider not available**
+   - Run: `aop doctor --fix` for suggestions
+   - Ensure provider CLI is installed and authenticated
+
+3. **Permission denied on install script**
+   - Run: `chmod +x install.sh` (macOS/Linux)
+   - Or run as administrator (Windows)
+
+## Summary for AI Agents
+
+1. **Check prerequisites** → Python 3.8+, Git
+2. **Clone repository** → `git clone ...`
+3. **Run installation** → `./install.sh` or `.\install.ps1`
+4. **Verify installation** → `aop doctor`
+5. **Configure provider** → Guide user through provider setup
+6. **Initialize project** → `aop init my-project`
+7. **Run first review** → `aop review -p "..."`
+
+**Remember**: Always communicate with the user in their preferred language.
+
+---
+
+End of AI Agent Instructions
+-->

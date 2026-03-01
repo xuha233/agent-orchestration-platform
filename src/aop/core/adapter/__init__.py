@@ -1,4 +1,4 @@
-﻿"""Provider adapters."""
+"""Provider adapters."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Protocol, runtime_checkable
 
 from ..types import ProviderId, TaskInput, TaskResult, NormalizedFinding
+from .parsers import get_parser
 
 
 @dataclass
@@ -49,6 +50,11 @@ class BaseAdapter:
             return ProviderPresence(provider=self._id, detected=False)
         return ProviderPresence(provider=self._id, detected=True, binary_path=binary_path)
     
+    def _parse_findings(self, output: str) -> List[NormalizedFinding]:
+        """Parse output into normalized findings."""
+        parser = get_parser(self._id)
+        return parser.parse(output)
+    
     def run(self, task: TaskInput) -> TaskResult:
         """Run a task using this provider."""
         start = time.time()
@@ -60,11 +66,14 @@ class BaseAdapter:
                 timeout=task.timeout_seconds, 
                 cwd=task.repo_root
             )
+            output = result.stdout
+            findings = self._parse_findings(output) if result.returncode == 0 else []
             return TaskResult(
                 task_id=task.task_id,
                 provider=self._id,
                 success=result.returncode == 0,
-                output=result.stdout,
+                output=output,
+                findings=findings,
                 error=result.stderr if result.returncode else None,
                 duration_seconds=time.time() - start
             )
@@ -84,7 +93,6 @@ class BaseAdapter:
                 error=str(e),
                 duration_seconds=time.time() - start
             )
-
 
 class ClaudeAdapter(BaseAdapter):
     """Adapter for Anthropic Claude CLI."""
@@ -171,11 +179,15 @@ class GeminiAdapter(BaseAdapter):
                 cwd=task.repo_root
             )
             
+            output = result.stdout
+            findings = self._parse_findings(output) if result.returncode == 0 else []
+            
             return TaskResult(
                 task_id=task.task_id,
                 provider=self._id,
                 success=result.returncode == 0,
-                output=result.stdout,
+                output=output,
+                findings=findings,
                 error=result.stderr if result.returncode else None,
                 duration_seconds=time.time() - start
             )
@@ -195,7 +207,6 @@ class GeminiAdapter(BaseAdapter):
                 error=str(e),
                 duration_seconds=time.time() - start
             )
-
 
 class OpenCodeAdapter(BaseAdapter):
     """Adapter for OpenCode CLI.
@@ -234,11 +245,15 @@ class OpenCodeAdapter(BaseAdapter):
                 cwd=task.repo_root
             )
             
+            output = result.stdout
+            findings = self._parse_findings(output) if result.returncode == 0 else []
+            
             return TaskResult(
                 task_id=task.task_id,
                 provider=self._id,
                 success=result.returncode == 0,
-                output=result.stdout,
+                output=output,
+                findings=findings,
                 error=result.stderr if result.returncode else None,
                 duration_seconds=time.time() - start
             )
@@ -331,11 +346,15 @@ class QwenAdapter(BaseAdapter):
                 cwd=task.repo_root
             )
             
+            output = result.stdout
+            findings = self._parse_findings(output) if result.returncode == 0 else []
+            
             return TaskResult(
                 task_id=task.task_id,
                 provider=self._id,
                 success=result.returncode == 0,
-                output=result.stdout,
+                output=output,
+                findings=findings,
                 error=result.stderr if result.returncode else None,
                 duration_seconds=time.time() - start
             )
@@ -355,7 +374,6 @@ class QwenAdapter(BaseAdapter):
                 error=str(e),
                 duration_seconds=time.time() - start
             )
-
 
 def get_adapter_registry() -> dict:
     """Get registry of all available adapters."""

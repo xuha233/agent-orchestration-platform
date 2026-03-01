@@ -1,10 +1,6 @@
-"""Report generation."""
+﻿"""Report generation."""
 
 from datetime import datetime
-from pathlib import Path
-from typing import List, Optional
-
-from ..core.types import NormalizedFinding
 
 
 class ReportGenerator:
