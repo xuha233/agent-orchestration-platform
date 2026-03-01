@@ -21,7 +21,14 @@ class AOPConfig:
     
     @classmethod
     def from_yaml(cls, path: Path) -> "AOPConfig":
-        """Load configuration from YAML file."""
+        """Load configuration from YAML file.
+        
+        Args:
+            path: Path to the YAML configuration file
+            
+        Returns:
+            AOPConfig instance with loaded values or defaults
+        """
         if not path.exists():
             return cls()
         
@@ -40,7 +47,11 @@ class AOPConfig:
         )
     
     def to_yaml(self, path: Path) -> None:
-        """Save configuration to YAML file."""
+        """Save configuration to YAML file.
+        
+        Args:
+            path: Path where to save the configuration file
+        """
         data = {
             "project": {"type": self.project_type},
             "settings": {
@@ -51,24 +62,51 @@ class AOPConfig:
             }
         }
         
+        # Ensure parent directory exists
+        path.parent.mkdir(parents=True, exist_ok=True)
+        
         with open(path, "w", encoding="utf-8") as f:
             yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
 
 
 def find_config(start_dir: Optional[Path] = None) -> Optional[Path]:
-    """Find aop.yaml in current or parent directories."""
+    """Find .aop.yaml or aop.yaml in current or parent directories.
+    
+    Searches for configuration files in the following order:
+    1. .aop.yaml (hidden, preferred)
+    2. aop.yaml (alternative)
+    
+    Args:
+        start_dir: Directory to start searching from. Defaults to current directory.
+        
+    Returns:
+        Path to the configuration file, or None if not found.
+    """
     current = Path(start_dir or ".").resolve()
     
     for parent in [current] + list(current.parents):
-        config_path = parent / "aop.yaml"
-        if config_path.exists():
-            return config_path
+        # Check for .aop.yaml first (preferred)
+        hidden_config = parent / ".aop.yaml"
+        if hidden_config.exists():
+            return hidden_config
+        
+        # Then check for aop.yaml
+        regular_config = parent / "aop.yaml"
+        if regular_config.exists():
+            return regular_config
     
     return None
 
 
 def load_config(start_dir: Optional[Path] = None) -> AOPConfig:
-    """Load configuration from nearest aop.yaml."""
+    """Load configuration from nearest .aop.yaml or aop.yaml.
+    
+    Args:
+        start_dir: Directory to start searching from. Defaults to current directory.
+        
+    Returns:
+        AOPConfig instance with loaded values or defaults.
+    """
     config_path = find_config(start_dir)
     if config_path:
         return AOPConfig.from_yaml(config_path)
