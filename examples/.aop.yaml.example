@@ -1,0 +1,80 @@
+# AOP 配置文件示例
+# 复制到项目根目录并重命名为 .aop.yaml
+
+# Provider 配置 - 支持多个 AI Provider
+providers:
+  - claude
+  - codex
+  - qwen
+
+# 默认配置
+defaults:
+  # 超时时间（秒）- 复杂任务建议 600-1800 秒
+  timeout: 600
+  
+  # 输出格式: report | json | markdown
+  format: report
+  
+  # 语言: zh-CN | en-US
+  language: zh-CN
+  
+  # 最大 token 数（null 表示无限制）
+  max_tokens: null
+
+# 路径配置
+paths:
+  repo: .
+  runs: runs/
+  hypotheses: runs/hypotheses.md
+
+# 子 Agent 配置（用于 sessions_spawn）
+subagent:
+  # 默认超时时间（秒）
+  default_timeout: 600
+  
+  # 复杂任务超时时间（秒）
+  complex_task_timeout: 1800
+  
+  # 最大并行数
+  max_parallel: 3
+  
+  # 重试次数
+  max_retries: 2
+
+# 假设驱动开发配置
+hypothesis:
+  # 自动创建假设
+  auto_create: true
+  
+  # 阶段
+  phases:
+    - explore
+    - build
+    - validate
+    - learn
+  
+  # 默认优先级
+  default_priority: quick_win
+
+# 学习捕获配置
+learning:
+  # 自动捕获学习
+  auto_capture: true
+  
+  # 分类
+  categories:
+    - what_worked
+    - what_failed
+    - insights
+    - next_steps
+
+# 任务前验证配置（优化功能）
+validation:
+  # 是否在分配任务前检查代码是否存在
+  check_existing_code: true
+  
+  # 是否检查重复任务
+  check_duplicate_tasks: true
+  
+  # 是否估算超时时间
+  estimate_timeout: true

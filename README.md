@@ -1,4 +1,4 @@
-﻿<p align="center">
+<p align="center">
   <img src="https://img.shields.io/badge/python-3.8+-blue.svg" alt="Python 3.8+" />
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT" />
   <img src="https://img.shields.io/badge/providers-5%20built--in-orange" alt="Providers: 5 built-in" />
@@ -237,15 +237,35 @@ providers:
   - codex
 
 defaults:
-  timeout: 600
-  format: report
+  timeout: 600        # 超时时间（秒），复杂任务建议 600-1800
+  format: report      # 输出格式
+  max_tokens: null    # 无限制
 
 paths:
   repo: .
   runs: runs/
+
+# 子 Agent 配置
+subagent:
+  default_timeout: 600       # 默认 10 分钟
+  complex_task_timeout: 1800 # 复杂任务 30 分钟
+  max_parallel: 3            # 最大并行数
 ```
 
 AOP 会自动查找当前目录及父目录的 `.aop.yaml`。
+
+### 超时配置建议
+
+| 任务类型 | 建议超时 |
+|---------|---------|
+| 简单代码审查 | 300s (5分钟) |
+| UI 组件开发 | 600s (10分钟) |
+| 功能集成 | 900s (15分钟) |
+| 复杂重构 | 1800s (30分钟) |
+
+📖 完整配置示例：[examples/.aop.yaml.example](examples/.aop.yaml.example)
+
+📖 最佳实践：[docs/best-practices.md](docs/best-practices.md)
 
 ---
 
@@ -264,6 +284,13 @@ mypy src/aop/
 ```
 
 ---
+
+## 📖 文档
+
+| 文档 | 说明 |
+|------|------|
+| [最佳实践](docs/best-practices.md) | 基于 PurifyAI 项目经验的实践指南 |
+| [配置示例](examples/.aop.yaml.example) | 完整配置文件示例 |
 
 ## 📚 相关项目
 
