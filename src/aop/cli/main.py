@@ -1,4 +1,4 @@
-"""AOP CLI."""
+﻿"""AOP CLI."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from ..workflow.hypothesis import HypothesisManager
 from ..workflow.learning import LearningLog
 from ..workflow.team import TeamOrchestrator
 from ..config import AOPConfig, ReviewPolicy, load_config
+from ..report import format_report, format_markdown_pr, format_sarif, format_json, format_summary
 
 console = Console()
 
@@ -452,10 +453,11 @@ def review(
         effective_result_mode = "both"
     
     # Summary by severity
-    if result.deduplicated_findings:
+    if result.findings:
         severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
-        for f in result.deduplicated_findings:
-            severity_counts[f.severity] = severity_counts.get(f.severity, 0) + 1
+        for f in result.findings:
+            sev = f.get("severity", "low") if isinstance(f, dict) else f.severity
+            severity_counts[sev] = severity_counts.get(sev, 0) + 1
         
         console.print("\n[bold]Findings Summary:[/bold]")
         for sev in ["critical", "high", "medium", "low"]:
@@ -464,41 +466,34 @@ def review(
             console.print(f"  [{color}]{sev.upper()}: {count}[/{color}]")
     
     # Top findings
-    if result.deduplicated_findings:
-        sorted_findings = sorted(result.deduplicated_findings, 
-                                 key=lambda f: {"critical": 0, "high": 1, "medium": 2, "low": 3}.get(f.severity, 4))
+    if result.findings:
+        sorted_findings = sorted(result.findings, 
+                                 key=lambda f: {"critical": 0, "high": 1, "medium": 2, "low": 3}.get(f.get("severity", "low") if isinstance(f, dict) else f.severity, 4))
         console.print("\n[bold]Top Findings:[/bold]")
         for i, f in enumerate(sorted_findings[:5], 1):
-            color = {"critical": "red", "high": "yellow", "medium": "blue", "low": "dim"}[f.severity]
-            console.print(f"  {i}. [{color}][{f.severity.upper()}][/{color}] {f.title}")
-            console.print(f"     [dim]{f.evidence.file}:{f.evidence.line or '-'}[/dim]")
+            sev = f.get("severity", "low") if isinstance(f, dict) else f.severity
+            title = f.get("title", "") if isinstance(f, dict) else f.title
+            evidence = f.get("evidence", {}) if isinstance(f, dict) else f.evidence
+            file_path = evidence.get("file", "") if isinstance(evidence, dict) else evidence.file
+            line = evidence.get("line") if isinstance(evidence, dict) else evidence.line
+            color = {"critical": "red", "high": "yellow", "medium": "blue", "low": "dim"}[sev]
+            console.print(f"  {i}. [{color}][{sev.upper()}][/{color}] {title}")
+            console.print(f"     [dim]{file_path}:{line or '-'}[/dim]")
     
     # Output based on format
     if output_format == "json" or json_output:
+        # Determine success based on decision
+        is_success = result.decision == "PASS"
         output = {
             "command": "review",
             "task_id": result.task_id,
             "decision": result.decision,
             "terminal_state": result.terminal_state,
-            "success": result.success,
-            "duration_seconds": result.duration_seconds,
-            "findings_count": len(result.deduplicated_findings),
+            "success": is_success,
+            "findings_count": result.findings_count,
             "result_mode": effective_result_mode,
-            "artifact_root": str(Path(artifact_base) / result.task_id) if effective_result_mode in ("artifact", "both") else None,
-            "findings": [
-                {
-                    "id": f.finding_id,
-                    "severity": f.severity,
-                    "category": f.category,
-                    "title": f.title,
-                    "file": f.evidence.file,
-                    "line": f.evidence.line,
-                    "recommendation": f.recommendation,
-                    "detected_by": list(f.detected_by)
-                }
-                for f in result.deduplicated_findings
-            ],
-            "errors": result.errors
+            "artifact_root": result.artifact_root,
+            "findings": result.findings,
         }
         if result.token_usage_summary is not None:
             output["token_usage_summary"] = result.token_usage_summary
@@ -506,10 +501,7 @@ def review(
             output["synthesis"] = result.synthesis
         console.print_json(data=output)
     elif output_format == "summary":
-        console.print(f"\n[bold]Task:[/] {result.task_id}")
-        console.print(f"[bold]Decision:[/] {_format_decision(result.decision)}")
-        console.print(f"[bold]Duration:[/] {result.duration_seconds:.2f}s")
-        console.print(f"[bold]Total Findings:[/] {len(result.deduplicated_findings)}")
+        console.print(format_summary(result))
     elif output_format == "sarif":
         # SARIF output for GitHub Code Scanning
         sarif_output = _format_sarif(result)
@@ -518,16 +510,12 @@ def review(
         # Markdown PR comment format
         md_output = _format_markdown_pr(result)
         console.print(md_output)
+    elif output_format == "report":
+        # Use the new report formatter for report format
+        console.print(format_report(result))
     else:
-        console.print(f"\n[bold]Task:[/] {result.task_id}")
-        console.print(f"[bold]Decision:[/] {_format_decision(result.decision)}")
-        console.print(f"[bold]Duration:[/] {result.duration_seconds:.2f}s")
-        console.print(f"[bold]Status:[/] {'[green]Success[/green]' if result.success else '[red]Failed[/red]'}")
-    
-    if result.errors:
-        console.print("\n[yellow]Warnings:[/yellow]")
-        for err in result.errors:
-            console.print(f"  * {err}")
+        # Default report format
+        console.print(format_report(result))
     
     # Exit codes based on decision
     if result.decision == "FAIL":
@@ -700,97 +688,15 @@ def _format_decision(decision: str) -> str:
 
 def _format_sarif(result) -> dict:
     """Format result as SARIF 2.1.0 for GitHub Code Scanning."""
-    findings = result.deduplicated_findings if hasattr(result, 'deduplicated_findings') else []
-    
-    rules = []
-    results = []
-    
-    for f in findings:
-        rule_id = f"aop/{f.category}/{f.finding_id[:8]}"
-        
-        # Add rule if not already added
-        if not any(r.get("id") == rule_id for r in rules):
-            rules.append({
-                "id": rule_id,
-                "shortDescription": {"text": f.title},
-                "defaultConfiguration": {
-                    "level": _severity_to_sarif_level(f.severity)
-                }
-            })
-        
-        results.append({
-            "ruleId": rule_id,
-            "message": {"text": f.title},
-            "locations": [{
-                "physicalLocation": {
-                    "artifactLocation": {"uri": f.evidence.file},
-                    "region": {"startLine": f.evidence.line or 1}
-                }
-            }]
-        })
-    
-    return {
-        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
-        "version": "2.1.0",
-        "runs": [{
-            "tool": {
-                "driver": {
-                    "name": "AOP",
-                    "informationUri": "https://github.com/xuha233/agent-orchestration-platform",
-                    "rules": rules
-                }
-            },
-            "results": results
-        }]
-    }
+    # Use the imported formatter - result is ReviewResult with findings attribute
+    return format_sarif(result)
 
-
-def _severity_to_sarif_level(severity: str) -> str:
-    """Convert severity to SARIF level."""
-    mapping = {
-        "critical": "error",
-        "high": "error",
-        "medium": "warning",
-        "low": "note",
-    }
-    return mapping.get(severity, "none")
 
 
 def _format_markdown_pr(result) -> str:
     """Format result as Markdown PR comment."""
-    findings = result.deduplicated_findings if hasattr(result, 'deduplicated_findings') else []
-    
-    lines = ["## AOP Review Results\n"]
-    lines.append(f"**Decision:** {result.decision}")
-    lines.append(f"**Task ID:** {result.task_id}")
-    lines.append(f"**Total Findings:** {len(findings)}\n")
-    
-    if not findings:
-        lines.append("✅ No issues found.")
-        return "\n".join(lines)
-    
-    # Group by severity
-    by_severity = {"critical": [], "high": [], "medium": [], "low": []}
-    for f in findings:
-        by_severity.get(f.severity, by_severity["low"]).append(f)
-    
-    for sev in ["critical", "high", "medium", "low"]:
-        items = by_severity[sev]
-        if not items:
-            continue
-        
-        emoji = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵"}[sev]
-        lines.append(f"### {emoji} {sev.upper()} ({len(items)})\n")
-        
-        for f in items:
-            lines.append(f"- **{f.title}**")
-            lines.append(f"  - File: `{f.evidence.file}:{f.evidence.line or '-'}`")
-            lines.append(f"  - Category: {f.category}")
-            if f.recommendation:
-                lines.append(f"  - Recommendation: {f.recommendation}")
-            lines.append("")
-    
-    return "\n".join(lines)
+    # Use the imported formatter - result is ReviewResult with findings attribute
+    return format_markdown_pr(result)
 
 
 @cli.command()
@@ -1036,3 +942,11 @@ def capture_learning(phase: str, worked: tuple, failed: tuple, insight: tuple):
 
 if __name__ == "__main__":
     cli()
+
+
+
+
+
+
+
+

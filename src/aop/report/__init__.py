@@ -2,6 +2,14 @@
 
 from datetime import datetime
 
+from .formatters import (
+    format_report,
+    format_markdown_pr,
+    format_sarif,
+    format_json,
+    format_summary,
+)
+
 
 class ReportGenerator:
     """Generate reports from review results."""
@@ -61,3 +69,13 @@ class ReportGenerator:
                 f.write(report_text)
         
         return report_text
+
+
+__all__ = [
+    "ReportGenerator",
+    "format_report",
+    "format_markdown_pr",
+    "format_sarif",
+    "format_json",
+    "format_summary",
+]
