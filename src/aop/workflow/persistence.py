@@ -68,6 +68,10 @@ class PersistenceManager:
             
         Returns:
             Path to the saved file
+            
+        Raises:
+            PermissionError: If unable to write to the file
+            OSError: If a filesystem error occurs
         """
         file_path = self._get_file_path(name)
         
@@ -80,8 +84,13 @@ class PersistenceManager:
             "data": data,
         }
         
-        with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, ensure_ascii=False, default=str)
+        try:
+            with open(file_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2, ensure_ascii=False, default=str)
+        except PermissionError:
+            raise PermissionError(f"Permission denied when writing to {file_path}")
+        except OSError as e:
+            raise OSError(f"Failed to save data to {file_path}: {e}")
         
         return file_path
     
@@ -93,14 +102,23 @@ class PersistenceManager:
             
         Returns:
             Loaded data dictionary, or None if file does not exist
+            
+        Raises:
+            PermissionError: If unable to read the file
+            OSError: If a filesystem error occurs
         """
         file_path = self._get_file_path(name)
         
         if not file_path.exists():
             return None
         
-        with open(file_path, "r", encoding="utf-8") as f:
-            payload = json.load(f)
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+        except PermissionError:
+            raise PermissionError(f"Permission denied when reading from {file_path}")
+        except OSError as e:
+            raise OSError(f"Failed to load data from {file_path}: {e}")
         
         # Handle both old and new format
         if "data" in payload:
@@ -273,16 +291,17 @@ class PersistenceManager:
 _default_manager: Optional[PersistenceManager] = None
 
 
-def get_persistence_manager(base_path: Optional[Path] = None) -> PersistenceManager:
+def get_persistence_manager(base_path: Optional[Path] = None, reset: bool = False) -> PersistenceManager:
     """Get the default persistence manager instance.
     
     Args:
-        base_path: Optional base path (only used on first call)
+        base_path: Optional base path (only used on first call or when reset=True)
+        reset: If True, create a new instance (useful for testing)
         
     Returns:
         PersistenceManager instance
     """
     global _default_manager
-    if _default_manager is None:
+    if _default_manager is None or reset:
         _default_manager = PersistenceManager(base_path)
     return _default_manager

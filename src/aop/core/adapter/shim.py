@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import shutil
 import signal
 import subprocess
@@ -264,6 +265,50 @@ class ShimAdapterBase:
             message="completed",
         )
 
+    def _terminate_process(self, process: subprocess.Popen[str]) -> None:
+        """Terminate a process in a cross-platform way.
+        
+        On POSIX systems, sends SIGTERM to the process group.
+        On Windows, uses process.terminate() and process.kill().
+        
+        Args:
+            process: The process to terminate
+        """
+        if sys.platform == "win32":
+            # Windows: use terminate() and kill()
+            try:
+                process.terminate()
+            except ProcessLookupError:
+                pass
+        else:
+            # POSIX: send signal to process group
+            try:
+                os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+
+    def _kill_process(self, process: subprocess.Popen[str]) -> None:
+        """Kill a process in a cross-platform way.
+        
+        On POSIX systems, sends SIGKILL to the process group.
+        On Windows, uses process.kill().
+        
+        Args:
+            process: The process to kill
+        """
+        if sys.platform == "win32":
+            # Windows: use kill()
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass
+        else:
+            # POSIX: send signal to process group
+            try:
+                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
     def cancel(self, ref: TaskRunRef) -> None:
         """Cancel a running task.
         
@@ -278,7 +323,7 @@ class ShimAdapterBase:
             self._runs.pop(ref.run_id, None)
             return
         try:
-            os.killpg(os.getpgid(handle.process.pid), signal.SIGTERM)
+            self._terminate_process(handle.process)
         except ProcessLookupError:
             self._close_io(handle)
             self._runs.pop(ref.run_id, None)
@@ -286,7 +331,7 @@ class ShimAdapterBase:
         time.sleep(0.2)
         if handle.process.poll() is None:
             try:
-                os.killpg(os.getpgid(handle.process.pid), signal.SIGKILL)
+                self._kill_process(handle.process)
             except ProcessLookupError:
                 self._close_io(handle)
                 self._runs.pop(ref.run_id, None)
@@ -296,7 +341,7 @@ class ShimAdapterBase:
             self._close_io(handle)
             self._runs.pop(ref.run_id, None)
 
-    def normalize(self, raw: object, ctx: NormalizeContext) -> List[NormalizedFinding]:
+    def normalize(self, raw: str | bytes, ctx: NormalizeContext) -> List[NormalizedFinding]:
         """Normalize provider output into findings.
         
         Args:

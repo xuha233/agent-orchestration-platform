@@ -67,7 +67,7 @@ class HypothesisManager:
         Returns:
             The created Hypothesis object
         """
-        hid = f"H-{hashlib.sha256(f'{statement}{datetime.now()}'.encode()).hexdigest()[:4].upper()}"
+        hid = f"H-{hashlib.sha256(f'{statement}{datetime.now()}'.encode()).hexdigest()[:8].upper()}"
         h = Hypothesis(
             hypothesis_id=hid, 
             statement=statement,

@@ -13,12 +13,14 @@ import json
 import re
 import tempfile
 import time
+import traceback
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ..adapter import get_adapter_registry, extract_final_text_from_output, extract_token_usage_from_output, normalize_findings_from_text, inspect_contract_output
 from ..artifacts import expected_paths, task_artifact_root
+from ...config import ReviewPolicy
 from ..retry import RetryPolicy
 from ..types import ErrorKind, TaskState, NormalizedFinding, Evidence, NormalizeContext
 from ..types.contracts import ProviderId, TaskInput
@@ -31,23 +33,6 @@ STRICT_JSON_CONTRACT = (
     '"recommendation":"<fix>","confidence":0.0,"fingerprint":"<stable-hash>"}]}. '
     'If no findings, return {"findings":[]}.'
 )
-
-
-@dataclass(frozen=True)
-class ReviewPolicy:
-    """Policy for review execution."""
-    max_retries: int = 2
-    stall_timeout_seconds: int = 120
-    review_hard_timeout_seconds: int = 600
-    poll_interval_seconds: float = 1.0
-    max_provider_parallelism: int = 3
-    high_escalation_threshold: int = 3
-    enforce_findings_contract: bool = False
-    require_non_empty_findings: bool = False
-    allow_paths: List[str] = field(default_factory=lambda: ["."])
-    provider_permissions: Dict[str, Dict[str, str]] = field(default_factory=dict)
-    enforcement_mode: str = "lenient"
-    provider_timeouts: Dict[str, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -389,7 +374,12 @@ class ReviewEngine:
             }
 
         except Exception as e:
-            return {"success": False, "reason": str(e), "error_kind": "internal_error"}
+            return {
+                "success": False,
+                "reason": str(e),
+                "error_kind": "internal_error",
+                "traceback": traceback.format_exc(),
+            }
 
     def review(
         self,
