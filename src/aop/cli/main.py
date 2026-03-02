@@ -844,6 +844,54 @@ def create_hypothesis(statement: str, priority: str):
     console.print(f"  Priority: {priority}")
 
 
+
+@hypothesis.command("list")
+@click.option("--state", "-s", type=click.Choice(["pending", "validated", "refuted", "inconclusive"]),
+              default=None, help="Filter by state. Default: all")
+def list_hypotheses(state):
+    """List all hypotheses."""
+    from ..core.types import HypothesisState
+    manager = HypothesisManager()
+    default_path = Path.cwd() / ".aop" / "hypotheses.json"
+    if default_path.exists():
+        manager = HypothesisManager(storage_path=default_path)
+    state_filter = HypothesisState(state) if state else None
+    hypotheses = manager.list_by_state(state_filter)
+    if not hypotheses:
+        console.print("[yellow]No hypotheses found[/yellow]")
+        return
+    table = Table(title="Hypotheses")
+    table.add_column("ID", style="cyan")
+    table.add_column("Statement", style="white")
+    table.add_column("Priority", style="magenta")
+    table.add_column("State", style="green")
+    state_colors = {"pending": "yellow", "validated": "green", "refuted": "red", "inconclusive": "dim"}
+    for h in hypotheses:
+        state_str = h.state.value if isinstance(h.state, HypothesisState) else str(h.state)
+        state_color = state_colors.get(state_str, "white")
+        stmt = h.statement[:50] + "..." if len(h.statement) > 50 else h.statement
+        table.add_row(h.hypothesis_id, stmt, h.priority, f"[{state_color}]{state_str}[/{state_color}]")
+    console.print(table)
+
+@hypothesis.command("update")
+@click.argument("hypothesis_id")
+@click.option("--state", "-s", type=click.Choice(["pending", "validated", "refuted", "inconclusive"]),
+              required=True, help="New state for the hypothesis")
+def update_hypothesis(hypothesis_id, state):
+    """Update hypothesis status."""
+    from ..core.types import HypothesisState
+    default_path = Path.cwd() / ".aop" / "hypotheses.json"
+    manager = HypothesisManager(storage_path=default_path) if default_path.exists() else HypothesisManager()
+    new_state = HypothesisState(state)
+    h = manager.update_state(hypothesis_id, new_state)
+    if not h:
+        console.print(f"[red]Hypothesis {hypothesis_id} not found[/red]")
+        raise SystemExit(1)
+    if manager._persistence:
+        manager.save()
+    console.print(f"[green]Updated {hypothesis_id}[/green]")
+    console.print(f"  New state: {state}")
+
 @cli.group()
 def project():
     """Project management.
