@@ -24,7 +24,7 @@ class ClaudeAdapter(ShimAdapterBase):
                 supports_resume_after_restart=True,
                 supports_schema_enforcement=True,
                 min_supported_version="2.1.59",
-                tested_os=["macos"],
+                tested_os=["macos", "linux", "windows"],
             ),
         )
 
@@ -82,7 +82,7 @@ class CodexAdapter(ShimAdapterBase):
                 supports_resume_after_restart=True,
                 supports_schema_enforcement=True,
                 min_supported_version="0.46.0",
-                tested_os=["macos"],
+                tested_os=["macos", "linux", "windows"],
             ),
         )
 
@@ -162,7 +162,7 @@ class GeminiAdapter(ShimAdapterBase):
                 supports_resume_after_restart=False,
                 supports_schema_enforcement=False,
                 min_supported_version="0.1.7",
-                tested_os=["macos"],
+                tested_os=["macos", "linux", "windows"],
             ),
         )
 
@@ -206,7 +206,7 @@ class OpenCodeAdapter(ShimAdapterBase):
                 supports_resume_after_restart=True,
                 supports_schema_enforcement=False,
                 min_supported_version="1.2.11",
-                tested_os=["macos"],
+                tested_os=["macos", "linux", "windows"],
             ),
         )
 
@@ -240,7 +240,7 @@ class QwenAdapter(ShimAdapterBase):
                 supports_resume_after_restart=True,
                 supports_schema_enforcement=False,
                 min_supported_version="0.10.6",
-                tested_os=["macos"],
+                tested_os=["macos", "linux", "windows"],
             ),
         )
 
@@ -294,3 +294,4 @@ __all__ = [
     "normalize_findings_from_text",
     "inspect_contract_output",
 ]
+

@@ -23,7 +23,7 @@ from ..artifacts import expected_paths, task_artifact_root
 from ...config import ReviewPolicy
 from ..retry import RetryPolicy
 from ..types import ErrorKind, TaskState, NormalizedFinding, Evidence, NormalizeContext
-from ..types.contracts import ProviderId, TaskInput
+from ..types.contracts import ProviderId, TaskInput, SEVERITY_ORDER
 
 
 STRICT_JSON_CONTRACT = (
@@ -90,7 +90,7 @@ def _build_prompt(user_prompt: str, target_paths: List[str]) -> str:
     return f"{user_prompt}\n\nScope: {scope}\n\n{STRICT_JSON_CONTRACT}"
 
 
-_SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+# Use SEVERITY_ORDER from core.types.contracts
 
 
 def _normalize_for_dedupe(value: str) -> str:
@@ -137,7 +137,7 @@ def _merge_findings_across_providers(findings: List[NormalizedFinding]) -> List[
             existing["confidence"] = item.confidence
 
         current_severity = str(existing.get("severity", "low")).lower()
-        if _SEVERITY_ORDER.get(item.severity, 99) < _SEVERITY_ORDER.get(current_severity, 99):
+        if SEVERITY_ORDER.get(item.severity, 99) < SEVERITY_ORDER.get(current_severity, 99):
             existing["severity"] = item.severity
 
     merged_findings = list(merged.values())
@@ -156,7 +156,7 @@ def _merge_findings_across_providers(findings: List[NormalizedFinding]) -> List[
             line_raw = evidence.get("line")
             line = line_raw if isinstance(line_raw, int) else 0
         return (
-            _SEVERITY_ORDER.get(severity, 99),
+            SEVERITY_ORDER.get(severity, 99),
             file_path,
             line,
             str(entry.get("title", "")),
@@ -536,3 +536,5 @@ __all__ = [
     "ReviewResult",
     "ReviewEngine",
 ]
+
+

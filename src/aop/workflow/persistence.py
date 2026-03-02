@@ -1,9 +1,9 @@
-"""Persistence utilities for workflow data."""
+﻿"""Persistence utilities for workflow data."""
 
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TypeVar, Generic, Protocol
 from dataclasses import asdict, is_dataclass
@@ -78,7 +78,7 @@ class PersistenceManager:
         # Add metadata
         payload = {
             "_meta": {
-                "saved_at": datetime.now().isoformat(),
+                "saved_at": datetime.now(timezone.utc).isoformat(),
                 "version": 1,
             },
             "data": data,
@@ -219,7 +219,7 @@ class PersistenceManager:
         
         output = output_path or self.base_path / f"{name}.md"
         
-        lines = [f"# {name.title()}", "", f"Exported: {datetime.now().isoformat()}", ""]
+        lines = [f"# {name.title()}", "", f"Exported: {datetime.now(timezone.utc).isoformat()}", ""]
         
         if name == "hypotheses":
             lines.extend(self._format_hypotheses_markdown(data))
@@ -305,3 +305,5 @@ def get_persistence_manager(base_path: Optional[Path] = None, reset: bool = Fals
     if _default_manager is None or reset:
         _default_manager = PersistenceManager(base_path)
     return _default_manager
+
+

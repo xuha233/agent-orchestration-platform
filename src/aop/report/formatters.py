@@ -17,11 +17,13 @@ from dataclasses import asdict
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from ..core.types.contracts import SEVERITY_LEVELS, SEVERITY_ORDER
+
 if TYPE_CHECKING:
     from ..core.engine.review import ReviewResult
 
 
-_SEVERITY_ORDER = ("critical", "high", "medium", "low")
+# Use SEVERITY_LEVELS and SEVERITY_ORDER from core.types.contracts
 _SARIF_LEVEL_BY_SEVERITY = {
     "critical": "error",
     "high": "error",
@@ -77,7 +79,7 @@ def format_report(result: "ReviewResult") -> str:
         lines.append("")
     
     # Severity breakdown
-    counts = {level: 0 for level in _SEVERITY_ORDER}
+    counts = {level: 0 for level in SEVERITY_LEVELS}
     for finding in result.findings:
         severity = str(finding.get("severity", "")).lower()
         if severity in counts:
@@ -86,7 +88,7 @@ def format_report(result: "ReviewResult") -> str:
     lines.append("-" * 40)
     lines.append("Severity Breakdown")
     lines.append("-" * 40)
-    for level in _SEVERITY_ORDER:
+    for level in SEVERITY_LEVELS:
         indicator = "!" if counts[level] > 0 else " "
         lines.append(f"  [{indicator}] {level.upper()}: {counts[level]}")
     lines.append("")
@@ -123,9 +125,9 @@ def format_report(result: "ReviewResult") -> str:
         sorted_findings = sorted(
             result.findings,
             key=lambda item: (
-                _SEVERITY_ORDER.index(str(item.get("severity", "low")).lower())
-                if str(item.get("severity", "low")).lower() in _SEVERITY_ORDER
-                else len(_SEVERITY_ORDER),
+                SEVERITY_LEVELS.index(str(item.get("severity", "low")).lower())
+                if str(item.get("severity", "low")).lower() in SEVERITY_LEVELS
+                else len(SEVERITY_LEVELS),
                 _finding_location(item),
                 str(item.get("title", "")),
             ),
@@ -167,7 +169,7 @@ def format_markdown_pr(result: "ReviewResult") -> str:
     Returns:
         Markdown formatted text suitable for GitHub PR comments
     """
-    counts = {level: 0 for level in _SEVERITY_ORDER}
+    counts = {level: 0 for level in SEVERITY_LEVELS}
     for finding in result.findings:
         severity = str(finding.get("severity", "")).lower()
         if severity in counts:
@@ -188,7 +190,7 @@ def format_markdown_pr(result: "ReviewResult") -> str:
         "|---|---:|",
     ]
     
-    for level in _SEVERITY_ORDER:
+    for level in SEVERITY_LEVELS:
         lines.append(f"| {level} | {counts[level]} |")
     
     lines.append("")
@@ -225,9 +227,9 @@ def format_markdown_pr(result: "ReviewResult") -> str:
     ordered_findings = sorted(
         result.findings,
         key=lambda item: (
-            _SEVERITY_ORDER.index(str(item.get("severity", "low")).lower())
-            if str(item.get("severity", "low")).lower() in _SEVERITY_ORDER
-            else len(_SEVERITY_ORDER),
+            SEVERITY_LEVELS.index(str(item.get("severity", "low")).lower())
+            if str(item.get("severity", "low")).lower() in SEVERITY_LEVELS
+            else len(SEVERITY_LEVELS),
             _finding_location(item),
             str(item.get("title", "")),
         ),
@@ -449,14 +451,14 @@ def format_summary(result: "ReviewResult") -> str:
     Returns:
         Brief summary string
     """
-    counts = {level: 0 for level in _SEVERITY_ORDER}
+    counts = {level: 0 for level in SEVERITY_LEVELS}
     for finding in result.findings:
         severity = str(finding.get("severity", "")).lower()
         if severity in counts:
             counts[severity] += 1
     
     severity_parts = []
-    for level in _SEVERITY_ORDER:
+    for level in SEVERITY_LEVELS:
         if counts[level] > 0:
             severity_parts.append(f"{counts[level]} {level}")
     
@@ -472,3 +474,4 @@ __all__ = [
     "format_json",
     "format_summary",
 ]
+

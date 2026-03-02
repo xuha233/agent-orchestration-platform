@@ -19,6 +19,11 @@ TaskAttemptState = Literal["PENDING", "STARTED", "SUCCEEDED", "FAILED", "CANCELL
 PROVIDER_IDS: Sequence[ProviderId] = ("claude", "codex", "gemini", "opencode", "qwen")
 CAPABILITY_TIERS: Sequence[CapabilityTier] = ("C0", "C1", "C2", "C3", "C4", "C5", "C6")
 
+# Severity levels for findings
+SeverityLevel = Literal["critical", "high", "medium", "low"]
+SEVERITY_LEVELS: Sequence[SeverityLevel] = ("critical", "high", "medium", "low")
+SEVERITY_ORDER: Dict[SeverityLevel, int] = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+
 
 @dataclass(frozen=True)
 class CapabilitySet:
@@ -145,3 +150,4 @@ class ProviderAdapter(Protocol):
     def normalize(self, raw: Any, ctx: NormalizeContext) -> List[NormalizedFinding]:
         """Normalize provider output into findings."""
         ...
+
