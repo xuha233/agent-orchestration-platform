@@ -1,4 +1,4 @@
-"""Core type definitions for AOP."""
+﻿"""Core type definitions for AOP."""
 
 from __future__ import annotations
 
@@ -6,17 +6,39 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Literal, Optional
 
-
-ProviderId = Literal["claude", "codex", "gemini", "opencode", "qwen"]
+# Import new types from separate modules
+from .errors import ErrorKind, WarningKind
+from .contracts import (
+    ProviderId,
+    CapabilityTier,
+    TaskAttemptState,
+    PROVIDER_IDS,
+    CAPABILITY_TIERS,
+    CapabilitySet,
+    ProviderPresence,
+    TaskInput,
+    TaskRunRef,
+    TaskStatus,
+    NormalizeContext,
+    Evidence,
+    NormalizedFinding,
+    ProviderAdapter,
+)
 
 
 class TaskState(str, Enum):
     """Task execution state."""
     DRAFT = "draft"
     QUEUED = "queued"
+    DISPATCHED = "dispatched"
     RUNNING = "running"
+    RETRYING = "retrying"
+    AGGREGATING = "aggregating"
     COMPLETED = "completed"
+    PARTIAL_SUCCESS = "partial_success"
     FAILED = "failed"
+    CANCELLED = "cancelled"
+    EXPIRED = "expired"
 
 
 class HypothesisState(str, Enum):
@@ -35,38 +57,9 @@ class ProjectType(str, Enum):
     COMPLIANCE_SENSITIVE = "compliance_sensitive"
 
 
-@dataclass(frozen=True)
-class Evidence:
-    """Evidence for a finding (file location and snippet)."""
-    file: str
-    line: Optional[int] = None
-    snippet: str = ""
-
-
-@dataclass(frozen=True)
-class NormalizedFinding:
-    """Normalized finding from any provider."""
-    finding_id: str
-    severity: Literal["critical", "high", "medium", "low"]
-    category: Literal["bug", "security", "performance", "maintainability"]
-    title: str
-    evidence: Evidence
-    recommendation: str
-    detected_by: List[ProviderId] = field(default_factory=list)
-
-
-@dataclass
-class TaskInput:
-    """Input for a task to be executed by a provider."""
-    task_id: str
-    prompt: str
-    repo_root: str = "."
-    timeout_seconds: int = 600
-
-
 @dataclass
 class TaskResult:
-    """Result of a task execution."""
+    """Result of a task execution (legacy compatibility)."""
     task_id: str
     provider: ProviderId
     success: bool
@@ -134,3 +127,61 @@ class TeamConfig:
             ProjectType.COMPLIANCE_SENSITIVE: ["product_owner", "data", "ml", "dev", "ux", "devops", "ethics"],
         }
         return cls(project_type=pt, agents=configs.get(pt, []))
+
+
+# Additional types for retry and orchestration
+@dataclass(frozen=True)
+class AttemptResult:
+    """Result of a single attempt."""
+    success: bool
+    output: object = None
+    error_kind: Optional[ErrorKind] = None
+    stderr: str = ""
+    warnings: List[WarningKind] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class RunResult:
+    """Result of a run with retries."""
+    task_id: str
+    provider: str
+    success: bool
+    attempts: int
+    delays_seconds: List[float]
+    output: object = None
+    final_error: Optional[ErrorKind] = None
+    warnings: List[WarningKind] = field(default_factory=list)
+
+
+__all__ = [
+    # Errors
+    "ErrorKind",
+    "WarningKind",
+    # Contracts
+    "ProviderId",
+    "CapabilityTier",
+    "TaskAttemptState",
+    "PROVIDER_IDS",
+    "CAPABILITY_TIERS",
+    "CapabilitySet",
+    "ProviderPresence",
+    "TaskInput",
+    "TaskRunRef",
+    "TaskStatus",
+    "NormalizeContext",
+    "Evidence",
+    "NormalizedFinding",
+    "ProviderAdapter",
+    # Legacy types
+    "TaskState",
+    "HypothesisState",
+    "ProjectType",
+    "TaskResult",
+    "Hypothesis",
+    "LearningCapture",
+    "ComplexityAssessment",
+    "TeamConfig",
+    # Retry types
+    "AttemptResult",
+    "RunResult",
+]

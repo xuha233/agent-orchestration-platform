@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional
 
 import click
 from rich.console import Console
@@ -16,7 +17,7 @@ from ..core.engine import ExecutionEngine, ReviewEngine
 from ..workflow.hypothesis import HypothesisManager
 from ..workflow.learning import LearningLog
 from ..workflow.team import TeamOrchestrator
-from ..config import AOPConfig, load_config
+from ..config import AOPConfig, ReviewPolicy, load_config
 
 console = Console()
 
@@ -25,12 +26,152 @@ EXIT_SUCCESS = 0
 EXIT_ERROR = 1
 EXIT_CONFIG_NOT_FOUND = 2
 EXIT_PROVIDER_UNAVAILABLE = 3
+EXIT_INCONCLUSIVE = 3
+
+# Default policy for CLI defaults
+DEFAULT_POLICY = ReviewPolicy()
 
 
 def _get_default_providers() -> str:
     """Get default providers from config or fallback."""
     config = load_config()
     return ",".join(config.providers)
+
+
+def _parse_providers(raw: str) -> List[str]:
+    """Parse comma-separated providers list."""
+    seen = set()
+    providers: List[str] = []
+    for item in raw.split(","):
+        value = item.strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        providers.append(value)
+    return providers
+
+
+def _parse_provider_timeouts(raw: str) -> Dict[str, int]:
+    """Parse provider-specific timeouts from CLI argument.
+    
+    Format: "claude=120,codex=90"
+    """
+    result: Dict[str, int] = {}
+    if not raw.strip():
+        return result
+    for chunk in raw.split(","):
+        pair = chunk.strip()
+        if not pair:
+            continue
+        if "=" not in pair:
+            raise ValueError(f"invalid provider timeout entry: {pair}")
+        provider, timeout_text = pair.split("=", 1)
+        provider_name = provider.strip()
+        if not provider_name:
+            raise ValueError(f"invalid provider timeout entry: {pair}")
+        try:
+            timeout = int(timeout_text.strip())
+        except Exception:
+            raise ValueError(f"invalid timeout value for provider '{provider_name}': {timeout_text.strip()}") from None
+        if timeout <= 0:
+            raise ValueError(f"timeout must be > 0 for provider '{provider_name}'")
+        result[provider_name] = timeout
+    return result
+
+
+def _parse_paths(raw: str) -> List[str]:
+    """Parse comma-separated paths."""
+    paths = [item.strip() for item in raw.split(",") if item.strip()]
+    return paths if paths else ["."]
+
+
+def _parse_provider_permissions_json(raw: str) -> Dict[str, Dict[str, str]]:
+    """Parse provider permissions from JSON string."""
+    if not raw.strip():
+        return {}
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        raise ValueError("--provider-permissions-json must be valid JSON") from None
+    if not isinstance(payload, dict):
+        raise ValueError("--provider-permissions-json root must be an object")
+
+    result: Dict[str, Dict[str, str]] = {}
+    for provider, permissions in payload.items():
+        provider_name = str(provider).strip()
+        if not provider_name:
+            raise ValueError("--provider-permissions-json contains empty provider name")
+        if not isinstance(permissions, dict):
+            raise ValueError(f"permissions for provider '{provider_name}' must be an object")
+        normalized: Dict[str, str] = {}
+        for key, value in permissions.items():
+            key_name = str(key).strip()
+            if not key_name:
+                raise ValueError(f"provider '{provider_name}' contains empty permission key")
+            normalized[key_name] = str(value)
+        result[provider_name] = normalized
+    return result
+
+
+def _merge_provider_permissions(
+    base: Dict[str, Dict[str, str]],
+    override: Dict[str, Dict[str, str]],
+) -> Dict[str, Dict[str, str]]:
+    """Merge base and override provider permissions."""
+    merged: Dict[str, Dict[str, str]] = {provider: dict(values) for provider, values in base.items()}
+    for provider, permissions in override.items():
+        current = merged.get(provider, {})
+        current.update(permissions)
+        merged[provider] = current
+    return merged
+
+
+def _resolve_policy(
+    config: AOPConfig,
+    stall_timeout: int,
+    review_hard_timeout: int,
+    poll_interval: float,
+    provider_timeouts: str,
+    allow_paths: str,
+    enforcement_mode: str,
+    strict_contract: bool,
+    max_provider_parallelism: int,
+    provider_permissions_json: str,
+) -> ReviewPolicy:
+    """Resolve ReviewPolicy from config and CLI overrides."""
+    # Parse CLI overrides
+    parsed_provider_timeouts = dict(config.policy.provider_timeouts)
+    parsed_provider_timeouts.update(_parse_provider_timeouts(provider_timeouts))
+    
+    parsed_allow_paths = _parse_paths(allow_paths) if allow_paths else list(config.policy.allow_paths)
+    
+    parsed_provider_permissions = _merge_provider_permissions(
+        config.policy.provider_permissions,
+        _parse_provider_permissions_json(provider_permissions_json),
+    )
+    
+    # Resolve values (CLI takes precedence)
+    final_stall_timeout = stall_timeout if stall_timeout > 0 else config.policy.stall_timeout_seconds
+    final_hard_timeout = review_hard_timeout if review_hard_timeout >= 0 else config.policy.review_hard_timeout_seconds
+    final_poll_interval = poll_interval if poll_interval > 0 else config.policy.poll_interval_seconds
+    final_max_parallelism = max_provider_parallelism if max_provider_parallelism >= 0 else config.policy.max_provider_parallelism
+    final_enforcement_mode = enforcement_mode or config.policy.enforcement_mode
+    
+    return ReviewPolicy(
+        timeout_seconds=config.policy.timeout_seconds,
+        stall_timeout_seconds=final_stall_timeout,
+        poll_interval_seconds=final_poll_interval,
+        review_hard_timeout_seconds=final_hard_timeout,
+        enforce_findings_contract=strict_contract or config.policy.enforce_findings_contract,
+        max_retries=config.policy.max_retries,
+        high_escalation_threshold=config.policy.high_escalation_threshold,
+        require_non_empty_findings=config.policy.require_non_empty_findings,
+        max_provider_parallelism=final_max_parallelism,
+        provider_timeouts=parsed_provider_timeouts,
+        allow_paths=parsed_allow_paths,
+        provider_permissions=parsed_provider_permissions,
+        enforcement_mode=final_enforcement_mode,
+    )
 
 
 def _show_next_steps():
@@ -145,19 +286,98 @@ def doctor(json_output: bool, show_fix: bool):
         sys.exit(EXIT_ERROR)
 
 
+# Common review/run options (shared between review and run commands)
+def _add_common_execution_options(f):
+    """Add common execution options to a command."""
+    # Execution Scope
+    f = click.option("--prompt", "-p", required=True, 
+                     help="The prompt/question for multi-agent review")(f)
+    f = click.option("--providers", "-P", default=None,
+                     help="Comma-separated provider list. Default: claude,codex (from config)")(f)
+    f = click.option("--repo", "-r", default=".",
+                     help="Repository root path. Default: current directory")(f)
+    f = click.option("--target-paths", default=".",
+                     help="Comma-separated task scope paths (default: .)")(f)
+    f = click.option("--task-id", default="",
+                     help="Optional stable task id")(f)
+    
+    # Timeout and Parallelism
+    f = click.option("--timeout", "-t", default=600,
+                     help="Timeout in seconds for each provider. Default: 600")(f)
+    f = click.option("--stall-timeout", type=int, default=DEFAULT_POLICY.stall_timeout_seconds,
+                     help="Cancel a provider when output progress is idle for N seconds (default: 900)")(f)
+    f = click.option("--review-hard-timeout", type=int, default=DEFAULT_POLICY.review_hard_timeout_seconds,
+                     help="Review-mode hard deadline in seconds, 0 disables (default: 1800)")(f)
+    f = click.option("--poll-interval", type=float, default=DEFAULT_POLICY.poll_interval_seconds,
+                     help="Provider status polling interval in seconds (default: 1.0)")(f)
+    f = click.option("--max-provider-parallelism", type=int, default=DEFAULT_POLICY.max_provider_parallelism,
+                     help="Provider fan-out concurrency. 0 means full parallelism (default: 0)")(f)
+    f = click.option("--provider-timeouts", default="",
+                     help="Provider-specific stall-timeout overrides, e.g. claude=120,codex=90")(f)
+    
+    # Output
+    f = click.option("--format", "-f", "output_format", default="report",
+                     type=click.Choice(["report", "json", "summary", "sarif", "markdown-pr"]),
+                     help="Output format. Default: report. sarif/markdown-pr are review-only")(f)
+    f = click.option("--result-mode", type=click.Choice(["stdout", "artifact", "both"]),
+                     default="stdout",
+                     help="artifact: write files, stdout: print payload, both: do both (default: stdout)")(f)
+    f = click.option("--artifact-base", default="reports/review",
+                     help="Artifact base directory (default: reports/review)")(f)
+    f = click.option("--include-token-usage", is_flag=True,
+                     help="Best-effort token usage extraction (provider and aggregate)")(f)
+    f = click.option("--save-artifacts", is_flag=True,
+                     help="Force artifact writes when result-mode is stdout")(f)
+    f = click.option("--json", "json_output", is_flag=True,
+                     help="Print machine-readable JSON output")(f)
+    
+    # Synthesis
+    f = click.option("--synthesize", is_flag=True,
+                     help="Run one extra synthesis pass to produce consensus/divergence summary")(f)
+    f = click.option("--synth-provider", default="",
+                     help="Provider to run synthesis pass (must be in --providers). Defaults to claude when available")(f)
+    
+    # Access and Contracts
+    f = click.option("--allow-paths", default=".",
+                     help="Comma-separated allowed paths under repo root (default: .)")(f)
+    f = click.option("--enforcement-mode", type=click.Choice(["strict", "best_effort"]),
+                     default=DEFAULT_POLICY.enforcement_mode,
+                     help="strict fails closed when permission requirements are unmet (default: strict)")(f)
+    f = click.option("--provider-permissions-json", default="",
+                     help="Provider permission mapping JSON, e.g. '{\"codex\":{\"sandbox\":\"workspace-write\"}}'")(f)
+    f = click.option("--strict-contract", is_flag=True,
+                     help="Review mode only: enforce strict findings JSON contract")(f)
+    
+    return f
+
+
 @cli.command()
-@click.option("--prompt", "-p", required=True, 
-              help="The prompt/question for multi-agent review")
-@click.option("--providers", "-P", default=None,
-              help="Comma-separated provider list. Default: claude,codex (from config)")
-@click.option("--repo", "-r", default=".",
-              help="Repository root path. Default: current directory")
-@click.option("--timeout", "-t", default=600,
-              help="Timeout in seconds for each provider. Default: 600")
-@click.option("--format", "-f", "output_format", default="report",
-              type=click.Choice(["report", "json", "summary"]),
-              help="Output format. Default: report")
-def review(prompt: str, providers: Optional[str], repo: str, timeout: int, output_format: str):
+@_add_common_execution_options
+def review(
+    prompt: str,
+    providers: Optional[str],
+    repo: str,
+    target_paths: str,
+    task_id: str,
+    timeout: int,
+    stall_timeout: int,
+    review_hard_timeout: int,
+    poll_interval: float,
+    max_provider_parallelism: int,
+    provider_timeouts: str,
+    output_format: str,
+    result_mode: str,
+    artifact_base: str,
+    include_token_usage: bool,
+    save_artifacts: bool,
+    json_output: bool,
+    synthesize: bool,
+    synth_provider: str,
+    allow_paths: str,
+    enforcement_mode: str,
+    provider_permissions_json: str,
+    strict_contract: bool,
+):
     """Run multi-agent code review.
     
     \b
@@ -165,19 +385,48 @@ def review(prompt: str, providers: Optional[str], repo: str, timeout: int, outpu
       aop review -p "Review the authentication module"
       aop review -p "Check for security issues" -P claude,gemini
       aop review -p "Analyze performance" -f json
+      aop review -p "Review for bugs" --synthesize --synth-provider claude
+      aop review -p "Review for bugs" --format sarif --result-mode artifact
+      aop review -p "Review runtime/" --target-paths runtime --strict-contract
     
     \b
     Exit Codes:
-      0 - Review completed successfully
-      1 - Review failed
+      0 - Review completed successfully (PASS)
+      1 - Review failed (FAIL)
+      3 - Review inconclusive (INCONCLUSIVE, review mode only)
     """
     # Load config and merge with CLI options
     config = load_config()
-    provider_list = [p.strip() for p in (providers or ",".join(config.providers)).split(",")]
+    provider_list = _parse_providers(providers or ",".join(config.providers))
+    
+    # Resolve policy from config and CLI overrides
+    policy = _resolve_policy(
+        config=config,
+        stall_timeout=stall_timeout,
+        review_hard_timeout=review_hard_timeout,
+        poll_interval=poll_interval,
+        provider_timeouts=provider_timeouts,
+        allow_paths=allow_paths,
+        enforcement_mode=enforcement_mode,
+        strict_contract=strict_contract,
+        max_provider_parallelism=max_provider_parallelism,
+        provider_permissions_json=provider_permissions_json,
+    )
+    
+    # Validate synthesis provider
+    synth_provider_name = synth_provider.strip() if synth_provider else ""
+    do_synthesize = bool(synthesize or synth_provider_name)
+    if synth_provider_name and synth_provider_name not in provider_list:
+        console.print("[red]Error: --synth-provider must be one of selected providers[/red]")
+        sys.exit(EXIT_ERROR)
     
     console.print(Panel(f"[bold]Running review with:[/] {', '.join(provider_list)}"))
     
-    engine = ReviewEngine(providers=provider_list, default_timeout=timeout)
+    engine = ReviewEngine(
+        providers=provider_list, 
+        default_timeout=timeout,
+        policy=policy,
+    )
     
     with Progress(
         SpinnerColumn(),
@@ -185,8 +434,22 @@ def review(prompt: str, providers: Optional[str], repo: str, timeout: int, outpu
         console=console,
     ) as progress:
         task = progress.add_task("Analyzing...", total=None)
-        result = engine.review(prompt, repo_root=repo)
+        result = engine.review(
+            prompt, 
+            repo_root=repo,
+            target_paths=_parse_paths(target_paths),
+            task_id=task_id or None,
+            include_token_usage=include_token_usage,
+            synthesize=do_synthesize,
+            synthesis_provider=synth_provider_name or None,
+            strict_contract=strict_contract,
+        )
         progress.update(task, description="Complete")
+    
+    # Determine effective result mode
+    effective_result_mode = result_mode
+    if save_artifacts and effective_result_mode == "stdout":
+        effective_result_mode = "both"
     
     # Summary by severity
     if result.deduplicated_findings:
@@ -211,12 +474,17 @@ def review(prompt: str, providers: Optional[str], repo: str, timeout: int, outpu
             console.print(f"     [dim]{f.evidence.file}:{f.evidence.line or '-'}[/dim]")
     
     # Output based on format
-    if output_format == "json":
+    if output_format == "json" or json_output:
         output = {
+            "command": "review",
             "task_id": result.task_id,
+            "decision": result.decision,
+            "terminal_state": result.terminal_state,
             "success": result.success,
             "duration_seconds": result.duration_seconds,
             "findings_count": len(result.deduplicated_findings),
+            "result_mode": effective_result_mode,
+            "artifact_root": str(Path(artifact_base) / result.task_id) if effective_result_mode in ("artifact", "both") else None,
             "findings": [
                 {
                     "id": f.finding_id,
@@ -232,14 +500,27 @@ def review(prompt: str, providers: Optional[str], repo: str, timeout: int, outpu
             ],
             "errors": result.errors
         }
+        if result.token_usage_summary is not None:
+            output["token_usage_summary"] = result.token_usage_summary
+        if result.synthesis is not None:
+            output["synthesis"] = result.synthesis
         console.print_json(data=output)
     elif output_format == "summary":
         console.print(f"\n[bold]Task:[/] {result.task_id}")
+        console.print(f"[bold]Decision:[/] {_format_decision(result.decision)}")
         console.print(f"[bold]Duration:[/] {result.duration_seconds:.2f}s")
-        console.print(f"[bold]Status:[/] {'[green]Success[/green]' if result.success else '[red]Failed[/red]'}")
         console.print(f"[bold]Total Findings:[/] {len(result.deduplicated_findings)}")
+    elif output_format == "sarif":
+        # SARIF output for GitHub Code Scanning
+        sarif_output = _format_sarif(result)
+        console.print_json(data=sarif_output)
+    elif output_format == "markdown-pr":
+        # Markdown PR comment format
+        md_output = _format_markdown_pr(result)
+        console.print(md_output)
     else:
         console.print(f"\n[bold]Task:[/] {result.task_id}")
+        console.print(f"[bold]Decision:[/] {_format_decision(result.decision)}")
         console.print(f"[bold]Duration:[/] {result.duration_seconds:.2f}s")
         console.print(f"[bold]Status:[/] {'[green]Success[/green]' if result.success else '[red]Failed[/red]'}")
     
@@ -248,7 +529,268 @@ def review(prompt: str, providers: Optional[str], repo: str, timeout: int, outpu
         for err in result.errors:
             console.print(f"  * {err}")
     
+    # Exit codes based on decision
+    if result.decision == "FAIL":
+        sys.exit(EXIT_ERROR)
+    if result.decision == "INCONCLUSIVE":
+        sys.exit(EXIT_INCONCLUSIVE)
+    sys.exit(EXIT_SUCCESS)
+
+
+@cli.command("run")
+@_add_common_execution_options
+def run_command(
+    prompt: str,
+    providers: Optional[str],
+    repo: str,
+    target_paths: str,
+    task_id: str,
+    timeout: int,
+    stall_timeout: int,
+    review_hard_timeout: int,
+    poll_interval: float,
+    max_provider_parallelism: int,
+    provider_timeouts: str,
+    output_format: str,
+    result_mode: str,
+    artifact_base: str,
+    include_token_usage: bool,
+    save_artifacts: bool,
+    json_output: bool,
+    synthesize: bool,
+    synth_provider: str,
+    allow_paths: str,
+    enforcement_mode: str,
+    provider_permissions_json: str,
+    strict_contract: bool,
+):
+    """Run general multi-provider task execution.
+    
+    Unlike 'review', this command does not enforce findings schema.
+    
+    \b
+    Examples:
+      aop run -p "Summarize the architecture"
+      aop run -p "List risky files" -P claude,codex --json
+      aop run -p "Compare provider outputs" -P claude,codex,qwen --synthesize
+      aop run -p "Analyze runtime" --save-artifacts --json
+    
+    \b
+    Exit Codes:
+      0 - Success
+      1 - Failed
+      2 - Input/config/runtime failure
+    """
+    # Load config and merge with CLI options
+    config = load_config()
+    provider_list = _parse_providers(providers or ",".join(config.providers))
+    
+    # Resolve policy from config and CLI overrides
+    policy = _resolve_policy(
+        config=config,
+        stall_timeout=stall_timeout,
+        review_hard_timeout=review_hard_timeout,
+        poll_interval=poll_interval,
+        provider_timeouts=provider_timeouts,
+        allow_paths=allow_paths,
+        enforcement_mode=enforcement_mode,
+        strict_contract=False,  # run mode doesn't enforce contract
+        max_provider_parallelism=max_provider_parallelism,
+        provider_permissions_json=provider_permissions_json,
+    )
+    
+    # Validate synthesis provider
+    synth_provider_name = synth_provider.strip() if synth_provider else ""
+    do_synthesize = bool(synthesize or synth_provider_name)
+    if synth_provider_name and synth_provider_name not in provider_list:
+        console.print("[red]Error: --synth-provider must be one of selected providers[/red]")
+        sys.exit(EXIT_ERROR)
+    
+    # Validate format
+    if output_format in ("sarif", "markdown-pr"):
+        console.print(f"[red]Error: --format {output_format} is supported only for review command[/red]")
+        sys.exit(EXIT_ERROR)
+    
+    console.print(Panel(f"[bold]Running task with:[/] {', '.join(provider_list)}"))
+    
+    engine = ExecutionEngine(
+        providers=provider_list,
+        default_timeout=timeout,
+        policy=policy,
+    )
+    
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Executing...", total=None)
+        result = engine.run(
+            prompt,
+            repo_root=repo,
+            target_paths=_parse_paths(target_paths),
+            task_id=task_id or None,
+            include_token_usage=include_token_usage,
+            synthesize=do_synthesize,
+            synthesis_provider=synth_provider_name or None,
+        )
+        progress.update(task, description="Complete")
+    
+    # Determine effective result mode
+    effective_result_mode = result_mode
+    if save_artifacts and effective_result_mode == "stdout":
+        effective_result_mode = "both"
+    
+    # Output
+    if output_format == "json" or json_output:
+        output = {
+            "command": "run",
+            "task_id": result.task_id,
+            "decision": result.decision,
+            "terminal_state": result.terminal_state,
+            "success": result.success,
+            "duration_seconds": result.duration_seconds,
+            "result_mode": effective_result_mode,
+            "artifact_root": str(Path(artifact_base) / result.task_id) if effective_result_mode in ("artifact", "both") else None,
+            "provider_results": result.provider_results,
+            "errors": result.errors
+        }
+        if result.token_usage_summary is not None:
+            output["token_usage_summary"] = result.token_usage_summary
+        if result.synthesis is not None:
+            output["synthesis"] = result.synthesis
+        console.print_json(data=output)
+    elif output_format == "summary":
+        console.print(f"\n[bold]Task:[/] {result.task_id}")
+        console.print(f"[bold]Duration:[/] {result.duration_seconds:.2f}s")
+        console.print(f"[bold]Status:[/] {'[green]Success[/green]' if result.success else '[red]Failed[/red]'}")
+    else:
+        console.print(f"\n[bold]Task:[/] {result.task_id}")
+        console.print(f"[bold]Duration:[/] {result.duration_seconds:.2f}s")
+        console.print(f"[bold]Status:[/] {'[green]Success[/green]' if result.success else '[red]Failed[/red]'}")
+        
+        # Show provider outputs in report mode
+        if result.provider_results:
+            console.print("\n[bold]Provider Results:[/bold]")
+            for provider, details in sorted(result.provider_results.items()):
+                success = details.get("success", False)
+                status = "[green]Success[/green]" if success else "[red]Failed[/red]"
+                console.print(f"  {provider}: {status}")
+    
+    if result.errors:
+        console.print("\n[yellow]Warnings:[/yellow]")
+        for err in result.errors:
+            console.print(f"  * {err}")
+    
     sys.exit(EXIT_SUCCESS if result.success else EXIT_ERROR)
+
+
+def _format_decision(decision: str) -> str:
+    """Format decision for display."""
+    colors = {
+        "PASS": "green",
+        "FAIL": "red",
+        "ESCALATE": "yellow",
+        "PARTIAL": "yellow",
+        "INCONCLUSIVE": "dim",
+    }
+    color = colors.get(decision, "white")
+    return f"[{color}]{decision}[/{color}]"
+
+
+def _format_sarif(result) -> dict:
+    """Format result as SARIF 2.1.0 for GitHub Code Scanning."""
+    findings = result.deduplicated_findings if hasattr(result, 'deduplicated_findings') else []
+    
+    rules = []
+    results = []
+    
+    for f in findings:
+        rule_id = f"aop/{f.category}/{f.finding_id[:8]}"
+        
+        # Add rule if not already added
+        if not any(r.get("id") == rule_id for r in rules):
+            rules.append({
+                "id": rule_id,
+                "shortDescription": {"text": f.title},
+                "defaultConfiguration": {
+                    "level": _severity_to_sarif_level(f.severity)
+                }
+            })
+        
+        results.append({
+            "ruleId": rule_id,
+            "message": {"text": f.title},
+            "locations": [{
+                "physicalLocation": {
+                    "artifactLocation": {"uri": f.evidence.file},
+                    "region": {"startLine": f.evidence.line or 1}
+                }
+            }]
+        })
+    
+    return {
+        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [{
+            "tool": {
+                "driver": {
+                    "name": "AOP",
+                    "informationUri": "https://github.com/xuha233/agent-orchestration-platform",
+                    "rules": rules
+                }
+            },
+            "results": results
+        }]
+    }
+
+
+def _severity_to_sarif_level(severity: str) -> str:
+    """Convert severity to SARIF level."""
+    mapping = {
+        "critical": "error",
+        "high": "error",
+        "medium": "warning",
+        "low": "note",
+    }
+    return mapping.get(severity, "none")
+
+
+def _format_markdown_pr(result) -> str:
+    """Format result as Markdown PR comment."""
+    findings = result.deduplicated_findings if hasattr(result, 'deduplicated_findings') else []
+    
+    lines = ["## AOP Review Results\n"]
+    lines.append(f"**Decision:** {result.decision}")
+    lines.append(f"**Task ID:** {result.task_id}")
+    lines.append(f"**Total Findings:** {len(findings)}\n")
+    
+    if not findings:
+        lines.append("✅ No issues found.")
+        return "\n".join(lines)
+    
+    # Group by severity
+    by_severity = {"critical": [], "high": [], "medium": [], "low": []}
+    for f in findings:
+        by_severity.get(f.severity, by_severity["low"]).append(f)
+    
+    for sev in ["critical", "high", "medium", "low"]:
+        items = by_severity[sev]
+        if not items:
+            continue
+        
+        emoji = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵"}[sev]
+        lines.append(f"### {emoji} {sev.upper()} ({len(items)})\n")
+        
+        for f in items:
+            lines.append(f"- **{f.title}**")
+            lines.append(f"  - File: `{f.evidence.file}:{f.evidence.line or '-'}`")
+            lines.append(f"  - Category: {f.category}")
+            if f.recommendation:
+                lines.append(f"  - Recommendation: {f.recommendation}")
+            lines.append("")
+    
+    return "\n".join(lines)
 
 
 @cli.command()
@@ -494,4 +1036,3 @@ def capture_learning(phase: str, worked: tuple, failed: tuple, insight: tuple):
 
 if __name__ == "__main__":
     cli()
-

@@ -1,4 +1,4 @@
-﻿"""Tests for core/types module."""
+"""Tests for core/types module."""
 
 import pytest
 from aop.core.types import (
@@ -42,11 +42,19 @@ class TestEvidence:
         assert e.snippet == "def foo():"
     
     def test_evidence_optional_line(self):
-        e = Evidence(file="test.py", snippet="code")
+        e = Evidence(file="test.py", line=None, snippet="code")
         assert e.line is None
     
+    def test_evidence_optional_symbol(self):
+        e = Evidence(file="test.py", line=10, snippet="def bar():")
+        assert e.symbol is None
+    
+    def test_evidence_with_symbol(self):
+        e = Evidence(file="test.py", line=5, snippet="x = 1", symbol="foo")
+        assert e.symbol == "foo"
+    
     def test_evidence_frozen(self):
-        e = Evidence(file="test.py")
+        e = Evidence(file="test.py", line=1, snippet="code")
         with pytest.raises(AttributeError):
             e.file = "other.py"
 
@@ -55,42 +63,77 @@ class TestNormalizedFinding:
     """Test NormalizedFinding dataclass."""
     
     def test_finding_creation(self):
-        e = Evidence(file="test.py", line=10)
+        e = Evidence(file="test.py", line=10, snippet="def foo():")
         f = NormalizedFinding(
+            task_id="T-001",
+            provider="claude",
             finding_id="F-001",
             severity="high",
             category="bug",
             title="Test finding",
             evidence=e,
             recommendation="Fix it",
-            detected_by=["claude"]
+            confidence=0.9,
+            fingerprint="abc123",
+            raw_ref="raw_output.txt"
         )
         assert f.finding_id == "F-001"
         assert f.severity == "high"
         assert f.category == "bug"
-        assert f.detected_by == ["claude"]
+        assert f.provider == "claude"
+        assert f.confidence == 0.9
     
-    def test_finding_default_detected_by(self):
-        e = Evidence(file="test.py")
-        f = NormalizedFinding(
-            finding_id="F-002",
-            severity="low",
-            category="maintainability",
-            title="Style issue",
-            evidence=e,
-            recommendation="Refactor"
-        )
-        assert f.detected_by == []
+    def test_finding_all_severities(self):
+        e = Evidence(file="test.py", line=1, snippet="code")
+        for sev in ["critical", "high", "medium", "low"]:
+            f = NormalizedFinding(
+                task_id="T-001",
+                provider="codex",
+                finding_id="F-002",
+                severity=sev,
+                category="security",
+                title="Test",
+                evidence=e,
+                recommendation="Fix",
+                confidence=0.5,
+                fingerprint="fp",
+                raw_ref="raw.txt"
+            )
+            assert f.severity == sev
+    
+    def test_finding_all_categories(self):
+        e = Evidence(file="test.py", line=1, snippet="code")
+        for cat in ["bug", "security", "performance", "maintainability", "test-gap"]:
+            f = NormalizedFinding(
+                task_id="T-001",
+                provider="gemini",
+                finding_id="F-003",
+                severity="medium",
+                category=cat,
+                title="Test",
+                evidence=e,
+                recommendation="Fix",
+                confidence=0.5,
+                fingerprint="fp",
+                raw_ref="raw.txt"
+            )
+            assert f.category == cat
 
 
 class TestTaskInput:
     """Test TaskInput dataclass."""
     
     def test_task_input_defaults(self):
-        t = TaskInput(task_id="T-001", prompt="Review code")
+        t = TaskInput(
+            task_id="T-001", 
+            prompt="Review code",
+            repo_root=".",
+            target_paths=["src/"]
+        )
         assert t.task_id == "T-001"
         assert t.prompt == "Review code"
         assert t.repo_root == "."
+        assert t.target_paths == ["src/"]
         assert t.timeout_seconds == 600
     
     def test_task_input_custom(self):
@@ -98,10 +141,22 @@ class TestTaskInput:
             task_id="T-002",
             prompt="Analyze",
             repo_root="/path/to/repo",
+            target_paths=["src/", "tests/"],
             timeout_seconds=300
         )
         assert t.repo_root == "/path/to/repo"
+        assert t.target_paths == ["src/", "tests/"]
         assert t.timeout_seconds == 300
+    
+    def test_task_input_with_metadata(self):
+        t = TaskInput(
+            task_id="T-003",
+            prompt="Check",
+            repo_root=".",
+            target_paths=["."],
+            metadata={"key": "value"}
+        )
+        assert t.metadata == {"key": "value"}
 
 
 class TestTaskResult:

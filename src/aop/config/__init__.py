@@ -4,9 +4,30 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import yaml
+
+
+@dataclass(frozen=True)
+class ReviewPolicy:
+    """Fine-grained review policy configuration.
+    
+    This class aligns with MCO's ReviewPolicy for configuration compatibility.
+    """
+    timeout_seconds: int = 180
+    stall_timeout_seconds: int = 900
+    poll_interval_seconds: float = 1.0
+    review_hard_timeout_seconds: int = 1800
+    enforce_findings_contract: bool = False
+    max_retries: int = 1
+    high_escalation_threshold: int = 1
+    require_non_empty_findings: bool = True
+    max_provider_parallelism: int = 0
+    provider_timeouts: Dict[str, int] = field(default_factory=dict)
+    allow_paths: List[str] = field(default_factory=lambda: ["."])
+    provider_permissions: Dict[str, Dict[str, str]] = field(default_factory=dict)
+    enforcement_mode: str = "strict"  # "strict" or "best_effort"
 
 
 @dataclass
@@ -18,6 +39,8 @@ class AOPConfig:
     default_timeout: int = 600
     max_parallel: int = 4
     output_dir: str = "runs"
+    artifact_base: str = "reports/review"
+    policy: ReviewPolicy = field(default_factory=ReviewPolicy)
     
     @classmethod
     def from_yaml(cls, path: Path) -> "AOPConfig":
@@ -37,6 +60,24 @@ class AOPConfig:
         
         project = data.get("project", {})
         settings = data.get("settings", {})
+        policy_data = data.get("policy", {})
+        
+        # Build ReviewPolicy from config
+        policy = ReviewPolicy(
+            timeout_seconds=policy_data.get("timeout_seconds", 180),
+            stall_timeout_seconds=policy_data.get("stall_timeout_seconds", 900),
+            poll_interval_seconds=policy_data.get("poll_interval_seconds", 1.0),
+            review_hard_timeout_seconds=policy_data.get("review_hard_timeout_seconds", 1800),
+            enforce_findings_contract=policy_data.get("enforce_findings_contract", False),
+            max_retries=policy_data.get("max_retries", 1),
+            high_escalation_threshold=policy_data.get("high_escalation_threshold", 1),
+            require_non_empty_findings=policy_data.get("require_non_empty_findings", True),
+            max_provider_parallelism=policy_data.get("max_provider_parallelism", 0),
+            provider_timeouts=policy_data.get("provider_timeouts", {}),
+            allow_paths=policy_data.get("allow_paths", ["."]),
+            provider_permissions=policy_data.get("provider_permissions", {}),
+            enforcement_mode=policy_data.get("enforcement_mode", "strict"),
+        )
         
         return cls(
             project_type=project.get("type", "transformation"),
@@ -44,6 +85,8 @@ class AOPConfig:
             default_timeout=settings.get("default_timeout", 600),
             max_parallel=settings.get("max_parallel", 4),
             output_dir=settings.get("output_dir", "runs"),
+            artifact_base=settings.get("artifact_base", "reports/review"),
+            policy=policy,
         )
     
     def to_yaml(self, path: Path) -> None:
@@ -59,6 +102,22 @@ class AOPConfig:
                 "default_timeout": self.default_timeout,
                 "max_parallel": self.max_parallel,
                 "output_dir": self.output_dir,
+                "artifact_base": self.artifact_base,
+            },
+            "policy": {
+                "timeout_seconds": self.policy.timeout_seconds,
+                "stall_timeout_seconds": self.policy.stall_timeout_seconds,
+                "poll_interval_seconds": self.policy.poll_interval_seconds,
+                "review_hard_timeout_seconds": self.policy.review_hard_timeout_seconds,
+                "enforce_findings_contract": self.policy.enforce_findings_contract,
+                "max_retries": self.policy.max_retries,
+                "high_escalation_threshold": self.policy.high_escalation_threshold,
+                "require_non_empty_findings": self.policy.require_non_empty_findings,
+                "max_provider_parallelism": self.policy.max_provider_parallelism,
+                "provider_timeouts": self.policy.provider_timeouts,
+                "allow_paths": self.policy.allow_paths,
+                "provider_permissions": self.policy.provider_permissions,
+                "enforcement_mode": self.policy.enforcement_mode,
             }
         }
         
