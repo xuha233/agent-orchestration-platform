@@ -30,7 +30,8 @@ class LearningLog:
         self._persistence: Optional[PersistenceManager] = None
         
         if storage_path:
-            self._persistence = PersistenceManager(storage_path.parent)
+            sp = Path(storage_path) if isinstance(storage_path, str) else storage_path
+            self._persistence = PersistenceManager(sp)
             self._load_from_storage()
     
     def _load_from_storage(self) -> None:

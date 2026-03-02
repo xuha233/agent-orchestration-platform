@@ -29,14 +29,19 @@ class PersistenceManager:
     and other data.
     """
     
-    def __init__(self, base_path: Optional[Path] = None):
+    def __init__(self, base_path: Optional[Path | str] = None):
         """Initialize persistence manager.
         
         Args:
             base_path: Base directory for storing data files.
                       Defaults to '.aop/data' in current directory.
         """
-        self.base_path = base_path or Path(".aop/data")
+        if base_path is None:
+            self.base_path = Path(".aop/data")
+        elif isinstance(base_path, str):
+            self.base_path = Path(base_path)
+        else:
+            self.base_path = base_path
         self._ensure_directory()
     
     def _ensure_directory(self) -> None:
