@@ -837,11 +837,19 @@ def create_hypothesis(statement: str, priority: str):
       0 - Hypothesis created successfully
       1 - Failed to create hypothesis
     """
-    manager = HypothesisManager()
+    # 持久化到 .aop/hypotheses.json
+    aop_dir = Path.cwd() / ".aop"
+    aop_dir.mkdir(exist_ok=True)
+    storage_path = aop_dir / "hypotheses.json"
+    
+    manager = HypothesisManager(storage_path=storage_path)
     h = manager.create(statement, priority=priority)
+    manager.save()
+    
     console.print(f"[green]Created {h.hypothesis_id}[/green]")
     console.print(f"  Statement: {statement}")
     console.print(f"  Priority: {priority}")
+    console.print(f"  Saved to: {storage_path}")
 
 
 
@@ -851,10 +859,8 @@ def create_hypothesis(statement: str, priority: str):
 def list_hypotheses(state):
     """List all hypotheses."""
     from ..core.types import HypothesisState
-    manager = HypothesisManager()
     default_path = Path.cwd() / ".aop" / "hypotheses.json"
-    if default_path.exists():
-        manager = HypothesisManager(storage_path=default_path)
+    manager = HypothesisManager(storage_path=default_path) if default_path.exists() else HypothesisManager()
     state_filter = HypothesisState(state) if state else None
     hypotheses = manager.list_by_state(state_filter)
     if not hypotheses:
@@ -882,6 +888,10 @@ def update_hypothesis(hypothesis_id, state):
     from ..core.types import HypothesisState
     default_path = Path.cwd() / ".aop" / "hypotheses.json"
     manager = HypothesisManager(storage_path=default_path) if default_path.exists() else HypothesisManager()
+    
+    # 加载已有假设
+    if default_path.exists():
+        manager.load()
     new_state = HypothesisState(state)
     h = manager.update_state(hypothesis_id, new_state)
     if not h:
@@ -891,6 +901,91 @@ def update_hypothesis(hypothesis_id, state):
         manager.save()
     console.print(f"[green]Updated {hypothesis_id}[/green]")
     console.print(f"  New state: {state}")
+
+
+
+@cli.group()
+def learning():
+    """Capture and manage learnings."""
+    pass
+
+
+@learning.command("capture")
+@click.option("--phase", "-p", required=True, help="Phase name")
+@click.option("--worked", "-w", multiple=True, help="What worked")
+@click.option("--failed", "-f", multiple=True, help="What failed")
+@click.option("--insight", "-i", multiple=True, help="Key insight")
+def capture_learning(phase, worked, failed, insight):
+    """Capture learning from a phase."""
+    default_path = Path.cwd() / ".aop" / "learning.json"
+    log = LearningLog(storage_path=default_path) if default_path.exists() else LearningLog(storage_path=default_path)
+    
+    log.capture(
+        phase=phase,
+        what_worked=list(worked),
+        what_failed=list(failed),
+        insights=list(insight)
+    )
+    log.save()
+    
+    console.print(f"[green]Captured learning from phase: {phase}[/green]")
+    if worked:
+        console.print(f"  What worked: {len(worked)} items")
+    if failed:
+        console.print(f"  What failed: {len(failed)} items")
+    if insight:
+        console.print(f"  Insights: {len(insight)} items")
+
+
+@learning.command("list")
+def list_learnings():
+    """List all captured learnings."""
+    default_path = Path.cwd() / ".aop" / "learning.json"
+    if not default_path.exists():
+        console.print("[yellow]No learnings captured yet[/yellow]")
+        return
+    
+    log = LearningLog(storage_path=default_path)
+    log.load()
+    
+    if not log.learnings:
+        console.print("[yellow]No learnings found[/yellow]")
+        return
+    
+    table = Table(title="Captured Learnings")
+    table.add_column("Phase", style="cyan")
+    table.add_column("Worked", style="green")
+    table.add_column("Failed", style="red")
+    table.add_column("Insights", style="yellow")
+    
+    for l in log.learnings:
+        table.add_row(
+            l.phase,
+            str(len(l.what_worked)),
+            str(len(l.what_failed)),
+            str(len(l.insights))
+        )
+    
+    console.print(table)
+
+
+@learning.command("export")
+@click.option("--output", "-o", default="LESSONS_LEARNED.md", help="Output file path")
+def export_learnings(output):
+    """Export lessons learned to markdown."""
+    default_path = Path.cwd() / ".aop" / "learning.json"
+    if not default_path.exists():
+        console.print("[yellow]No learnings to export[/yellow]")
+        raise SystemExit(1)
+    
+    log = LearningLog(storage_path=default_path)
+    log.load()
+    
+    output_path = Path(output)
+    log.export_lessons(output_path)
+    
+    console.print(f"[green]Exported lessons to: {output_path}[/green]")
+
 
 @cli.group()
 def project():
@@ -942,59 +1037,5 @@ def assess(problem_clarity: str, data_availability: str, tech_novelty: str, busi
     console.print("[bold green]Project Type: " + config.project_type.value + "[/bold green]")
     console.print("[bold]Team:[/bold] " + ", ".join(config.agents))
     console.print("[bold]Iteration Length:[/bold] " + config.iteration_length)
-
-
-@cli.group()
-def learning():
-    """Capture and manage learnings.
-    
-    \b
-    Commands:
-      capture  Capture learnings from a phase
-    
-    \b
-    Examples:
-      aop learning capture -p exploration -w "Daily standups" -i "Short cycles work"
-    """
-    pass
-
-
-@learning.command("capture")
-@click.option("--phase", "-p", required=True, help="Phase name (e.g., exploration, implementation)")
-@click.option("--worked", "-w", multiple=True, help="What worked (can specify multiple)")
-@click.option("--failed", "-f", multiple=True, help="What failed (can specify multiple)")
-@click.option("--insight", "-i", multiple=True, help="Key insights (can specify multiple)")
-def capture_learning(phase: str, worked: tuple, failed: tuple, insight: tuple):
-    """Capture learning from a phase.
-    
-    \b
-    Examples:
-      aop learning capture -p exploration -w "Daily standups" -w "Code reviews"
-      aop learning capture -p implementation -f "Long meetings" -i "Short cycles work"
-    
-    \b
-    Exit Codes:
-      0 - Learning captured successfully
-      1 - Failed to capture learning
-    """
-    log = LearningLog()
-    _ = log.capture(phase=phase, what_worked=list(worked), what_failed=list(failed), insights=list(insight))
-    console.print(f"[green]Captured learning from: {phase}[/green]")
-    if worked:
-        console.print(f"  [bold]What worked:[/] {', '.join(worked)}")
-    if failed:
-        console.print(f"  [bold]What failed:[/] {', '.join(failed)}")
-    if insight:
-        console.print(f"  [bold]Insights:[/] {', '.join(insight)}")
-
-
-if __name__ == "__main__":
-    cli()
-
-
-
-
-
-
 
 
