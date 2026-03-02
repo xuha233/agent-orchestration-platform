@@ -1039,3 +1039,11 @@ def assess(problem_clarity: str, data_availability: str, tech_novelty: str, busi
     console.print("[bold]Iteration Length:[/bold] " + config.iteration_length)
 
 
+
+
+# Register agent command group
+try:
+    from .agent import agent as agent_group
+    cli.add_command(agent_group, name="agent")
+except ImportError:
+    pass  # Agent module not available
