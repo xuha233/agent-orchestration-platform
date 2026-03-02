@@ -19,7 +19,7 @@ class LearningLog:
         _persistence: Optional persistence manager
     """
     
-    def __init__(self, storage_path: Optional[Path] = None):
+    def __init__(self, storage_path: Path | None = None):
         """Initialize the learning log.
         
         Args:
@@ -27,7 +27,7 @@ class LearningLog:
         """
         self.storage_path = storage_path
         self.learnings: List[LearningCapture] = []
-        self._persistence: Optional[PersistenceManager] = None
+        self._persistence: PersistenceManager | None = None
         
         if storage_path:
             sp = Path(storage_path) if isinstance(storage_path, str) else storage_path
@@ -50,8 +50,8 @@ class LearningLog:
                     insights=record.get("insights", []),
                 ))
     
-    def capture(self, phase: str, what_worked: Optional[List[str]] = None,
-                what_failed: Optional[List[str]] = None, insights: Optional[List[str]] = None) -> LearningCapture:
+    def capture(self, phase: str, what_worked: List[str | None] = None,
+                what_failed: List[str | None] = None, insights: List[str | None] = None) -> LearningCapture:
         """Capture learning from a phase.
         
         Args:
@@ -85,7 +85,7 @@ class LearningLog:
             insights.extend(learning.insights)
         return {"what_worked": list(set(worked)), "what_failed": list(set(failed)), "insights": list(set(insights))}
     
-    def save(self) -> Optional[Path]:
+    def save(self) -> Path | None:
         """Save learnings to persistent storage.
         
         Returns:
@@ -118,7 +118,7 @@ class LearningLog:
         self._load_from_storage()
         return True
     
-    def export_lessons(self, output_path: Optional[Path] = None) -> Optional[Path]:
+    def export_lessons(self, output_path: Path | None = None) -> Path | None:
         """Export lessons learned to a markdown file.
         
         Args:
@@ -182,7 +182,7 @@ class LearningLog:
         }
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any], storage_path: Optional[Path] = None) -> "LearningLog":
+    def from_dict(cls, data: Dict[str, Any], storage_path: Path | None = None) -> "LearningLog":
         """Create a LearningLog from a dictionary.
         
         Args:

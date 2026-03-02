@@ -21,7 +21,7 @@ class HypothesisManager:
         _persistence: Optional persistence manager
     """
     
-    def __init__(self, storage_path: Optional[Path] = None):
+    def __init__(self, storage_path: Path | None = None):
         """Initialize the hypothesis manager.
         
         Args:
@@ -29,7 +29,7 @@ class HypothesisManager:
         """
         self.storage_path = storage_path
         self.hypotheses: Dict[str, Hypothesis] = {}
-        self._persistence: Optional[PersistenceManager] = None
+        self._persistence: PersistenceManager | None = None
         
         if storage_path:
             sp = Path(storage_path) if isinstance(storage_path, str) else storage_path
@@ -77,7 +77,7 @@ class HypothesisManager:
         self.hypotheses[hid] = h
         return h
     
-    def update_state(self, hid: str, state: HypothesisState, confidence: float = 0.0) -> Optional[Hypothesis]:
+    def update_state(self, hid: str, state: HypothesisState, confidence: float = 0.0) -> Hypothesis | None:
         """Update the state of a hypothesis.
         
         Args:
@@ -102,7 +102,7 @@ class HypothesisManager:
         )
         return self.hypotheses[hid]
     
-    def list_by_state(self, state: Optional[HypothesisState] = None) -> List[Hypothesis]:
+    def list_by_state(self, state: HypothesisState | None = None) -> List[Hypothesis]:
         """List hypotheses, optionally filtered by state.
         
         Args:
@@ -114,7 +114,7 @@ class HypothesisManager:
         hlist = list(self.hypotheses.values())
         return [h for h in hlist if h.state == state] if state else hlist
     
-    def save(self) -> Optional[Path]:
+    def save(self) -> Path | None:
         """Save hypotheses to persistent storage.
         
         Returns:
@@ -169,7 +169,7 @@ class HypothesisManager:
         return result
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any], storage_path: Optional[Path] = None) -> "HypothesisManager":
+    def from_dict(cls, data: Dict[str, Any], storage_path: Path | None = None) -> "HypothesisManager":
         """Create a HypothesisManager from a dictionary.
         
         Args:

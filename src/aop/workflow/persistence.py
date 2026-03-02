@@ -29,7 +29,7 @@ class PersistenceManager:
     and other data.
     """
     
-    def __init__(self, base_path: Optional[Path | str] = None):
+    def __init__(self, base_path: Path | str | None = None):
         """Initialize persistence manager.
         
         Args:
@@ -94,7 +94,7 @@ class PersistenceManager:
         
         return file_path
     
-    def load(self, name: str) -> Optional[Dict[str, Any]]:
+    def load(self, name: str) -> Dict[str, Any | None]:
         """Load data from a JSON file.
         
         Args:
@@ -173,7 +173,7 @@ class PersistenceManager:
         """
         return self.save("hypotheses", hypotheses)
     
-    def load_hypotheses(self) -> Optional[Dict[str, Any]]:
+    def load_hypotheses(self) -> Dict[str, Any | None]:
         """Load hypotheses data.
         
         Returns:
@@ -192,7 +192,7 @@ class PersistenceManager:
         """
         return self.save("learnings", {"records": learnings})
     
-    def load_learnings(self) -> Optional[List[Dict[str, Any]]]:
+    def load_learnings(self) -> List[Dict[str, Any | None]]:
         """Load learning records.
         
         Returns:
@@ -203,7 +203,7 @@ class PersistenceManager:
             return None
         return data.get("records", [])
     
-    def export_to_markdown(self, name: str, output_path: Optional[Path] = None) -> Optional[Path]:
+    def export_to_markdown(self, name: str, output_path: Path | None = None) -> Path | None:
         """Export data to a markdown file.
         
         Args:
@@ -288,10 +288,10 @@ class PersistenceManager:
 
 
 # Singleton instance for convenience
-_default_manager: Optional[PersistenceManager] = None
+_default_manager: PersistenceManager | None = None
 
 
-def get_persistence_manager(base_path: Optional[Path] = None, reset: bool = False) -> PersistenceManager:
+def get_persistence_manager(base_path: Path | None = None, reset: bool = False) -> PersistenceManager:
     """Get the default persistence manager instance.
     
     Args:
