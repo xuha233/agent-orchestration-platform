@@ -11,10 +11,7 @@ import yaml
 
 @dataclass(frozen=True)
 class ReviewPolicy:
-    """Fine-grained review policy configuration.
-    
-    This class aligns with MCO's ReviewPolicy for configuration compatibility.
-    """
+    """Fine-grained review policy configuration."""
     timeout_seconds: int = 180
     stall_timeout_seconds: int = 900
     poll_interval_seconds: float = 1.0
@@ -27,7 +24,8 @@ class ReviewPolicy:
     provider_timeouts: Dict[str, int] = field(default_factory=dict)
     allow_paths: List[str] = field(default_factory=lambda: ["."])
     provider_permissions: Dict[str, Dict[str, str]] = field(default_factory=dict)
-    enforcement_mode: str = "strict"  # "strict" or "best_effort"
+    enforcement_mode: str = "strict"
+    include_token_usage: bool = False
 
 
 @dataclass(frozen=True)
@@ -54,29 +52,15 @@ class AOPConfig:
     
     @classmethod
     def from_yaml(cls, path: Path | str) -> "AOPConfig":
-        """Load configuration from YAML file.
-        
-        Args:
-            path: Path to the YAML configuration file (Path object or string)
-            
-        Returns:
-            AOPConfig instance with loaded values or defaults
-        """
-        # 支持字符串参数
         if isinstance(path, str):
             path = Path(path)
-        
         if not path.exists():
             return cls()
-        
         with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
-        
         project = data.get("project", {})
         settings = data.get("settings", {})
         policy_data = data.get("policy", {})
-        
-        # Build ReviewPolicy from config
         policy = ReviewPolicy(
             timeout_seconds=policy_data.get("timeout_seconds", 180),
             stall_timeout_seconds=policy_data.get("stall_timeout_seconds", 900),
@@ -91,9 +75,8 @@ class AOPConfig:
             allow_paths=policy_data.get("allow_paths", ["."]),
             provider_permissions=policy_data.get("provider_permissions", {}),
             enforcement_mode=policy_data.get("enforcement_mode", "strict"),
+            include_token_usage=policy_data.get("include_token_usage", False),
         )
-        
-        # Build SubagentConfig from config
         subagent_data = data.get("subagent", {})
         subagent = SubagentConfig(
             default_timeout=subagent_data.get("default_timeout", 600),
@@ -101,7 +84,6 @@ class AOPConfig:
             deep_dive_timeout=subagent_data.get("deep_dive_timeout", 1800),
             max_parallel=subagent_data.get("max_parallel", 3),
         )
-        
         return cls(
             project_type=project.get("type", "transformation"),
             providers=settings.get("providers", ["claude", "codex"]),
@@ -114,11 +96,6 @@ class AOPConfig:
         )
     
     def to_yaml(self, path: Path) -> None:
-        """Save configuration to YAML file.
-        
-        Args:
-            path: Path where to save the configuration file
-        """
         data = {
             "project": {"type": self.project_type},
             "settings": {
@@ -142,54 +119,27 @@ class AOPConfig:
                 "allow_paths": self.policy.allow_paths,
                 "provider_permissions": self.policy.provider_permissions,
                 "enforcement_mode": self.policy.enforcement_mode,
+                "include_token_usage": self.policy.include_token_usage,
             }
         }
-        
-        # Ensure parent directory exists
         path.parent.mkdir(parents=True, exist_ok=True)
-        
         with open(path, "w", encoding="utf-8") as f:
             yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
 
 
 def find_config(start_dir: Optional[Path] = None) -> Optional[Path]:
-    """Find .aop.yaml or aop.yaml in current or parent directories.
-    
-    Searches for configuration files in the following order:
-    1. .aop.yaml (hidden, preferred)
-    2. aop.yaml (alternative)
-    
-    Args:
-        start_dir: Directory to start searching from. Defaults to current directory.
-        
-    Returns:
-        Path to the configuration file, or None if not found.
-    """
     current = Path(start_dir or ".").resolve()
-    
     for parent in [current] + list(current.parents):
-        # Check for .aop.yaml first (preferred)
         hidden_config = parent / ".aop.yaml"
         if hidden_config.exists():
             return hidden_config
-        
-        # Then check for aop.yaml
         regular_config = parent / "aop.yaml"
         if regular_config.exists():
             return regular_config
-    
     return None
 
 
 def load_config(start_dir: Optional[Path] = None) -> AOPConfig:
-    """Load configuration from nearest .aop.yaml or aop.yaml.
-    
-    Args:
-        start_dir: Directory to start searching from. Defaults to current directory.
-        
-    Returns:
-        AOPConfig instance with loaded values or defaults.
-    """
     config_path = find_config(start_dir)
     if config_path:
         return AOPConfig.from_yaml(config_path)
