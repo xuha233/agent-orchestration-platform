@@ -12,6 +12,11 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Callable
 from enum import Enum
 
+# LLM Client imports
+from aop.llm import LLMClient, LLMProvider, LLMMessage, LLMResponse
+from aop.llm.claude_client import ClaudeClient
+from aop.llm.local_client import LocalLLMClient
+
 
 class SprintState(Enum):
     """冲刺状态"""
