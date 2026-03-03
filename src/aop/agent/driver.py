@@ -26,6 +26,8 @@ from .hypothesis_generator import HypothesisGenerator
 from .validator import AutoValidator
 from .learning_extractor import LearningExtractor
 from .persistence import SprintPersistence
+from .scheduler import TaskScheduler
+from ..core.engine import ExecutionEngine
 
 
 class AgentDriver:
@@ -412,18 +414,119 @@ class AgentDriver:
 
     def _execute_tasks(self) -> List[Dict[str, Any]]:
         """
-        执行任务 (简化版)
-        
-        实际实现会调用 ExecutionEngine
+        执行任务
+
+        使用 TaskScheduler 调度假设对应的任务，
+        然后使用 ExecutionEngine 并行执行。
         """
-        # TODO: 集成现有的 ExecutionEngine
-        return []
+        if not self.context or not self.context.hypotheses:
+            return []
+
+        # 初始化调度器和执行引擎
+        scheduler = TaskScheduler(providers=self.config.providers if hasattr(self.config, 'providers') else None)
+        engine = ExecutionEngine(default_timeout=self.config.default_timeout if hasattr(self.config, 'default_timeout') else 600)
+
+        # 将假设转换为调度器需要的格式
+        hypotheses_for_scheduler = []
+        for i, h in enumerate(self.context.hypotheses):
+            # 支持 GeneratedHypothesis 对象和字典两种格式
+            if hasattr(h, 'statement'):
+                h_dict = {
+                    "hypothesis_id": f"h{i}",
+                    "statement": h.statement,
+                    "type": h.hypothesis_type.value if hasattr(h.hypothesis_type, 'value') else str(h.hypothesis_type),
+                    "priority": h.priority,
+                    "dependencies": h.dependencies or [],
+                    "description": h.validation_method,
+                }
+            else:
+                h_dict = h if isinstance(h, dict) else {}
+                h_dict.setdefault("hypothesis_id", f"h{i}")
+            hypotheses_for_scheduler.append(h_dict)
+
+        # 调度任务
+        assignments = scheduler.schedule(hypotheses_for_scheduler)
+
+        # 执行任务
+        results = []
+        while True:
+            # 获取下一批可执行的任务
+            batch = scheduler.get_next_batch(max_tasks=self.config.max_parallel_tasks if hasattr(self.config, 'max_parallel_tasks') else 5)
+            if not batch:
+                break
+
+            for assignment in batch:
+                # 生成任务提示
+                prompt = scheduler.generate_task_prompt(assignment)
+
+                # 执行任务
+                try:
+                    exec_result = engine.execute(
+                        prompt=prompt,
+                        repo_root=assignment.working_directory or "."
+                    )
+
+                    result = {
+                        "task_id": assignment.task_id,
+                        "hypothesis_id": assignment.hypothesis_id,
+                        "success": exec_result.success,
+                        "state": exec_result.terminal_state.value,
+                        "provider_results": {
+                            pid: {"success": r.success, "output": r.output if hasattr(r, 'output') else str(r)}
+                            for pid, r in exec_result.provider_results.items()
+                        },
+                        "duration_seconds": exec_result.duration_seconds,
+                        "errors": exec_result.errors,
+                    }
+
+                    if exec_result.success:
+                        scheduler.mark_completed(assignment.task_id, result)
+                    else:
+                        scheduler.mark_failed(assignment.task_id, ", ".join(exec_result.errors))
+
+                    results.append(result)
+
+                except Exception as e:
+                    result = {
+                        "task_id": assignment.task_id,
+                        "hypothesis_id": assignment.hypothesis_id,
+                        "success": False,
+                        "state": "failed",
+                        "errors": [str(e)],
+                    }
+                    scheduler.mark_failed(assignment.task_id, str(e))
+                    results.append(result)
+
+        return results
 
     def _auto_validate(self, hypotheses: List[Any], results: List[Dict[str, Any]]):
         """自动验证假设"""
+        if not self.context:
+            return
+
+        # 存储验证结果
+        self.context.validation_results = []
+
         for hypothesis in hypotheses:
-            # 验证每个假设
-            pass
+            # 将假设转换为字典格式
+            if hasattr(hypothesis, 'statement'):
+                h_dict = {
+                    "hypothesis_id": getattr(hypothesis, 'hypothesis_id', ''),
+                    "statement": hypothesis.statement,
+                    "success_criteria": hypothesis.success_criteria if hasattr(hypothesis, 'success_criteria') else [],
+                }
+            else:
+                h_dict = hypothesis if isinstance(hypothesis, dict) else {}
+
+            # 过滤出与该假设相关的执行结果
+            related_results = [
+                r for r in results
+                if r.get("hypothesis_id") == h_dict.get("hypothesis_id")
+            ] if h_dict.get("hypothesis_id") else results
+
+            # 执行验证
+            validation_result = self.validator.validate(h_dict, related_results)
+            self.context.validation_results.append(validation_result)
 
     def _extract_learnings(self, results: List[Dict[str, Any]]) -> List[ExtractedLearning]:
         """从执行结果中提取学习"""

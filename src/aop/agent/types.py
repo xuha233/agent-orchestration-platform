@@ -141,6 +141,7 @@ class SprintContext:
     hypotheses: List[Any] = field(default_factory=list)
     task_graph: Optional[Any] = None
     execution_results: List[Dict[str, Any]] = field(default_factory=list)
+    validation_results: List[ValidationResult] = field(default_factory=list)
     learnings: List[ExtractedLearning] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)

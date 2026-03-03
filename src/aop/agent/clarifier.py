@@ -68,16 +68,23 @@ class RequirementClarifier:
         return requirement
 
     def _identify_key_dimensions(self, input_text: str) -> List[str]:
-        """识别需求的关键维度"""
-        # 简化实现：返回默认维度
+        """
+        识别需求的关键维度
+
+        当前实现返回默认维度。未来可集成 LLM 进行智能分析。
+
+        TODO(design): 集成 LLM 进行智能维度识别
+        - 决策点：选择 LLM 提供商（本地/云端）
+        - 决策点：prompt 模板设计
+        - 决策点：fallback 策略（LLM 失败时使用默认维度）
+        - 决策点：是否缓存分析结果
+        """
         default_dimensions = [
             "user_type",
             "core_features",
             "tech_stack",
             "success_criteria",
         ]
-
-        # TODO: 使用 LLM 分析
         return default_dimensions
 
     def _generate_questions(self, dimensions: List[str]) -> List[str]:
