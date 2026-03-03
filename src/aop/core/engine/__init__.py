@@ -41,7 +41,7 @@ class ExecutionEngine:
     def execute(self, prompt, repo_root="."):
         task_id = "task-" + hashlib.sha256((prompt + str(time.time())).encode()).hexdigest()[:8]
         start = time.time()
-        task = TaskInput(task_id=task_id, prompt=prompt, repo_root=repo_root, timeout_seconds=self.default_timeout)
+        task = TaskInput(task_id=task_id, prompt=prompt, repo_root=repo_root, target_paths=["."], timeout_seconds=self.default_timeout)
         results = {}
         errors = []
         
