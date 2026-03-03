@@ -10,13 +10,10 @@ Supports multiple AI coding tools:
 from __future__ import annotations
 
 import hashlib
-import shutil
-import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Callable, Dict, Any
-from enum import Enum
+from typing import List, Callable, Dict, Any
 
 from .types import (
     SprintContext,
@@ -25,30 +22,15 @@ from .types import (
     GeneratedHypothesis,
     AgentDriverConfig,
     HypothesisGenerationConfig,
+    SprintResult,
 )
 from .clarifier import RequirementClarifier, ClarificationConfig
 from .hypothesis_generator import HypothesisGenerator
 from .validator import AutoValidator
 from .learning_extractor import LearningExtractor
 from .persistence import SprintPersistence
+from .executor import ExecutorType, ExecutorInfo, discover_all
 from ..llm import LLMClient, LLMMessage
-
-
-class ExecutorType(Enum):
-    """Supported executor types"""
-    CLAUDE_CODE = "claude-code"
-    OPENCODE = "opencode"
-    CODEX = "codex"
-
-
-@dataclass
-class ExecutorInfo:
-    """Information about an available executor"""
-    executor_type: ExecutorType
-    available: bool
-    version: str | None = None
-    path: str | None = None
-    error: str | None = None
 
 
 @dataclass
@@ -57,138 +39,28 @@ class OrchestrationConfig:
     # LLM configuration
     llm_provider: str = "claude"
     llm_model: str = "claude-sonnet-4-20250514"
-    
+
     # Executor configuration
     executor: ExecutorType = ExecutorType.CLAUDE_CODE
     exec_timeout: int = 600
     exec_max_parallel: int = 5
-    
+
     # Workflow configuration
     auto_clarify: bool = True
     auto_generate_hypotheses: bool = True
     auto_execute: bool = True
     auto_validate: bool = True
     auto_learn: bool = True
-    
+
     # Storage
     storage_path: Path | None = None
-    
+
     # Callbacks
     progress_callback: Callable[[str, str, Dict[str, Any]], None] | None = None
-    
+
     # Debug
     dry_run: bool = False
     verbose: bool = False
-
-
-@dataclass
-class SprintResult:
-    """Sprint execution result"""
-    sprint_id: str
-    success: bool
-    state: SprintState
-    clarified_requirement: Dict[str, Any]
-    hypotheses: List[Dict[str, Any]]
-    execution_results: List[Dict[str, Any]]
-    learnings: List[Dict[str, Any]]
-    next_steps: List[str]
-    summary: str
-
-
-class ExecutorDiscovery:
-    """Discovers available executors on the system"""
-    
-    # Command names for each executor
-    EXECUTOR_COMMANDS = {
-        ExecutorType.CLAUDE_CODE: "claude",
-        ExecutorType.OPENCODE: "opencode",
-        ExecutorType.CODEX: "codex",
-    }
-    
-    # Version flags for each executor
-    VERSION_FLAGS = {
-        ExecutorType.CLAUDE_CODE: ["--version"],
-        ExecutorType.OPENCODE: ["--version"],
-        ExecutorType.CODEX: ["--version"],
-    }
-    
-    @classmethod
-    def discover_all(cls) -> Dict[ExecutorType, ExecutorInfo]:
-        """Discover all available executors"""
-        results = {}
-        for executor_type in ExecutorType:
-            results[executor_type] = cls.check_executor(executor_type)
-        return results
-    
-    @classmethod
-    def check_executor(cls, executor_type: ExecutorType) -> ExecutorInfo:
-        """Check if a specific executor is available"""
-        command = cls.EXECUTOR_COMMANDS.get(executor_type)
-        if not command:
-            return ExecutorInfo(
-                executor_type=executor_type,
-                available=False,
-                error=f"Unknown executor type: {executor_type}",
-            )
-        
-        # Check if command exists in PATH
-        command_path = shutil.which(command)
-        if not command_path:
-            return ExecutorInfo(
-                executor_type=executor_type,
-                available=False,
-                error=f"Command '{command}' not found in PATH",
-            )
-        
-        # Try to get version
-        version = None
-        try:
-            version_flags = cls.VERSION_FLAGS.get(executor_type, ["--version"])
-            result = subprocess.run(
-                [command] + version_flags,
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.returncode == 0:
-                # Parse version from output (first line, first word-like thing)
-                version = result.stdout.strip().split('\n')[0][:50]
-        except Exception:
-            pass
-        
-        return ExecutorInfo(
-            executor_type=executor_type,
-            available=True,
-            version=version,
-            path=command_path,
-        )
-    
-    @classmethod
-    def get_available_executors(cls) -> List[ExecutorType]:
-        """Get list of available executor types"""
-        available = []
-        for executor_type in ExecutorType:
-            info = cls.check_executor(executor_type)
-            if info.available:
-                available.append(executor_type)
-        return available
-    
-    @classmethod
-    def get_best_executor(cls) -> ExecutorType:
-        """Get the best available executor (preference order: claude-code > opencode > codex)"""
-        preference_order = [
-            ExecutorType.CLAUDE_CODE,
-            ExecutorType.OPENCODE,
-            ExecutorType.CODEX,
-        ]
-        
-        for executor_type in preference_order:
-            info = cls.check_executor(executor_type)
-            if info.available:
-                return executor_type
-        
-        # Default to claude-code even if not available
-        return ExecutorType.CLAUDE_CODE
 
 
 class AgentOrchestrator:
@@ -237,15 +109,15 @@ class AgentOrchestrator:
     def discover_executors(self, force_refresh: bool = False) -> Dict[ExecutorType, ExecutorInfo]:
         """
         Discover available executors on the system
-        
+
         Args:
             force_refresh: Force re-discovery even if cached
-            
+
         Returns:
             Dict mapping executor types to their availability info
         """
         if force_refresh or self._executor_info is None:
-            self._executor_info = ExecutorDiscovery.discover_all()
+            self._executor_info = discover_all()
         return self._executor_info
     
     def get_available_executors(self, force_refresh: bool = False) -> List[ExecutorType]:

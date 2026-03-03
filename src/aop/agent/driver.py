@@ -11,7 +11,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Callable, Dict, Any
+from typing import List, Callable, Dict, Any
 
 from .types import (
     SprintContext,
@@ -51,9 +51,9 @@ class AgentDriver:
         active = driver.get_active_sprints()
     """
 
-    def __init__(self, config: Optional[AgentDriverConfig] = None):
+    def __init__(self, config: AgentDriverConfig | None = None):
         self.config = config or AgentDriverConfig()
-        self.context: Optional[SprintContext] = None
+        self.context: SprintContext | None = None
 
         # 初始化各组件
         self.clarifier = RequirementClarifier()
@@ -70,7 +70,7 @@ class AgentDriver:
     def run_from_vague_description(
         self,
         vague_input: str,
-        clarifications_callback: Optional[Callable[[str], str]] = None,
+        clarifications_callback: Callable[[str], str] | None = None,
     ) -> SprintResult:
         """
         从模糊描述开始全自动执行
@@ -178,7 +178,7 @@ class AgentDriver:
 
         return self._build_result()
 
-    def resume_sprint(self, sprint_id: Optional[str] = None) -> SprintResult:
+    def resume_sprint(self, sprint_id: str | None = None) -> SprintResult:
         """
         恢复中断的冲刺
 
@@ -315,7 +315,7 @@ class AgentDriver:
         
         return active_sprints
 
-    def list_all_sprints(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
+    def list_all_sprints(self, status: str | None = None) -> List[Dict[str, Any]]:
         """
         列出所有冲刺
 
@@ -327,7 +327,7 @@ class AgentDriver:
         """
         return self.persistence.list_sprints(status=status)
 
-    def get_sprint_info(self, sprint_id: str) -> Optional[Dict[str, Any]]:
+    def get_sprint_info(self, sprint_id: str) -> Dict[str, Any] | None:
         """
         获取冲刺信息
 
@@ -398,12 +398,11 @@ class AgentDriver:
     def _clarify_requirement(
         self,
         vague_input: str,
-        callback: Optional[Callable[[str], str]],
+        callback: Callable[[str], str] | None,
     ) -> ClarifiedRequirement:
         """澄清需求"""
         return self.clarifier.clarify(
             vague_input,
-            max_rounds=self.config.max_clarification_rounds,
             interactive_callback=callback,
         )
 
@@ -423,8 +422,8 @@ class AgentDriver:
             return []
 
         # 初始化调度器和执行引擎
-        scheduler = TaskScheduler(providers=self.config.providers if hasattr(self.config, 'providers') else None)
-        engine = ExecutionEngine(default_timeout=self.config.default_timeout if hasattr(self.config, 'default_timeout') else 600)
+        scheduler = TaskScheduler(providers=None)
+        engine = ExecutionEngine(default_timeout=600)
 
         # 将假设转换为调度器需要的格式
         hypotheses_for_scheduler = []
@@ -451,7 +450,7 @@ class AgentDriver:
         results = []
         while True:
             # 获取下一批可执行的任务
-            batch = scheduler.get_next_batch(max_tasks=self.config.max_parallel_tasks if hasattr(self.config, 'max_parallel_tasks') else 5)
+            batch = scheduler.get_next_batch(max_tasks=5)
             if not batch:
                 break
 
@@ -575,6 +574,6 @@ class AgentDriver:
         if self.context:
             self.persistence.save(self.context)
 
-    def _load_context(self, sprint_id: str) -> Optional[SprintContext]:
+    def _load_context(self, sprint_id: str) -> SprintContext | None:
         """加载冲刺上下文（使用持久化管理器）"""
         return self.persistence.load(sprint_id)

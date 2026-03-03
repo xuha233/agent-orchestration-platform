@@ -9,13 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Callable
+from typing import List, Dict, Any, Callable
 from enum import Enum
-
-# LLM Client imports
-from aop.llm import LLMClient, LLMProvider, LLMMessage, LLMResponse
-from aop.llm.claude_client import ClaudeClient
-from aop.llm.local_client import LocalLLMClient
 
 
 class SprintState(Enum):
@@ -114,7 +109,7 @@ class ExecutionTrace:
     task_id: str
     provider: str
     started_at: datetime = field(default_factory=datetime.now)
-    completed_at: Optional[datetime] = None
+    completed_at: datetime | None = None
     status: str = "running"
     stdout: str = ""
     stderr: str = ""
@@ -142,9 +137,9 @@ class SprintContext:
     sprint_id: str
     original_input: str
     state: SprintState = SprintState.INITIALIZED
-    clarified_requirement: Optional[ClarifiedRequirement] = None
+    clarified_requirement: ClarifiedRequirement | None = None
     hypotheses: List[Any] = field(default_factory=list)
-    task_graph: Optional[Any] = None
+    task_graph: Any | None = None
     execution_results: List[Dict[str, Any]] = field(default_factory=list)
     validation_results: List[ValidationResult] = field(default_factory=list)
     learnings: List[ExtractedLearning] = field(default_factory=list)
@@ -157,6 +152,7 @@ class SprintResult:
     """冲刺执行结果"""
     sprint_id: str
     success: bool
+    state: SprintState = SprintState.INITIALIZED
     clarified_requirement: Dict[str, Any] = field(default_factory=dict)
     hypotheses: List[Dict[str, Any]] = field(default_factory=list)
     execution_results: List[Dict[str, Any]] = field(default_factory=list)
@@ -173,8 +169,8 @@ class AgentDriverConfig:
     parallel_execution: bool = True
     auto_validate: bool = True
     auto_learn: bool = True
-    storage_path: Optional[Path] = None
-    progress_callback: Optional[Callable[[str, str], None]] = None
+    storage_path: Path | None = None
+    progress_callback: Callable[[str, str], None] | None = None
 
 
 @dataclass

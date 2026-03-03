@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from typing import List, Optional, Callable, Dict, Any
+from typing import List, Callable, Dict, Any
 from enum import Enum
 
 from .types import ClarifiedRequirement, QAPair
@@ -169,7 +169,7 @@ class RequirementClarifier:
     def _collect_answers(
         self,
         questions: List[str],
-        callback: Optional[Callable[[str], str]],
+        callback: Callable[[str], str] | None,
     ) -> List[QAPair]:
         """收集答案"""
         answers = []
@@ -189,7 +189,7 @@ class RequirementClarifier:
 
         return answers
 
-    def _auto_infer_answer(self, question: str) -> tuple:
+    def _auto_infer_answer(self, question: str) -> tuple[str, float]:
         """自动推断答案"""
         default_answers = {
             "用户类型": ("B2C消费者", 0.3),

@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
 from dataclasses import dataclass
 from enum import Enum
-from typing import List
+from typing import List, Dict
 
 
 class ExecutorType(Enum):
@@ -19,10 +20,11 @@ class ExecutorType(Enum):
 class ExecutorInfo:
     """Executor information"""
     executor_type: ExecutorType
-    binary_name: str
-    binary_path: str | None
-    version: str | None
     available: bool
+    binary_name: str = ""
+    binary_path: str | None = None
+    version: str | None = None
+    error: str | None = None
 
 
 EXECUTOR_CONFIGS = {
@@ -45,17 +47,51 @@ def discover_executors() -> List[ExecutorInfo]:
     """Discover available executors on the system."""
     executors = []
     for executor_type in ExecutorType:
-        config = EXECUTOR_CONFIGS.get(executor_type, {})
-        binary_name = config.get("binary", executor_type.value)
-        binary_path = shutil.which(binary_name)
-        executors.append(ExecutorInfo(
-            executor_type=executor_type,
-            binary_name=binary_name,
-            binary_path=binary_path,
-            version="installed" if binary_path else None,
-            available=binary_path is not None,
-        ))
+        info = check_executor(executor_type)
+        executors.append(info)
     return executors
+
+
+def check_executor(executor_type: ExecutorType) -> ExecutorInfo:
+    """Check if a specific executor is available."""
+    config = EXECUTOR_CONFIGS.get(executor_type, {})
+    binary_name = config.get("binary", executor_type.value)
+    binary_path = shutil.which(binary_name)
+
+    if not binary_path:
+        return ExecutorInfo(
+            executor_type=executor_type,
+            available=False,
+            binary_name=binary_name,
+            error=f"Command '{binary_name}' not found in PATH",
+        )
+
+    # Try to get version
+    version = None
+    try:
+        result = subprocess.run(
+            [binary_name, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            version = result.stdout.strip().split('\n')[0][:50]
+    except Exception:
+        pass
+
+    return ExecutorInfo(
+        executor_type=executor_type,
+        available=True,
+        binary_name=binary_name,
+        binary_path=binary_path,
+        version=version,
+    )
+
+
+def discover_all() -> Dict[ExecutorType, ExecutorInfo]:
+    """Discover all executors and return as a dict."""
+    return {info.executor_type: info for info in discover_executors()}
 
 
 def get_available_executors() -> List[ExecutorType]:
@@ -63,8 +99,8 @@ def get_available_executors() -> List[ExecutorType]:
     return [info.executor_type for info in discover_executors() if info.available]
 
 
-def get_default_executor() -> ExecutorType:
-    """Get the default executor (first available)."""
+def get_best_executor() -> ExecutorType:
+    """Get the best available executor (preference order: claude-code > opencode > codex)."""
     available = get_available_executors()
     for pref in [ExecutorType.CLAUDE_CODE, ExecutorType.OPENCODE, ExecutorType.CODEX]:
         if pref in available:
