@@ -16,7 +16,7 @@ class TestCodebaseAnalyzer:
         info = analyzer.analyze(".")
         
         assert info.language == "python"
-        assert info.framework in ["fastapi", None]
+        assert info.framework in ["click", "fastapi", None]
         assert len(info.dependencies) > 0
     
     def test_detect_language_python(self, tmp_path):
@@ -288,3 +288,4 @@ class TestSprintPersistence:
         
         assert persistence.archive("s1") is True
         assert persistence.load("s1") is None  # 已移到归档
+

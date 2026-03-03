@@ -1,4 +1,4 @@
-﻿"""AOP CLI."""
+"""AOP CLI."""
 
 from __future__ import annotations
 
@@ -426,7 +426,6 @@ def review(
     engine = ReviewEngine(
         providers=provider_list, 
         default_timeout=timeout,
-        policy=policy,
     )
     
     with Progress(
@@ -1047,3 +1046,4 @@ try:
     cli.add_command(agent_group, name="agent")
 except ImportError:
     pass  # Agent module not available
+

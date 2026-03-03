@@ -388,12 +388,17 @@ class ReviewEngine:
         artifact_base: Optional[str] = None,
         target_paths: Optional[List[str]] = None,
         policy: Optional[ReviewPolicy] = None,
+        task_id: Optional[str] = None,
+        include_token_usage: bool = False,
+        synthesize: bool = False,
+        synthesis_provider: Optional[ProviderId] = None,
+        strict_contract: bool = False,
     ) -> ReviewResult:
         """Run a review across multiple providers."""
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         policy = policy or ReviewPolicy()
-        task_id = _default_task_id(repo_root, prompt)
+        task_id = task_id or _default_task_id(repo_root, prompt)
         artifact_base = artifact_base or tempfile.mkdtemp(prefix="aop-")
         artifact_root = str(task_artifact_root(artifact_base, task_id))
         Path(artifact_root).mkdir(parents=True, exist_ok=True)
