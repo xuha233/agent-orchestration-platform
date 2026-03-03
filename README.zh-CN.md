@@ -3,7 +3,7 @@
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT" />
   <img src="https://img.shields.io/badge/providers-5%20built--in-orange" alt="Providers: 5 built-in" />
   <img src="https://img.shields.io/badge/platform-windows%20%7C%20macos%20%7C%20linux-lightgrey" alt="Platform: Windows | macOS | Linux" />
-  <img src="https://img.shields.io/badge/tests-135%20passed-brightgreen" alt="Tests: 135 passed" />
+  <img src="https://img.shields.io/badge/tests-235%20passed-brightgreen" alt="Tests: 235 passed" />
 </p>
 
 <h1 align="center">AOP - Agent Orchestration Platform</h1>
@@ -213,6 +213,144 @@ print(detector.config.shell)       # powershell / bash
 所有数据持久化到本地 `.aop/` 目录：
 
 ```
+
+---
+
+## 🚀 Phase 2-3: 智能自动化
+
+### 🧠 智能验证
+
+AOP Phase 2 引入智能验证能力：
+
+**AutoValidator** — 自动假设验证与证据收集：
+- 成功标准检查（测试通过率、构建状态、性能指标）
+- 多源证据聚合
+- 置信度评分与裁决生成
+- 中英文输出检测
+
+**HypothesisGraph** — 基于依赖的假设执行：
+- 拓扑排序支持并行执行
+- 基于依赖的批次调度
+- 循环检测与错误处理
+
+```python
+from aop.agent.validator import AutoValidator
+from aop.workflow.hypothesis.graph import HypothesisGraph
+
+# 自动验证假设
+validator = AutoValidator()
+result = validator.validate(
+    hypothesis={"success_criteria": ["测试通过"]},
+    results=[{"exit_code": 0, "stdout": "测试通过: 10 passed"}]
+)
+# result.verdict -> VALIDATED
+
+# 按依赖调度假设
+graph = HypothesisGraph()
+graph.add_hypothesis("h1", deps=[])
+graph.add_hypothesis("h2", deps=["h1"])
+batches = graph.get_execution_order()  # [["h1"], ["h2"]]
+```
+
+**LearningExtractor** — 跨阶段学习捕获：
+- 执行结果模式识别
+- 性能洞察提取
+- 风险识别与缓解建议
+
+---
+
+### 🤖 Agent 自动化模块
+
+Phase 3 新增强大的自动化能力：
+
+**CodebaseAnalyzer** — 代码库自动分析：
+- 语言检测（Python, JavaScript, TypeScript, Java, Go, Rust）
+- 框架识别（FastAPI, Django, React, Vue, Angular 等）
+- 入口文件发现
+- 架构模式检测（MVC, Layered, Clean Architecture, Microservice）
+
+```python
+from aop.agent.analyzer import CodebaseAnalyzer
+
+analyzer = CodebaseAnalyzer()
+info = analyzer.analyze(".")
+print(f"Language: {info.language}")      # python
+print(f"Framework: {info.framework}")    # fastapi
+print(f"Patterns: {info.patterns}")      # ["MVC", "Layered"]
+```
+
+**TaskScheduler** — 动态任务分配：
+- 多 Provider 调度（Claude, Codex, Gemini, Qwen）
+- 基于优先级的执行
+- 依赖管理
+- 自动重试与负载重平衡
+
+```python
+from aop.agent.scheduler import TaskScheduler
+
+scheduler = TaskScheduler(["claude", "codex", "gemini"])
+assignments = scheduler.schedule([
+    {"hypothesis_id": "h1", "type": "coding", "priority": "high"},
+    {"hypothesis_id": "h2", "type": "analysis", "priority": "low"}
+])
+
+batch = scheduler.get_next_batch()  # 获取就绪任务
+scheduler.mark_completed(batch[0].task_id, {"result": "ok"})
+```
+
+**KnowledgeBase** — 跨项目学习共享：
+- 基于上下文的相似度匹配
+- 成功率跟踪
+- 导入/导出支持团队知识共享
+
+```python
+from aop.agent.knowledge import KnowledgeBase
+
+kb = KnowledgeBase()
+learning = kb.create_learning(
+    pattern="fastapi_error_handling",
+    context={"framework": "fastapi", "error_type": "validation"},
+    solution="使用 HTTPException 并提供 detail 参数",
+    tags=["python", "web", "error-handling"]
+)
+
+# 查找相似解决方案
+similar = kb.find_similar({"framework": "fastapi", "error_type": "validation"})
+```
+
+**SprintPersistence** — 冲刺状态恢复：
+- 保存和恢复冲刺上下文
+- 归档已完成冲刺
+- 恢复中断的工作
+
+```python
+from aop.agent.persistence import SprintPersistence
+
+persistence = SprintPersistence()
+persistence.save(sprint_context)
+
+# 稍后恢复
+loaded = persistence.load("sprint-123")
+active = persistence.get_latest_active()
+```
+
+---
+
+### 📊 自动化统计
+
+| 模块 | 测试数 | 状态 |
+|------|--------|------|
+| AutoValidator | 15+ | ✅ |
+| HypothesisGraph | 10+ | ✅ |
+| LearningExtractor | 12+ | ✅ |
+| CodebaseAnalyzer | 6 | ✅ |
+| TaskScheduler | 7 | ✅ |
+| KnowledgeBase | 6 | ✅ |
+| SprintPersistence | 4 | ✅ |
+
+**总计：235 个测试通过**
+
+
 .aop/
 ├── hypotheses.json     # 假设记录
 ├── learning.json       # 捕获的学习
@@ -345,6 +483,11 @@ aop doctor
 | `workflow/learning/` | 150+ | 学习捕获 |
 | `workflow/team/` | 300+ | 团队配置 |
 | `core/types/` | 500+ | 类型定义和契约 |
+| `agent/validator.py` | 600+ | 自动验证与证据收集 |
+| `agent/analyzer.py` | 150+ | 代码库分析 |
+| `agent/scheduler.py` | 150+ | 动态任务调度 |
+| `agent/knowledge.py` | 150+ | 跨项目知识共享 |
+| `agent/persistence.py` | 400+ | 冲刺状态持久化 |
 
 ### 执行模型
 

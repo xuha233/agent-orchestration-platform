@@ -3,7 +3,7 @@
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT" />
   <img src="https://img.shields.io/badge/providers-5%20built--in-orange" alt="Providers: 5 built-in" />
   <img src="https://img.shields.io/badge/platform-windows%20%7C%20macos%20%7C%20linux-lightgrey" alt="Platform: Windows | macOS | Linux" />
-  <img src="https://img.shields.io/badge/tests-135%20passed-brightgreen" alt="Tests: 135 passed" />
+  <img src="https://img.shields.io/badge/tests-235%20passed-brightgreen" alt="Tests: 235 passed" />
 </p>
 
 <h1 align="center">AOP - Agent Orchestration Platform</h1>
@@ -213,6 +213,144 @@ print(detector.config.shell)       # powershell / bash
 All data is persisted locally in `.aop/` directory:
 
 ```
+
+---
+
+## 🚀 Phase 2-3: Intelligent Automation
+
+### 🧠 Smart Validation
+
+AOP Phase 2 introduces intelligent validation capabilities:
+
+**AutoValidator** — Automatic hypothesis validation with evidence collection:
+- Success criteria checking (test pass rates, build status, performance metrics)
+- Evidence aggregation from multiple sources
+- Confidence scoring and verdict generation
+- Chinese/English output detection
+
+**HypothesisGraph** — Dependency-aware hypothesis execution:
+- Topological sort for parallel execution
+- Batch scheduling based on dependencies
+- Cycle detection and error handling
+
+```python
+from aop.agent.validator import AutoValidator
+from aop.workflow.hypothesis.graph import HypothesisGraph
+
+# Validate hypothesis with auto-detection
+validator = AutoValidator()
+result = validator.validate(
+    hypothesis={"success_criteria": ["测试通过"]},
+    results=[{"exit_code": 0, "stdout": "测试通过: 10 passed"}]
+)
+# result.verdict -> VALIDATED
+
+# Schedule hypotheses by dependencies
+graph = HypothesisGraph()
+graph.add_hypothesis("h1", deps=[])
+graph.add_hypothesis("h2", deps=["h1"])
+batches = graph.get_execution_order()  # [["h1"], ["h2"]]
+```
+
+**LearningExtractor** — Cross-phase learning capture:
+- Pattern recognition from execution results
+- Performance insights extraction
+- Risk identification and mitigation suggestions
+
+---
+
+### 🤖 Agent Automation Module
+
+Phase 3 adds powerful automation capabilities:
+
+**CodebaseAnalyzer** — Automatic codebase analysis:
+- Language detection (Python, JavaScript, TypeScript, Java, Go, Rust)
+- Framework identification (FastAPI, Django, React, Vue, Angular, etc.)
+- Entry point discovery
+- Architecture pattern detection (MVC, Layered, Clean Architecture, Microservice)
+
+```python
+from aop.agent.analyzer import CodebaseAnalyzer
+
+analyzer = CodebaseAnalyzer()
+info = analyzer.analyze(".")
+print(f"Language: {info.language}")      # python
+print(f"Framework: {info.framework}")    # fastapi
+print(f"Patterns: {info.patterns}")      # ["MVC", "Layered"]
+```
+
+**TaskScheduler** — Dynamic task allocation:
+- Multi-provider scheduling (Claude, Codex, Gemini, Qwen)
+- Priority-based execution
+- Dependency management
+- Automatic retry and rebalancing
+
+```python
+from aop.agent.scheduler import TaskScheduler
+
+scheduler = TaskScheduler(["claude", "codex", "gemini"])
+assignments = scheduler.schedule([
+    {"hypothesis_id": "h1", "type": "coding", "priority": "high"},
+    {"hypothesis_id": "h2", "type": "analysis", "priority": "low"}
+])
+
+batch = scheduler.get_next_batch()  # Get ready tasks
+scheduler.mark_completed(batch[0].task_id, {"result": "ok"})
+```
+
+**KnowledgeBase** — Cross-project learning sharing:
+- Context-based similarity matching
+- Success rate tracking
+- Import/export for team knowledge sharing
+
+```python
+from aop.agent.knowledge import KnowledgeBase
+
+kb = KnowledgeBase()
+learning = kb.create_learning(
+    pattern="fastapi_error_handling",
+    context={"framework": "fastapi", "error_type": "validation"},
+    solution="Use HTTPException with detail parameter",
+    tags=["python", "web", "error-handling"]
+)
+
+# Find similar solutions
+similar = kb.find_similar({"framework": "fastapi", "error_type": "validation"})
+```
+
+**SprintPersistence** — Sprint state recovery:
+- Save and restore sprint context
+- Archive completed sprints
+- Resume interrupted work
+
+```python
+from aop.agent.persistence import SprintPersistence
+
+persistence = SprintPersistence()
+persistence.save(sprint_context)
+
+# Resume later
+loaded = persistence.load("sprint-123")
+active = persistence.get_latest_active()
+```
+
+---
+
+### 📊 Automation Statistics
+
+| Module | Tests | Status |
+|--------|-------|--------|
+| AutoValidator | 15+ | ✅ |
+| HypothesisGraph | 10+ | ✅ |
+| LearningExtractor | 12+ | ✅ |
+| CodebaseAnalyzer | 6 | ✅ |
+| TaskScheduler | 7 | ✅ |
+| KnowledgeBase | 6 | ✅ |
+| SprintPersistence | 4 | ✅ |
+
+**Total: 235 tests passing**
+
+
 .aop/
 ├── hypotheses.json     # Hypothesis records
 ├── learning.json       # Captured learnings
@@ -345,6 +483,11 @@ aop doctor
 | `workflow/learning/` | 150+ | Learning capture |
 | `workflow/team/` | 300+ | Team configuration |
 | `core/types/` | 500+ | Type definitions and contracts |
+| `agent/validator.py` | 600+ | Auto-validation with evidence collection |
+| `agent/analyzer.py` | 150+ | Codebase analysis |
+| `agent/scheduler.py` | 150+ | Dynamic task scheduling |
+| `agent/knowledge.py` | 150+ | Cross-project knowledge sharing |
+| `agent/persistence.py` | 400+ | Sprint state persistence |
 
 ### Execution Model
 
