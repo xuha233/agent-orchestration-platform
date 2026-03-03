@@ -113,8 +113,8 @@ class TaskScheduler:
     def _dependencies_met(self, task: TaskAssignment) -> bool:
         return all(dep in self.completed_tasks for dep in task.dependencies)
     
-    def generate_task_prompt(self, assignment: TaskAssignment) -> str:
-        """生成子 Agent 任务提示，包含工作目录信息"""
+    def generate_task_prompt(self, assignment: TaskAssignment, include_timeout_extension: bool = True) -> str:
+        """生成子 Agent 任务提示，包含工作目录信息和超时延长说明"""
         lines = [f"## 任务 ID: {assignment.task_id}"]
         
         if assignment.working_directory:
@@ -124,5 +124,36 @@ class TaskScheduler:
         if assignment.task_description:
             lines.append("**任务描述**:")
             lines.append(assignment.task_description)
+        
+        # 添加超时延长说明
+        if include_timeout_extension:
+            lines.append("")
+            lines.append("---")
+            lines.append("")
+            lines.append("## 超时延长机制")
+            lines.append("")
+            lines.append("如果你在执行任务时发现剩余时间不足，可以申请延长超时。")
+            lines.append("")
+            lines.append("**申请方式**：输出以下格式的请求：")
+            lines.append("")
+            lines.append("```")
+            lines.append("[TIMEOUT_EXTENSION_REQUEST]")
+            lines.append('{')
+            lines.append('  "requested_seconds": 300,')
+            lines.append('  "reason": "任务复杂，需要更多时间",')
+            lines.append('  "progress_summary": "已完成 50%"')
+            lines.append('}')
+            lines.append("[/TIMEOUT_EXTENSION_REQUEST]")
+            lines.append("```")
+            lines.append("")
+            lines.append("**参数说明**：")
+            lines.append("- `requested_seconds`: 请求延长的秒数（建议 300-600）")
+            lines.append("- `reason`: 延长原因")
+            lines.append("- `progress_summary`: 当前进度摘要")
+            lines.append("")
+            lines.append("**注意事项**：")
+            lines.append("- 每个任务最多延长 3 次")
+            lines.append("- 总延长时间不超过 30 分钟")
+            lines.append("- 在申请延长前，请先保存当前进度")
         
         return "\n".join(lines)
