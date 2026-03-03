@@ -1,4 +1,4 @@
-"""
+﻿"""
 Agent 自动化模块类型定义
 
 定义冲刺上下文、澄清需求、验证结果等核心类型。
@@ -11,6 +11,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Callable
 from enum import Enum
+
+# LLM Client imports
+from aop.llm import LLMClient, LLMProvider, LLMMessage, LLMResponse
+from aop.llm.claude_client import ClaudeClient
+from aop.llm.local_client import LocalLLMClient
 
 
 class SprintState(Enum):
