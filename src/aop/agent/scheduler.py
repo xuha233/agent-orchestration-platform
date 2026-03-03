@@ -21,6 +21,8 @@ class TaskAssignment:
     result: dict | None = None
     retry_count: int = 0
     max_retries: int = 3
+    working_directory: str | None = None  # 工作目录路径
+    task_description: str | None = None   # 任务描述
 
 
 class TaskScheduler:
@@ -38,7 +40,7 @@ class TaskScheduler:
             "qwen": ["coding", "analysis", "translation"],
         }
     
-    def schedule(self, hypotheses: List[dict]) -> List[TaskAssignment]:
+    def schedule(self, hypotheses: List[dict], working_directory: str | None = None) -> List[TaskAssignment]:
         assignments = []
         for i, h in enumerate(hypotheses):
             hid = h.get("hypothesis_id", f"h{i}")
@@ -49,6 +51,8 @@ class TaskScheduler:
                 priority=self._calculate_priority(h),
                 dependencies=h.get("dependencies", []),
                 estimated_tokens=self._estimate_tokens(h),
+                working_directory=working_directory or h.get("working_directory"),
+                task_description=h.get("description"),
             )
             self.assignments[assignment.task_id] = assignment
             assignments.append(assignment)
@@ -108,3 +112,17 @@ class TaskScheduler:
     
     def _dependencies_met(self, task: TaskAssignment) -> bool:
         return all(dep in self.completed_tasks for dep in task.dependencies)
+    
+    def generate_task_prompt(self, assignment: TaskAssignment) -> str:
+        """生成子 Agent 任务提示，包含工作目录信息"""
+        lines = [f"## 任务 ID: {assignment.task_id}"]
+        
+        if assignment.working_directory:
+            lines.append(f"**工作目录**: {assignment.working_directory}")
+            lines.append(f"请首先执行: `cd {assignment.working_directory}`")
+        
+        if assignment.task_description:
+            lines.append("**任务描述**:")
+            lines.append(assignment.task_description)
+        
+        return "\n".join(lines)
