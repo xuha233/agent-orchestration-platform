@@ -53,15 +53,19 @@ class AOPConfig:
     subagent: SubagentConfig = field(default_factory=SubagentConfig)
     
     @classmethod
-    def from_yaml(cls, path: Path) -> "AOPConfig":
+    def from_yaml(cls, path: Path | str) -> "AOPConfig":
         """Load configuration from YAML file.
         
         Args:
-            path: Path to the YAML configuration file
+            path: Path to the YAML configuration file (Path object or string)
             
         Returns:
             AOPConfig instance with loaded values or defaults
         """
+        # 支持字符串参数
+        if isinstance(path, str):
+            path = Path(path)
+        
         if not path.exists():
             return cls()
         
