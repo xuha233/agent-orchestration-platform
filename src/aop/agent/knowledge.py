@@ -60,7 +60,14 @@ class KnowledgeBase:
         self._save()
     
     def create_learning(self, pattern: str, context: dict, solution: str, tags: List[str] | None = None, project: str | None = None) -> SharedLearning:
-        learning = SharedLearning(pattern=pattern, context=context, solution=solution, tags=tags or [], projects=[project] if project else [])
+        learning = SharedLearning(
+            learning_id="",
+            pattern=pattern,
+            context=context,
+            solution=solution,
+            tags=tags or [],
+            projects=[project] if project else []
+        )
         self.add_learning(learning)
         return learning
     

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Dict, Any
@@ -106,14 +107,26 @@ class CodebaseAnalyzer:
         return patterns
     
     def _extract_dependencies(self, root: Path) -> List[str]:
+        """提取依赖"""
         deps = []
+        # requirements.txt
         req_file = root / "requirements.txt"
         if req_file.exists():
             for line in req_file.read_text(encoding="utf-8", errors="ignore").splitlines():
                 line = line.strip()
                 if line and not line.startswith("#"):
                     deps.append(line.split("==")[0].split(">=")[0])
-        return deps[:20]
+        # pyproject.toml
+        pyproject = root / "pyproject.toml"
+        if pyproject.exists():
+            content = pyproject.read_text(encoding="utf-8", errors="ignore")
+            match = re.search(r"dependencies\s*=\s*\[(.*?)\]", content, re.DOTALL)
+            if match:
+                for line in match.group(1).splitlines():
+                    line = line.strip().strip('"').strip("'")
+                    if line and not line.startswith("#") and not line.startswith("["):
+                        deps.append(line.split(">=")[0].split("<")[0].split("[")[0])
+        return list(set(deps))[:20]
     
     def _analyze_structure(self, root: Path) -> Dict[str, Any]:
         return {d.name: {"type": "directory"} for d in root.iterdir() if d.is_dir() and not d.name.startswith(".")}
