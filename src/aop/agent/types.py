@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Callable
+from typing import List, Dict, Any, Callable, Literal, Literal
 from enum import Enum
 
 
@@ -164,11 +164,24 @@ class SprintResult:
 @dataclass
 class AgentDriverConfig:
     """AgentDriver 配置"""
+    # LLM 配置
+    llm_provider: Literal["claude", "openai", "local"] = "claude"
+    llm_model: str = "claude-sonnet-4-20250514"
+    llm_api_key: str | None = None
+
+    # 执行配置
+    providers: List[str] = field(default_factory=lambda: ["claude", "codex"])
+    default_timeout: int = 600
+    max_parallel_tasks: int = 5
+
+    # 流程配置
     max_clarification_rounds: int = 3
     auto_execute: bool = True
     parallel_execution: bool = True
     auto_validate: bool = True
     auto_learn: bool = True
+
+    # 存储配置
     storage_path: Path | None = None
     progress_callback: Callable[[str, str], None] | None = None
 

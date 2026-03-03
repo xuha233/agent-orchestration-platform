@@ -63,3 +63,17 @@ class LLMClient(ABC):
             return bool(response.content)
         except Exception:
             return False
+
+
+# 导出具体实现
+from .claude_client import ClaudeClient
+from .local_client import LocalLLMClient
+
+__all__ = [
+    "LLMProvider",
+    "LLMResponse",
+    "LLMMessage",
+    "LLMClient",
+    "ClaudeClient",
+    "LocalLLMClient",
+]

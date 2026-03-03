@@ -28,6 +28,7 @@ from .learning_extractor import LearningExtractor
 from .persistence import SprintPersistence
 from .scheduler import TaskScheduler
 from ..core.engine import ExecutionEngine
+from ..llm import LLMClient, ClaudeClient, LocalLLMClient
 
 
 class AgentDriver:
@@ -51,13 +52,23 @@ class AgentDriver:
         active = driver.get_active_sprints()
     """
 
-    def __init__(self, config: AgentDriverConfig | None = None):
+    def __init__(
+        self,
+        config: AgentDriverConfig | None = None,
+        llm_client: LLMClient | None = None,
+    ):
         self.config = config or AgentDriverConfig()
         self.context: SprintContext | None = None
 
-        # 初始化各组件
-        self.clarifier = RequirementClarifier()
-        self.hypothesis_generator = HypothesisGenerator()
+        # 初始化 LLM 客户端
+        if llm_client:
+            self.llm = llm_client
+        else:
+            self.llm = self._create_llm_client()
+
+        # 初始化各组件（传入 LLM 客户端）
+        self.clarifier = RequirementClarifier(llm_client=self.llm)
+        self.hypothesis_generator = HypothesisGenerator(llm_client=self.llm)
         self.validator = AutoValidator()
         self.learning_extractor = LearningExtractor()
 
@@ -66,6 +77,17 @@ class AgentDriver:
         
         # 初始化持久化管理器
         self.persistence = SprintPersistence(str(self.storage_path / "sprints"))
+
+    def _create_llm_client(self) -> LLMClient | None:
+        """根据配置创建 LLM 客户端"""
+        if self.config.llm_provider == "claude":
+            return ClaudeClient(
+                api_key=self.config.llm_api_key,
+                model=self.config.llm_model,
+            )
+        elif self.config.llm_provider == "local":
+            return LocalLLMClient()
+        return None
 
     def run_from_vague_description(
         self,
@@ -421,9 +443,12 @@ class AgentDriver:
         if not self.context or not self.context.hypotheses:
             return []
 
-        # 初始化调度器和执行引擎
-        scheduler = TaskScheduler(providers=None)
-        engine = ExecutionEngine(default_timeout=600)
+        # 从配置获取参数，初始化调度器和执行引擎
+        scheduler = TaskScheduler(providers=self.config.providers)
+        engine = ExecutionEngine(
+            providers=self.config.providers,
+            default_timeout=self.config.default_timeout,
+        )
 
         # 将假设转换为调度器需要的格式
         hypotheses_for_scheduler = []
@@ -450,7 +475,7 @@ class AgentDriver:
         results = []
         while True:
             # 获取下一批可执行的任务
-            batch = scheduler.get_next_batch(max_tasks=5)
+            batch = scheduler.get_next_batch(max_tasks=self.config.max_parallel_tasks)
             if not batch:
                 break
 
@@ -536,20 +561,37 @@ class AgentDriver:
         req_dict = {}
         if self.context and self.context.clarified_requirement:
             req_dict = {
-                "summary": self.context.clarified_requirement.summary,
-                "user_type": self.context.clarified_requirement.user_type,
-                "core_features": self.context.clarified_requirement.core_features,
+                "summary": getattr(self.context.clarified_requirement, 'summary', ''),
             }
+
+        # 转换假设
+        hypotheses_data = []
+        for h in (self.context.hypotheses if self.context else []):
+            if hasattr(h, 'statement'):
+                hypotheses_data.append({
+                    "statement": h.statement,
+                    "priority": getattr(h, 'priority', 'medium'),
+                    "risk_level": getattr(h, 'risk_level', 'medium'),
+                })
+
+        # 转换学习
+        learnings_data = []
+        for l in (self.context.learnings if self.context else []):
+            learnings_data.append({
+                "phase": getattr(l, 'phase', ''),
+                "insights": getattr(l, 'insights', []),
+            })
 
         return SprintResult(
             sprint_id=self.context.sprint_id if self.context else "",
             success=self.context.state == SprintState.COMPLETED if self.context else False,
+            state=self.context.state if self.context else SprintState.FAILED,
             clarified_requirement=req_dict,
-            hypotheses=[],
+            hypotheses=hypotheses_data,
             execution_results=self.context.execution_results if self.context else [],
-            learnings=[],
-            next_steps=self.get_next_steps(),
-            summary=self._generate_summary(),
+            learnings=learnings_data,
+            next_steps=self.get_next_steps() if hasattr(self, 'get_next_steps') else [],
+            summary=self._generate_summary() if hasattr(self, '_generate_summary') else "",
         )
 
     def _generate_summary(self) -> str:
