@@ -30,6 +30,15 @@ class ReviewPolicy:
     enforcement_mode: str = "strict"  # "strict" or "best_effort"
 
 
+@dataclass(frozen=True)
+class SubagentConfig:
+    """Sub-agent configuration for task delegation."""
+    default_timeout: int = 600
+    quick_win_timeout: int = 300
+    deep_dive_timeout: int = 1800
+    max_parallel: int = 3
+
+
 @dataclass
 class AOPConfig:
     """AOP configuration."""
@@ -41,6 +50,7 @@ class AOPConfig:
     output_dir: str = "runs"
     artifact_base: str = "reports/review"
     policy: ReviewPolicy = field(default_factory=ReviewPolicy)
+    subagent: SubagentConfig = field(default_factory=SubagentConfig)
     
     @classmethod
     def from_yaml(cls, path: Path) -> "AOPConfig":
@@ -79,6 +89,15 @@ class AOPConfig:
             enforcement_mode=policy_data.get("enforcement_mode", "strict"),
         )
         
+        # Build SubagentConfig from config
+        subagent_data = data.get("subagent", {})
+        subagent = SubagentConfig(
+            default_timeout=subagent_data.get("default_timeout", 600),
+            quick_win_timeout=subagent_data.get("quick_win_timeout", 300),
+            deep_dive_timeout=subagent_data.get("deep_dive_timeout", 1800),
+            max_parallel=subagent_data.get("max_parallel", 3),
+        )
+        
         return cls(
             project_type=project.get("type", "transformation"),
             providers=settings.get("providers", ["claude", "codex"]),
@@ -87,6 +106,7 @@ class AOPConfig:
             output_dir=settings.get("output_dir", "runs"),
             artifact_base=settings.get("artifact_base", "reports/review"),
             policy=policy,
+            subagent=subagent,
         )
     
     def to_yaml(self, path: Path) -> None:
