@@ -132,7 +132,9 @@ class HypothesisGenerator:
             return self._sort_by_priority(hypotheses)
         
         except Exception as e:
-            # LLM 调用失败时回退到规则生成
+            # LLM 调用失败时记录错误并回退到规则生成
+            import sys
+            print(f"[AOP] LLM hypothesis generation failed: {e}", file=sys.stderr)
             if self.config.enable_fallback:
                 return self._fallback_generate(requirement)
             return []
@@ -204,21 +206,33 @@ class HypothesisGenerator:
 
     def _extract_json(self, content: str) -> str | None:
         """从内容中提取 JSON 字符串"""
-        # 尝试直接解析
         content = content.strip()
-        if content.startswith("{"):
+        
+        # 尝试直接解析
+        if content.startswith("{") and content.endswith("}"):
             return content
         
-        # 尝试提取代码块中的 JSON
-        json_match = re.search(r'`(?:json)?\s*([\s\S]*?)`', content)
-        if json_match:
-            return json_match.group(1).strip()
+        # 尝试提取三反引号代码块中的 JSON (```json ... ```)
+        triple_match = re.search(r'```(?:json)?\s*\n?([\s\S]*?)\n?```', content)
+        if triple_match:
+            return triple_match.group(1).strip()
         
-        # 尝试查找 JSON 对象
+        # 尝试提取单反引号代码块中的 JSON
+        single_match = re.search(r'`(?:json)?\s*([\s\S]*?)`', content)
+        if single_match:
+            return single_match.group(1).strip()
+        
+        # 尝试查找 JSON 对象（处理嵌套花括号）
         brace_start = content.find("{")
-        brace_end = content.rfind("}")
-        if brace_start != -1 and brace_end != -1 and brace_end > brace_start:
-            return content[brace_start:brace_end + 1]
+        if brace_start != -1:
+            depth = 0
+            for i, char in enumerate(content[brace_start:], brace_start):
+                if char == "{":
+                    depth += 1
+                elif char == "}":
+                    depth -= 1
+                    if depth == 0:
+                        return content[brace_start:i + 1]
         
         return None
 

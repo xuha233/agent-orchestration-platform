@@ -134,21 +134,41 @@ class RequirementClarifier:
             data = json.loads(self._extract_json(response.content))
             dimensions = data.get("dimensions", self._default_dimensions())
             return dimensions if dimensions else self._default_dimensions()
-        except Exception:
+        except Exception as e:
+            import sys
+            print(f"[AOP] LLM dimension identification failed: {e}", file=sys.stderr)
             return self._default_dimensions()
 
     def _extract_json(self, text: str) -> str:
         """从文本中提取 JSON 字符串"""
-        # 尝试匹配 `json ... ` 块
-        json_match = re.search(r"`(?:json)?\s*([\s\S]*?)`", text)
-        if json_match:
-            return json_match.group(1).strip()
-
-        # 尝试匹配花括号包围的 JSON
-        brace_match = re.search(r"\{[\s\S]*\}", text)
-        if brace_match:
-            return brace_match.group(0)
-
+        text = text.strip()
+        
+        # 尝试直接解析
+        if text.startswith("{") and text.endswith("}"):
+            return text
+        
+        # 尝试提取三反引号代码块 (```json ... ```)
+        triple_match = re.search(r"```(?:json)?\s*\n?([\s\S]*?)\n?```", text)
+        if triple_match:
+            return triple_match.group(1).strip()
+        
+        # 尝试提取单反引号代码块
+        single_match = re.search(r"`(?:json)?\s*([\s\S]*?)`", text)
+        if single_match:
+            return single_match.group(1).strip()
+        
+        # 尝试匹配花括号包围的 JSON（处理嵌套）
+        brace_start = text.find("{")
+        if brace_start != -1:
+            depth = 0
+            for i, char in enumerate(text[brace_start:], brace_start):
+                if char == "{":
+                    depth += 1
+                elif char == "}":
+                    depth -= 1
+                    if depth == 0:
+                        return text[brace_start:i + 1]
+        
         return text
 
     def _generate_questions(self, vague_input: str, dimensions: List[str]) -> List[str]:
