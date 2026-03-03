@@ -12,11 +12,6 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Callable
 from enum import Enum
 
-# LLM Client imports
-from aop.llm import LLMClient, LLMProvider, LLMMessage, LLMResponse
-from aop.llm.claude_client import ClaudeClient
-from aop.llm.local_client import LocalLLMClient
-
 
 class SprintState(Enum):
     """冲刺状态"""
@@ -175,3 +170,12 @@ class AgentDriverConfig:
     auto_learn: bool = True
     storage_path: Optional[Path] = None
     progress_callback: Optional[Callable[[str, str], None]] = None
+
+
+@dataclass
+class HypothesisGenerationConfig:
+    """假设生成器配置"""
+    temperature: float = 0.7
+    max_tokens: int = 4096
+    max_hypotheses: int = 10
+    enable_fallback: bool = True

@@ -1,4 +1,4 @@
-"""
+﻿"""
 RequirementClarifier - 需求澄清器
 
 将模糊的需求描述转换为结构化的明确需求。
@@ -6,17 +6,40 @@ RequirementClarifier - 需求澄清器
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+import re
+from dataclasses import dataclass, field
 from typing import List, Optional, Callable, Dict, Any
 from enum import Enum
 
 from .types import ClarifiedRequirement, QAPair
+from ..llm import LLMClient, LLMMessage
+
+
+CLARIFICATION_SYSTEM_PROMPT = """你是一个需求分析师，负责将模糊的项目描述转化为清晰的结构化需求。
+
+重点关注：
+- 用户类型和规模
+- 核心功能和优先级
+- 技术约束和偏好
+- 成功标准和可衡量指标
+
+输出 JSON 格式。"""
 
 
 class ClarificationStrategy(Enum):
     INTERACTIVE = "interactive"
     AUTO_INFER = "auto_infer"
     HYBRID = "hybrid"
+
+
+@dataclass
+class ClarificationConfig:
+    """澄清器配置"""
+    max_rounds: int = 3
+    strategy: ClarificationStrategy = ClarificationStrategy.HYBRID
+    llm_temperature: float = 0.3
+    llm_max_tokens: int = 512
 
 
 class RequirementClarifier:
@@ -32,22 +55,25 @@ class RequirementClarifier:
     4. 综合生成结构化需求
     """
 
-    def __init__(self, strategy: ClarificationStrategy = ClarificationStrategy.HYBRID):
-        self.strategy = strategy
+    def __init__(
+        self,
+        llm_client: LLMClient | None = None,
+        config: ClarificationConfig | None = None,
+    ):
+        self.llm = llm_client
+        self.config = config or ClarificationConfig()
         self.clarification_history: List[QAPair] = []
 
     def clarify(
         self,
         vague_input: str,
-        max_rounds: int = 3,
-        interactive_callback: Optional[Callable[[str], str]] = None,
+        interactive_callback: Callable[[str], str] | None = None,
     ) -> ClarifiedRequirement:
         """
         澄清需求
 
         Args:
             vague_input: 模糊的输入描述
-            max_rounds: 最大追问轮数
             interactive_callback: 交互式回调，接收问题返回答案
 
         Returns:
@@ -57,37 +83,75 @@ class RequirementClarifier:
         dimensions = self._identify_key_dimensions(vague_input)
 
         # 第二轮：生成澄清问题
-        questions = self._generate_questions(dimensions)
+        questions = self._generate_questions(vague_input, dimensions)
 
         # 第三轮：收集答案
-        answers = self._collect_answers(questions, interactive_callback)
+        answers = []
+        for question in questions:
+            if interactive_callback:
+                answer = interactive_callback(question)
+                confidence = 1.0
+            else:
+                answer, confidence = self._auto_infer_answer(question)
+            answers.append(QAPair(question=question, answer=answer, confidence=confidence))
 
         # 第四轮：综合生成需求
         requirement = self._synthesize_requirement(vague_input, answers)
 
         return requirement
 
-    def _identify_key_dimensions(self, input_text: str) -> List[str]:
-        """
-        识别需求的关键维度
-
-        当前实现返回默认维度。未来可集成 LLM 进行智能分析。
-
-        TODO(design): 集成 LLM 进行智能维度识别
-        - 决策点：选择 LLM 提供商（本地/云端）
-        - 决策点：prompt 模板设计
-        - 决策点：fallback 策略（LLM 失败时使用默认维度）
-        - 决策点：是否缓存分析结果
-        """
-        default_dimensions = [
+    def _default_dimensions(self) -> list[str]:
+        """返回默认的关键维度"""
+        return [
             "user_type",
             "core_features",
             "tech_stack",
             "success_criteria",
         ]
-        return default_dimensions
 
-    def _generate_questions(self, dimensions: List[str]) -> List[str]:
+    def _identify_key_dimensions(self, input_text: str) -> list[str]:
+        """
+        识别需求的关键维度
+
+        如果有 LLM 客户端，使用 LLM 进行智能维度识别；
+        否则返回默认维度。
+        """
+        if not self.llm:
+            return self._default_dimensions()
+
+        prompt = f"分析以下需求，识别需要澄清的关键维度：\n\n{input_text}\n\n输出 JSON: {{\"dimensions\": [\"维度1\", \"维度2\"]}}"
+
+        try:
+            response = self.llm.complete(
+                [
+                    LLMMessage(role="system", content=CLARIFICATION_SYSTEM_PROMPT),
+                    LLMMessage(role="user", content=prompt),
+                ],
+                temperature=self.config.llm_temperature,
+                max_tokens=self.config.llm_max_tokens,
+            )
+
+            data = json.loads(self._extract_json(response.content))
+            dimensions = data.get("dimensions", self._default_dimensions())
+            return dimensions if dimensions else self._default_dimensions()
+        except Exception:
+            return self._default_dimensions()
+
+    def _extract_json(self, text: str) -> str:
+        """从文本中提取 JSON 字符串"""
+        # 尝试匹配 `json ... ` 块
+        json_match = re.search(r"`(?:json)?\s*([\s\S]*?)`", text)
+        if json_match:
+            return json_match.group(1).strip()
+
+        # 尝试匹配花括号包围的 JSON
+        brace_match = re.search(r"\{[\s\S]*\}", text)
+        if brace_match:
+            return brace_match.group(0)
+
+        return text
+
+    def _generate_questions(self, vague_input: str, dimensions: List[str]) -> List[str]:
         """生成澄清问题"""
         question_templates = {
             "user_type": "目标用户是谁？（B2C消费者/B2B企业客户/内部员工）",
