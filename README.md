@@ -3,7 +3,8 @@
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT" />
   <img src="https://img.shields.io/badge/providers-5%20built--in-orange" alt="Providers: 5 built-in" />
   <img src="https://img.shields.io/badge/platform-windows%20%7C%20macos%20%7C%20linux-lightgrey" alt="Platform: Windows | macOS | Linux" />
-  <img src="https://img.shields.io/badge/tests-235%20passed-brightgreen" alt="Tests: 235 passed" />
+  <img src="https://img.shields.io/badge/version-v0.2.0-blueviolet" alt="Version: v0.2.0" />
+  <img src="https://img.shields.io/badge/tests-276%20passed-brightgreen" alt="Tests: 235 passed" />
 </p>
 
 <h1 align="center">AOP - Agent Orchestration Platform</h1>
@@ -52,6 +53,52 @@ One command. Multiple agents working in parallel.
 ---
 
 ## ✨ Core Features
+
+### ⏱️ Dynamic Timeout Extension (v0.2.0 NEW)
+
+AOP now supports runtime timeout extension for long-running tasks:
+
+```python
+from aop.agent.timeout import TimeoutManager
+
+manager = TimeoutManager(
+    initial_timeout=600,
+    max_extension_seconds=1800,
+    max_extensions=3
+)
+
+# Agent can request extension via structured output
+# [TIMEOUT_EXTENSION_REQUEST] reason="Need more time for analysis" requested_seconds=300
+```
+
+**Key Features:**
+- Sub-agents can request timeout extension via structured output
+- Main agent can approve/reject based on progress
+- Maximum extensions and total time limits enforced
+- Full audit trail of extension requests
+
+### 🔄 Hypothesis Dependency Graph (v0.2.0 NEW)
+
+Execute hypotheses in dependency-aware batches:
+
+```python
+from aop.workflow.hypothesis.graph import HypothesisGraph
+
+graph = HypothesisGraph()
+graph.add_hypothesis("h1", dependencies=[])
+graph.add_hypothesis("h2", dependencies=["h1"])
+graph.add_hypothesis("h3", dependencies=["h1"])
+
+batches = graph.get_execution_order()
+# [["h1"], ["h2", "h3"]]  <- h2 and h3 run in parallel
+```
+
+**Key Features:**
+- Topological sort for optimal execution order
+- Cycle detection with clear error messages
+- Batch scheduling for parallel execution
+- Support for hypothesis priorities
+
 
 ### 🤖 Multi-Agent Parallel Execution
 
@@ -336,19 +383,20 @@ active = persistence.get_latest_active()
 
 ---
 
-### 📊 Automation Statistics
+### 📊 Test Coverage
 
 | Module | Tests | Status |
 |--------|-------|--------|
+| TimeoutManager | 13 | ✅ |
+| HypothesisGraph | 14 | ✅ |
+| KnowledgeBase | 14 | ✅ |
 | AutoValidator | 15+ | ✅ |
-| HypothesisGraph | 10+ | ✅ |
 | LearningExtractor | 12+ | ✅ |
 | CodebaseAnalyzer | 6 | ✅ |
 | TaskScheduler | 7 | ✅ |
-| KnowledgeBase | 6 | ✅ |
 | SprintPersistence | 4 | ✅ |
 
-**Total: 235 tests passing**
+**Total: 276 tests passing**
 
 
 .aop/
