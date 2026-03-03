@@ -1,4 +1,4 @@
-"""
+﻿"""
 AgentDriver - 全自动 Agent 团队驱动器
 
 从模糊需求到交付的全自动执行。
@@ -25,6 +25,7 @@ from .clarifier import RequirementClarifier
 from .hypothesis_generator import HypothesisGenerator
 from .validator import AutoValidator
 from .learning_extractor import LearningExtractor
+from .persistence import SprintPersistence
 
 
 class AgentDriver:
@@ -40,6 +41,12 @@ class AgentDriver:
             "帮我做一个电商系统",
             clarifications_callback=lambda q: input(q)
         )
+        
+        # 恢复中断的冲刺
+        result = driver.resume_sprint("sprint-abc123")
+        
+        # 获取活跃冲刺列表
+        active = driver.get_active_sprints()
     """
 
     def __init__(self, config: Optional[AgentDriverConfig] = None):
@@ -54,6 +61,9 @@ class AgentDriver:
 
         # 存储路径
         self.storage_path = self.config.storage_path or Path(".aop")
+        
+        # 初始化持久化管理器
+        self.persistence = SprintPersistence(str(self.storage_path / "sprints"))
 
     def run_from_vague_description(
         self,
@@ -76,6 +86,9 @@ class AgentDriver:
             original_input=vague_input,
             state=SprintState.INITIALIZED,
         )
+        
+        # 保存初始状态
+        self.persistence.save(self.context)
 
         try:
             # 阶段1: 澄清需求
@@ -83,16 +96,19 @@ class AgentDriver:
             clarified = self._clarify_requirement(vague_input, clarifications_callback)
             self.context.clarified_requirement = clarified
             self.context.state = SprintState.CLARIFIED
+            self.persistence.save(self.context)  # 增量保存
 
             # 阶段2: 生成假设
             self._report_progress("generating_hypotheses", "生成假设中...")
             hypotheses = self._generate_hypotheses(clarified)
             self.context.hypotheses = hypotheses
             self.context.state = SprintState.HYPOTHESES_GENERATED
+            self.persistence.save(self.context)  # 增量保存
 
             # 阶段3: 构建任务图
             self._report_progress("decomposing_tasks", "分解任务中...")
             self.context.state = SprintState.TASKS_DECOMPOSED
+            self.persistence.save(self.context)  # 增量保存
 
             # 阶段4: 并行执行 (简化版)
             if self.config.auto_execute:
@@ -100,12 +116,14 @@ class AgentDriver:
                 results = self._execute_tasks()
                 self.context.execution_results = results
                 self.context.state = SprintState.EXECUTED
+                self.persistence.save(self.context)  # 增量保存
 
                 # 阶段5: 自动验证
                 if self.config.auto_validate:
                     self._report_progress("validating", "验证结果中...")
                     self._auto_validate(hypotheses, results)
                     self.context.state = SprintState.VALIDATED
+                    self.persistence.save(self.context)  # 增量保存
 
                 # 阶段6: 学习提取
                 if self.config.auto_learn:
@@ -113,14 +131,13 @@ class AgentDriver:
                     learnings = self._extract_learnings(results)
                     self.context.learnings = learnings
                     self.context.state = SprintState.COMPLETED
-
-            # 保存上下文
-            self._save_context()
+                    self.persistence.save(self.context)  # 增量保存
 
             return self._build_result()
 
         except Exception as e:
             self.context.state = SprintState.FAILED
+            self.persistence.save(self.context)  # 保存失败状态
             raise
 
     def run_from_clarified_requirement(
@@ -136,37 +153,226 @@ class AgentDriver:
             clarified_requirement=ClarifiedRequirement(**requirement),
             state=SprintState.CLARIFIED,
         )
+        
+        self.persistence.save(self.context)
 
         hypotheses = self._generate_hypotheses(self.context.clarified_requirement)
         self.context.hypotheses = hypotheses
+        self.persistence.save(self.context)
 
         if self.config.auto_execute:
             results = self._execute_tasks()
             self.context.execution_results = results
+            self.persistence.save(self.context)
 
             if self.config.auto_validate:
                 self._auto_validate(hypotheses, results)
+                self.persistence.save(self.context)
 
             if self.config.auto_learn:
                 learnings = self._extract_learnings(results)
                 self.context.learnings = learnings
+                self.persistence.save(self.context)
 
-        self._save_context()
         return self._build_result()
 
-    def resume_sprint(self, sprint_id: str) -> SprintResult:
+    def resume_sprint(self, sprint_id: Optional[str] = None) -> SprintResult:
         """
         恢复中断的冲刺
+
+        Args:
+            sprint_id: 冲刺ID，如果为 None 则恢复最近的活跃冲刺
+
+        Returns:
+            SprintResult: 冲刺执行结果
+
+        Raises:
+            ValueError: 如果冲刺不存在
         """
-        self.context = self._load_context(sprint_id)
+        # 如果没有指定 sprint_id，获取最近的活跃冲刺
+        if sprint_id is None:
+            self.context = self.persistence.get_latest_active()
+            if self.context is None:
+                raise ValueError("没有找到可恢复的活跃冲刺")
+        else:
+            self.context = self.persistence.load(sprint_id)
 
         if self.context is None:
-            raise ValueError(f"Sprint {sprint_id} not found")
+            raise ValueError(f"冲刺 {sprint_id} 不存在或已损坏")
+
+        self._report_progress("resuming", f"恢复冲刺 {self.context.sprint_id}，当前状态: {self.context.state.value}")
 
         # 根据当前状态继续执行
-        # ... (简化实现)
+        if self.context.state == SprintState.INITIALIZED:
+            # 重新开始澄清需求
+            return self.run_from_vague_description(
+                self.context.original_input,
+                clarifications_callback=None,
+            )
+
+        elif self.context.state == SprintState.CLARIFIED:
+            # 从生成假设继续
+            self._report_progress("generating_hypotheses", "生成假设中...")
+            hypotheses = self._generate_hypotheses(self.context.clarified_requirement)
+            self.context.hypotheses = hypotheses
+            self.context.state = SprintState.HYPOTHESES_GENERATED
+            self.persistence.save(self.context)
+            return self._continue_from_hypotheses()
+
+        elif self.context.state == SprintState.HYPOTHESES_GENERATED:
+            return self._continue_from_hypotheses()
+
+        elif self.context.state == SprintState.TASKS_DECOMPOSED:
+            return self._continue_from_execution()
+
+        elif self.context.state == SprintState.EXECUTED:
+            return self._continue_from_validation()
+
+        elif self.context.state == SprintState.VALIDATED:
+            return self._continue_from_learning()
+
+        elif self.context.state == SprintState.COMPLETED:
+            self._report_progress("completed", "冲刺已完成")
+            return self._build_result()
+
+        elif self.context.state == SprintState.FAILED:
+            self._report_progress("failed", "冲刺之前失败，请检查错误日志")
+            return self._build_result()
 
         return self._build_result()
+
+    def _continue_from_hypotheses(self) -> SprintResult:
+        """从假设生成后继续执行"""
+        self._report_progress("decomposing_tasks", "分解任务中...")
+        self.context.state = SprintState.TASKS_DECOMPOSED
+        self.persistence.save(self.context)
+
+        if self.config.auto_execute:
+            return self._continue_from_execution()
+        
+        return self._build_result()
+
+    def _continue_from_execution(self) -> SprintResult:
+        """从任务分解后继续执行"""
+        if self.config.auto_execute:
+            self._report_progress("executing", "并行执行中...")
+            results = self._execute_tasks()
+            self.context.execution_results = results
+            self.context.state = SprintState.EXECUTED
+            self.persistence.save(self.context)
+
+            if self.config.auto_validate:
+                return self._continue_from_validation()
+        
+        return self._build_result()
+
+    def _continue_from_validation(self) -> SprintResult:
+        """从执行后继续验证"""
+        if self.config.auto_validate:
+            self._report_progress("validating", "验证结果中...")
+            self._auto_validate(self.context.hypotheses, self.context.execution_results)
+            self.context.state = SprintState.VALIDATED
+            self.persistence.save(self.context)
+
+            if self.config.auto_learn:
+                return self._continue_from_learning()
+        
+        return self._build_result()
+
+    def _continue_from_learning(self) -> SprintResult:
+        """从验证后继续学习提取"""
+        if self.config.auto_learn:
+            self._report_progress("learning", "提取学习中...")
+            learnings = self._extract_learnings(self.context.execution_results)
+            self.context.learnings = learnings
+            self.context.state = SprintState.COMPLETED
+            self.persistence.save(self.context)
+        
+        return self._build_result()
+
+    def get_active_sprints(self) -> List[str]:
+        """
+        获取活跃冲刺列表
+
+        Returns:
+            活跃冲刺ID列表
+        """
+        active_states = [
+            "initialized",
+            "clarified", 
+            "hypotheses_generated",
+            "tasks_decomposed",
+            "executed",
+            "validated",
+        ]
+        
+        active_sprints = []
+        for state in active_states:
+            sprints = self.persistence.list_sprints(status=state)
+            active_sprints.extend([s["sprint_id"] for s in sprints])
+        
+        return active_sprints
+
+    def list_all_sprints(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        列出所有冲刺
+
+        Args:
+            status: 可选的状态过滤
+
+        Returns:
+            冲刺信息列表
+        """
+        return self.persistence.list_sprints(status=status)
+
+    def get_sprint_info(self, sprint_id: str) -> Optional[Dict[str, Any]]:
+        """
+        获取冲刺信息
+
+        Args:
+            sprint_id: 冲刺ID
+
+        Returns:
+            冲刺信息字典
+        """
+        context = self.persistence.load(sprint_id)
+        if context is None:
+            return None
+        
+        return {
+            "sprint_id": context.sprint_id,
+            "state": context.state.value,
+            "original_input": context.original_input,
+            "created_at": context.created_at.isoformat(),
+            "updated_at": context.updated_at.isoformat(),
+            "hypotheses_count": len(context.hypotheses) if context.hypotheses else 0,
+            "execution_results_count": len(context.execution_results) if context.execution_results else 0,
+            "learnings_count": len(context.learnings) if context.learnings else 0,
+        }
+
+    def delete_sprint(self, sprint_id: str) -> bool:
+        """
+        删除冲刺
+
+        Args:
+            sprint_id: 冲刺ID
+
+        Returns:
+            删除是否成功
+        """
+        return self.persistence.delete(sprint_id)
+
+    def archive_sprint(self, sprint_id: str) -> bool:
+        """
+        归档冲刺
+
+        Args:
+            sprint_id: 冲刺ID
+
+        Returns:
+            归档是否成功
+        """
+        return self.persistence.archive(sprint_id)
 
     def get_next_steps(self) -> List[str]:
         """获取建议的下一步操作"""
@@ -262,33 +468,10 @@ class AgentDriver:
             self.config.progress_callback(stage, message)
 
     def _save_context(self):
-        """保存冲刺上下文"""
-        if not self.context:
-            return
-
-        context_path = self.storage_path / "sprints" / f"{self.context.sprint_id}.json"
-        context_path.parent.mkdir(parents=True, exist_ok=True)
-
-        with open(context_path, "w", encoding="utf-8") as f:
-            json.dump({
-                "sprint_id": self.context.sprint_id,
-                "original_input": self.context.original_input,
-                "state": self.context.state.value,
-                "created_at": self.context.created_at.isoformat(),
-            }, f, ensure_ascii=False, indent=2)
+        """保存冲刺上下文（使用持久化管理器）"""
+        if self.context:
+            self.persistence.save(self.context)
 
     def _load_context(self, sprint_id: str) -> Optional[SprintContext]:
-        """加载冲刺上下文"""
-        context_path = self.storage_path / "sprints" / f"{sprint_id}.json"
-
-        if not context_path.exists():
-            return None
-
-        with open(context_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        return SprintContext(
-            sprint_id=data["sprint_id"],
-            original_input=data["original_input"],
-            state=SprintState(data["state"]),
-        )
+        """加载冲刺上下文（使用持久化管理器）"""
+        return self.persistence.load(sprint_id)

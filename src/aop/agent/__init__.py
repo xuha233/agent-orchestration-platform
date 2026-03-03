@@ -1,4 +1,4 @@
-"""
+﻿"""
 Agent 自动化模块
 
 从模糊需求到交付的全自动 Agent 团队驱动。
@@ -18,6 +18,7 @@ from .types import (
     AgentDriverConfig,
 )
 from .driver import AgentDriver
+from .persistence import SprintPersistence
 
 __all__ = [
     "SprintState",
@@ -32,4 +33,5 @@ __all__ = [
     "SprintResult",
     "AgentDriverConfig",
     "AgentDriver",
+    "SprintPersistence",
 ]
