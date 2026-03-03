@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import time
+import uuid
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 from enum import Enum
@@ -27,8 +28,10 @@ class TimeoutExtensionRequest:
     reason: str
     progress_summary: str  # 当前进度摘要
     status: ExtensionRequestStatus = ExtensionRequestStatus.PENDING
+    granted_seconds: int = 0  # 实际批准的秒数
+    rejection_reason: str | None = None  # 拒绝原因（系统拒绝时使用）
     created_at: float = field(default_factory=time.time)
-    decided_at: Optional[float] = None
+    decided_at: float | None = None
 
 
 @dataclass
@@ -59,7 +62,6 @@ class TimeoutManager:
             max_total_extension=max_total_extension,
         )
         self.on_extension_request = on_extension_request
-        self._request_counter = 0
     
     def get_remaining_seconds(self) -> int:
         """获取剩余秒数"""
@@ -82,6 +84,10 @@ class TimeoutManager:
         """检查是否即将超时"""
         return self.get_remaining_seconds() <= threshold_seconds
     
+    def is_expired(self) -> bool:
+        """检查是否已超时"""
+        return self.get_remaining_seconds() <= 0
+    
     def request_extension(
         self,
         task_id: str,
@@ -100,17 +106,35 @@ class TimeoutManager:
         Returns:
             TimeoutExtensionRequest: 延长请求对象
         """
-        self._request_counter += 1
+        # 生成唯一请求 ID
+        request_id = f"ext_{uuid.uuid4().hex[:8]}"
+        
         request = TimeoutExtensionRequest(
-            request_id=f"ext_{self._request_counter}",
+            request_id=request_id,
             current_task_id=task_id,
             requested_seconds=requested_seconds,
             reason=reason,
             progress_summary=progress_summary,
         )
         
+        # 验证输入
+        if requested_seconds <= 0:
+            request.status = ExtensionRequestStatus.REJECTED
+            request.rejection_reason = "延长时间必须为正数"
+            request.decided_at = time.time()
+            self.state.extension_requests.append(request)
+            return request
+        
+        # 检查是否已超时（业务规则：不允许超时后延长）
+        if self.is_expired():
+            request.status = ExtensionRequestStatus.REJECTED
+            request.rejection_reason = "任务已超时，无法延长"
+            request.decided_at = time.time()
+            self.state.extension_requests.append(request)
+            return request
+        
         # 检查是否可以延长
-        can_extend = self._check_can_extend(request)
+        can_extend, rejection_reason = self._check_can_extend(request)
         
         if can_extend:
             # 如果有回调，让用户/主 Agent 决定
@@ -122,34 +146,39 @@ class TimeoutManager:
             
             if approved:
                 request.status = ExtensionRequestStatus.APPROVED
+                request.granted_seconds = requested_seconds
                 self.state.extended_seconds += requested_seconds
             else:
                 request.status = ExtensionRequestStatus.REJECTED
+                request.rejection_reason = "请求被拒绝"
         else:
             request.status = ExtensionRequestStatus.REJECTED
+            request.rejection_reason = rejection_reason
         
         request.decided_at = time.time()
         self.state.extension_requests.append(request)
         return request
     
-    def _check_can_extend(self, request: TimeoutExtensionRequest) -> bool:
-        """检查是否可以延长"""
+    def _check_can_extend(self, request: TimeoutExtensionRequest) -> tuple[bool, str | None]:
+        """检查是否可以延长
+        
+        Returns:
+            tuple[bool, str | None]: (是否可以延长, 拒绝原因)
+        """
         # 检查延长次数
         approved_count = sum(
             1 for r in self.state.extension_requests
             if r.status == ExtensionRequestStatus.APPROVED
         )
         if approved_count >= self.state.max_extensions:
-            request.reason = f"已达到最大延长次数 ({self.state.max_extensions})"
-            return False
+            return False, f"已达到最大延长次数 ({self.state.max_extensions})"
         
         # 检查总延长时间
         potential_total = self.state.extended_seconds + request.requested_seconds
         if potential_total > self.state.max_total_extension:
-            request.reason = f"总延长时间将超过最大限制 ({self.state.max_total_extension}s)"
-            return False
+            return False, f"总延长时间将超过最大限制 ({self.state.max_total_extension}s)"
         
-        return True
+        return True, None
     
     def get_status_report(self) -> dict:
         """获取状态报告"""

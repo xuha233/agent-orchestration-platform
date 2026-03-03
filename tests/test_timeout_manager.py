@@ -40,6 +40,15 @@ class TestTimeoutManager:
         # 等待 4 秒后，剩余时间 < 2 秒，应该预警
         assert manager.is_timeout_imminent(threshold_seconds=2)
     
+    def test_is_expired(self):
+        """测试超时检查"""
+        manager = TimeoutManager(original_timeout=2)  # 2 秒超时
+        
+        assert not manager.is_expired()
+        
+        time.sleep(2.5)
+        assert manager.is_expired()
+    
     def test_request_extension_approved(self):
         """测试延长超时（批准）"""
         manager = TimeoutManager(original_timeout=600)
@@ -52,6 +61,7 @@ class TestTimeoutManager:
         )
         
         assert request.status == ExtensionRequestStatus.APPROVED
+        assert request.granted_seconds == 300
         assert manager.state.extended_seconds == 300
         assert manager.get_remaining_seconds() > 600
     
@@ -85,6 +95,7 @@ class TestTimeoutManager:
             progress_summary="进度 80%",
         )
         assert req2.status == ExtensionRequestStatus.REJECTED
+        assert req2.rejection_reason == "请求被拒绝"
     
     def test_max_extensions_limit(self):
         """测试最大延长次数限制"""
@@ -104,6 +115,7 @@ class TestTimeoutManager:
         # 第三次延长（超过限制）
         req3 = manager.request_extension("task_001", 300, "原因3", "进度3")
         assert req3.status == ExtensionRequestStatus.REJECTED
+        assert "最大延长次数" in req3.rejection_reason
     
     def test_max_total_extension_limit(self):
         """测试最大总延长时间限制"""
@@ -119,6 +131,64 @@ class TestTimeoutManager:
         # 再延长 300 秒（超过总限制）
         req2 = manager.request_extension("task_001", 300, "原因2", "进度2")
         assert req2.status == ExtensionRequestStatus.REJECTED
+        assert "最大限制" in req2.rejection_reason
+    
+    def test_negative_seconds_rejected(self):
+        """测试负数秒被拒绝"""
+        manager = TimeoutManager(original_timeout=600)
+        
+        request = manager.request_extension(
+            task_id="task_001",
+            requested_seconds=-100,
+            reason="尝试负数",
+            progress_summary="测试",
+        )
+        
+        assert request.status == ExtensionRequestStatus.REJECTED
+        assert "正数" in request.rejection_reason
+        assert manager.state.extended_seconds == 0  # 未延长
+    
+    def test_zero_seconds_rejected(self):
+        """测试零秒被拒绝"""
+        manager = TimeoutManager(original_timeout=600)
+        
+        request = manager.request_extension(
+            task_id="task_001",
+            requested_seconds=0,
+            reason="尝试零秒",
+            progress_summary="测试",
+        )
+        
+        assert request.status == ExtensionRequestStatus.REJECTED
+        assert "正数" in request.rejection_reason
+    
+    def test_extension_after_timeout_rejected(self):
+        """测试超时后无法延长"""
+        manager = TimeoutManager(original_timeout=1)  # 1 秒超时
+        
+        time.sleep(1.5)  # 等待超时
+        assert manager.is_expired()
+        
+        request = manager.request_extension(
+            task_id="task_001",
+            requested_seconds=300,
+            reason="超时后尝试延长",
+            progress_summary="测试",
+        )
+        
+        assert request.status == ExtensionRequestStatus.REJECTED
+        assert "已超时" in request.rejection_reason
+    
+    def test_unique_request_ids(self):
+        """测试请求 ID 唯一性"""
+        manager = TimeoutManager(original_timeout=600)
+        
+        req1 = manager.request_extension("task_001", 100, "原因1", "进度1")
+        req2 = manager.request_extension("task_001", 100, "原因2", "进度2")
+        
+        assert req1.request_id != req2.request_id
+        assert req1.request_id.startswith("ext_")
+        assert req2.request_id.startswith("ext_")
     
     def test_get_status_report(self):
         """测试状态报告"""
