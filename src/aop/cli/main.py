@@ -1037,6 +1037,61 @@ def assess(problem_clarity: str, data_availability: str, tech_novelty: str, busi
     console.print("[bold]Iteration Length:[/bold] " + config.iteration_length)
 
 
+@cli.command()
+@click.option("--port", "-p", default=8501, help="Port to run dashboard on (default: 8501)")
+@click.option("--host", "-h", default="localhost", help="Host to bind (default: localhost)")
+@click.option("--open-browser", "-o", is_flag=True, help="Open browser automatically")
+def dashboard(port: int, host: str, open_browser: bool):
+    """Start the AOP Dashboard web UI.
+    
+    A visual interface for:
+    - Provider status monitoring
+    - Task execution history
+    - Hypothesis management
+    - Learning records
+    - Quick start guides
+    
+    \b
+    Examples:
+      aop dashboard
+      aop dashboard --port 8080
+      aop dashboard --open-browser
+    
+    \b
+    Exit Codes:
+      0 - Dashboard started successfully
+      1 - Failed to start (streamlit not installed or other error)
+    """
+    try:
+        from ..dashboard import run_dashboard
+        import webbrowser
+        
+        console.print(Panel.fit(
+            f"[bold cyan]🤖 AOP Dashboard[/bold cyan]\n\n"
+            f"Starting at: [link]http://{host}:{port}[/link]\n\n"
+            f"[dim]Press Ctrl+C to stop[/dim]",
+            title="Dashboard",
+            border_style="blue",
+        ))
+        
+        if open_browser:
+            webbrowser.open(f"http://{host}:{port}")
+        
+        run_dashboard(port=port, host=host)
+        
+    except ImportError:
+        console.print("[bold red]Error: streamlit is not installed[/bold red]")
+        console.print("\nInstall with:")
+        console.print("  [cyan]pip install streamlit[/cyan]")
+        console.print("\nOr reinstall AOP with dashboard support:")
+        console.print("  [cyan]pip install git+https://github.com/xuha233/agent-orchestration-platform.git[/cyan]")
+        sys.exit(EXIT_ERROR)
+    except KeyboardInterrupt:
+        console.print("\n[dim]Dashboard stopped[/dim]")
+        sys.exit(EXIT_SUCCESS)
+    except Exception as e:
+        console.print(f"[bold red]Error starting dashboard: {e}[/bold red]")
+        sys.exit(EXIT_ERROR)
 
 
 # Register agent command group
