@@ -135,6 +135,12 @@ class ShimAdapterBase:
         if not isinstance(cmd, list) or not cmd:
             raise ValueError("adapter run command is empty")
 
+        # Resolve binary path on Windows to avoid PATH issues with start_new_session
+        if sys.platform == "win32" and not Path(cmd[0]).exists():
+            resolved = shutil.which(cmd[0])
+            if resolved:
+                cmd[0] = resolved
+
         artifact_root = str(input_task.metadata.get("artifact_root", "/tmp/aop"))
         paths = expected_paths(artifact_root, input_task.task_id, (self.id,))
         root = paths["root"]

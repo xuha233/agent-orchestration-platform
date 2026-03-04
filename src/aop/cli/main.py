@@ -603,7 +603,6 @@ def run_command(
     engine = ExecutionEngine(
         providers=provider_list,
         default_timeout=timeout,
-        policy=policy,
     )
     
     with Progress(
