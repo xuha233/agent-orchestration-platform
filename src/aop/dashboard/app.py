@@ -17,7 +17,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from aop.core.adapter import get_adapter_registry
 from aop.workflow.hypothesis import HypothesisManager
 from aop.workflow.learning import LearningLog
-from aop.llm import ClaudeClient, LLMMessage
 
 # Page config
 st.set_page_config(
@@ -128,43 +127,69 @@ def save_chat_history(history):
 
 
 def get_llm_client():
-    """Get LLM client instance."""
-    return ClaudeClient()
+    """Check if Claude CLI is available."""
+    import shutil
+    return shutil.which("claude") is not None
 
 
-def chat_with_streaming(client: ClaudeClient, messages: list, placeholder):
-    """Execute chat with streaming output."""
-    import anthropic
-
-    api_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
-
-    system_prompt = """你是 AOP (Agent Orchestration Platform) 的助手。
+def chat_with_streaming(messages: list, placeholder):
+    """Execute chat using Claude CLI (subprocess)."""
+    import subprocess
+    import shutil
+    
+    # Build prompt from messages
+    prompt_parts = []
+    for m in messages:
+        role = "用户" if m["role"] == "user" else "助手"
+        prompt_parts.append(f"{role}: {m['content']}")
+    
+    full_prompt = "\n\n".join(prompt_parts)
+    
+    # Add system instruction
+    system_instruction = """你是 AOP (Agent Orchestration Platform) 的助手。
 你可以帮助用户：
 - 进行代码审查和分析
 - 创建和验证假设
 - 查看项目状态
 - 回答关于 AOP 使用的问题
 
-请用简洁、专业的中文回答。"""
-
-    full_response = ""
+请用简洁、专业的中文回答。如果用户要求执行代码审查，建议使用 aop review 命令。"""
+    
+    final_prompt = f"{system_instruction}\n\n{full_prompt}\n\n助手:"
+    
     try:
-        with client._get_client().messages.stream(
-            model=client.model,
-            messages=api_messages,
-            system=system_prompt,
-            max_tokens=4096,
-            temperature=0.7,
-        ) as stream:
-            for text in stream.text_stream:
-                full_response += text
-                placeholder.markdown(full_response + "▌")
-    except Exception as e:
-        placeholder.error(f"Error: {str(e)}")
+        # Resolve claude binary path on Windows
+        claude_bin = shutil.which("claude")
+        if not claude_bin:
+            placeholder.error("Claude CLI 未安装或未认证。请运行: claude auth login")
+            return None
+        
+        # Run Claude CLI
+        result = subprocess.run(
+            [claude_bin, "-p", "--permission-mode", "plan", "--output-format", "text", final_prompt],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        
+        if result.returncode != 0:
+            # Check if it's just a permission issue
+            if "permission" in result.stderr.lower():
+                placeholder.warning("Claude 需要权限确认。请尝试在终端运行一次: claude -p 'hello'")
+                return None
+            placeholder.error(f"Claude 错误: {result.stderr[:200]}")
+            return None
+        
+        response = result.stdout.strip()
+        placeholder.markdown(response)
+        return response
+        
+    except subprocess.TimeoutExpired:
+        placeholder.error("请求超时。请稍后重试。")
         return None
-
-    placeholder.markdown(full_response)
-    return full_response
+    except Exception as e:
+        placeholder.error(f"错误: {str(e)}")
+        return None
 
 
 # Initialize session state
@@ -220,10 +245,8 @@ if page == "💬 首页":
             # Get AI response
             with st.chat_message("assistant"):
                 placeholder = st.empty()
-                client = get_llm_client()
 
                 response = chat_with_streaming(
-                    client,
                     st.session_state.messages,
                     placeholder
                 )
