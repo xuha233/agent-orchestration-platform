@@ -7,6 +7,8 @@
 import json
 import time
 import threading
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Callable, Optional, Dict, Any
 from dataclasses import dataclass
@@ -25,10 +27,10 @@ RESULTS_DIR = AOP_DIR / "results"
 class AOPCommand:
     """AOP 命令"""
     id: str
-    command: str  # review, hypothesis, run, etc.
+    command: str
     args: Dict[str, Any]
     timestamp: str
-    source: str = "external"  # openclaw, claude_code, external
+    source: str = "external"
     
     @classmethod
     def from_json(cls, data: Dict[str, Any]) -> "AOPCommand":
@@ -73,7 +75,6 @@ class CommandListener:
         self.results_dir = results_dir or RESULTS_DIR
         self.poll_interval = poll_interval
         
-        # 确保目录存在
         self.commands_dir.mkdir(parents=True, exist_ok=True)
         self.results_dir.mkdir(parents=True, exist_ok=True)
         
@@ -81,11 +82,9 @@ class CommandListener:
         self._thread: Optional[threading.Thread] = None
         self._handlers: Dict[str, Callable] = {}
         
-        # 注册默认处理器
         self._register_default_handlers()
     
     def _register_default_handlers(self):
-        """注册默认命令处理器"""
         self.register_handler("review", self._handle_review)
         self.register_handler("hypothesis", self._handle_hypothesis)
         self.register_handler("run", self._handle_run)
@@ -93,11 +92,9 @@ class CommandListener:
         self.register_handler("status", self._handle_status)
     
     def register_handler(self, command: str, handler: Callable):
-        """注册命令处理器"""
         self._handlers[command] = handler
     
     def start(self):
-        """启动监听"""
         if self._running:
             return
         
@@ -107,34 +104,28 @@ class CommandListener:
         logger.info(f"Command listener started, watching {self.commands_dir}")
     
     def stop(self):
-        """停止监听"""
         self._running = False
         if self._thread:
             self._thread.join(timeout=2.0)
         logger.info("Command listener stopped")
     
     def _listen_loop(self):
-        """监听循环"""
         processed_files = set()
         
         while self._running:
             try:
-                # 扫描命令文件
-                for cmd_file in self.commands_dir.glob("*.json"):
+                for cmd_file in list(self.commands_dir.glob("*.json")):
                     if cmd_file.name in processed_files:
                         continue
                     
-                    # 处理命令
                     self._process_command_file(cmd_file)
                     processed_files.add(cmd_file.name)
                     
-                    # 删除已处理的命令文件
                     try:
                         cmd_file.unlink()
                     except Exception:
                         pass
                 
-                # 清理旧的已处理文件记录（保留最近 100 个）
                 if len(processed_files) > 100:
                     processed_files = set(list(processed_files)[-100:])
                 
@@ -144,7 +135,6 @@ class CommandListener:
             time.sleep(self.poll_interval)
     
     def _process_command_file(self, cmd_file: Path):
-        """处理命令文件"""
         try:
             with open(cmd_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -152,7 +142,6 @@ class CommandListener:
             cmd = AOPCommand.from_json(data)
             logger.info(f"Processing command: {cmd.command} (id: {cmd.id})")
             
-            # 获取处理器
             handler = self._handlers.get(cmd.command)
             if handler:
                 result = handler(cmd)
@@ -164,14 +153,12 @@ class CommandListener:
                     error=f"Unknown command: {cmd.command}",
                 )
             
-            # 写入结果
             self._write_result(result)
             
         except Exception as e:
             logger.error(f"Error processing command file: {e}")
     
     def _write_result(self, result: CommandResult):
-        """写入结果文件"""
         result_file = self.results_dir / f"{result.command_id}.json"
         with open(result_file, "w", encoding="utf-8") as f:
             json.dump(result.to_dict(), f, ensure_ascii=False, indent=2)
@@ -179,16 +166,10 @@ class CommandListener:
     # ============ 默认处理器 ============
     
     def _handle_review(self, cmd: AOPCommand) -> CommandResult:
-        """处理 review 命令"""
-        from ..cli.main import cli
-        import subprocess
-        import sys
-        
         args = cmd.args
         prompt = args.get("prompt", "")
         provider = args.get("provider", "claude")
         
-        # 构建 CLI 命令
         cli_args = ["aop", "review", "-p", prompt, "-P", provider]
         
         try:
@@ -213,13 +194,12 @@ class CommandListener:
             )
     
     def _handle_hypothesis(self, cmd: AOPCommand) -> CommandResult:
-        """处理 hypothesis 命令"""
         args = cmd.args
         action = args.get("action", "list")
         statement = args.get("statement", "")
         
         try:
-            from ..workflow.hypothesis import HypothesisManager
+            from aop.workflow.hypothesis import HypothesisManager
             
             manager = HypothesisManager()
             
@@ -254,8 +234,6 @@ class CommandListener:
             )
     
     def _handle_run(self, cmd: AOPCommand) -> CommandResult:
-        """处理 run 命令"""
-        # TODO: 实现 aop run 逻辑
         return CommandResult(
             command_id=cmd.id,
             success=False,
@@ -264,7 +242,6 @@ class CommandListener:
         )
     
     def _handle_dashboard(self, cmd: AOPCommand) -> CommandResult:
-        """处理 dashboard 命令"""
         action = cmd.args.get("action", "status")
         
         if action == "open":
@@ -283,21 +260,24 @@ class CommandListener:
             )
     
     def _handle_status(self, cmd: AOPCommand) -> CommandResult:
-        """处理 status 命令"""
-        from ..core.adapter import get_adapter_registry
+        """检查 Provider 状态（简化版，避免 detect() 卡住）"""
+        import shutil
         
-        registry = get_adapter_registry()
-        providers = ["claude", "codex", "gemini", "qwen", "opencode"]
+        providers = {
+            "claude": "claude",
+            "codex": "codex",
+            "gemini": None,  # Python package
+            "qwen": None,    # Python package
+            "opencode": "opencode",
+        }
         
         status_lines = []
-        for pid in providers:
-            adapter = registry.get(pid)
-            if adapter:
-                presence = adapter.detect()
-                status = "✅" if presence.detected and presence.auth_ok else "❌"
-                status_lines.append(f"{pid}: {status}")
+        for pid, binary in providers.items():
+            if binary:
+                available = shutil.which(binary) is not None
+                status_lines.append(f"{pid}: {'✅' if available else '❌'}")
             else:
-                status_lines.append(f"{pid}: ❌")
+                status_lines.append(f"{pid}: ⚠️ (check manually)")
         
         return CommandResult(
             command_id=cmd.id,
@@ -306,12 +286,11 @@ class CommandListener:
         )
 
 
-# 全局监听器实例
+# 全局实例
 _listener: Optional[CommandListener] = None
 
 
 def get_listener() -> CommandListener:
-    """获取全局监听器实例"""
     global _listener
     if _listener is None:
         _listener = CommandListener()
@@ -319,29 +298,18 @@ def get_listener() -> CommandListener:
 
 
 def start_listener():
-    """启动全局监听器"""
     listener = get_listener()
     listener.start()
 
 
 def stop_listener():
-    """停止全局监听器"""
     global _listener
     if _listener:
         _listener.stop()
 
 
 def submit_command(command: str, args: Dict[str, Any] = None, source: str = "external") -> str:
-    """提交命令到监听器
-    
-    Args:
-        command: 命令名称（review, hypothesis, etc.）
-        args: 命令参数
-        source: 命令来源（openclaw, claude_code, external）
-    
-    Returns:
-        命令 ID
-    """
+    """提交命令到监听器"""
     import uuid
     
     cmd_id = str(uuid.uuid4())[:8]
@@ -354,7 +322,6 @@ def submit_command(command: str, args: Dict[str, Any] = None, source: str = "ext
         "source": source,
     }
     
-    # 写入命令文件
     COMMANDS_DIR.mkdir(parents=True, exist_ok=True)
     cmd_file = COMMANDS_DIR / f"{cmd_id}.json"
     

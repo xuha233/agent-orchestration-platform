@@ -58,6 +58,24 @@ st.markdown("""
 
 # ============ 初始化 ============
 
+# 启动命令监听器（模块加载时立即启动）
+_listener_started = False
+
+def ensure_listener():
+    """确保监听器已启动"""
+    global _listener_started
+    if not _listener_started:
+        try:
+            start_listener()
+            _listener_started = True
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to start listener: {e}")
+
+# 模块加载时启动
+ensure_listener()
+
+
 def init_session_state():
     """初始化 session state"""
     if "workspace_manager" not in st.session_state:
@@ -70,10 +88,6 @@ def init_session_state():
         st.session_state.messages = []
     if "session_id" not in st.session_state:
         st.session_state.session_id = None
-    if "listener_started" not in st.session_state:
-        # 启动命令监听器
-        start_listener()
-        st.session_state.listener_started = True
 
 
 def get_available_agents() -> list:
