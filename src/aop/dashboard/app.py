@@ -12,6 +12,7 @@ from typing import Optional
 
 from aop.primary import get_registry, AgentContext, PrimaryAgent
 from aop.primary.workspace import WorkspaceManager, Workspace
+from aop.primary.listener import start_listener, submit_command
 
 # Page config
 st.set_page_config(
@@ -69,6 +70,10 @@ def init_session_state():
         st.session_state.messages = []
     if "session_id" not in st.session_state:
         st.session_state.session_id = None
+    if "listener_started" not in st.session_state:
+        # 启动命令监听器
+        start_listener()
+        st.session_state.listener_started = True
 
 
 def get_available_agents() -> list:
