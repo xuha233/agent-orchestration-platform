@@ -5,12 +5,59 @@ Uses the `opencode` CLI to interact with OpenCode.
 
 from __future__ import annotations
 
-import asyncio
+import platform
+import subprocess
 import shutil
 from pathlib import Path
 from typing import Optional
 
 from .base import AgentContext, PrimaryAgent
+
+
+# Windows 上常见的 npm 全局安装路径
+NPM_GLOBAL_PATHS = [
+    Path.home() / "AppData" / "Roaming" / "npm",
+    Path.home() / ".npm-global" / "bin",
+    Path("/usr/local/bin"),
+    Path("/usr/bin"),
+]
+
+
+def _find_binary(binary_name: str) -> Optional[str]:
+    """
+    查找 CLI 二进制文件，支持 Windows 的 .cmd/.bat 扩展名
+
+    在 Windows 上，npm 安装的 CLI 通常是 .cmd 文件，
+    shutil.which() 在某些环境下可能无法正确找到它们。
+    """
+    # 首先尝试标准查找
+    result = shutil.which(binary_name)
+    if result:
+        return result
+
+    # 在 Windows 上额外检查常见路径
+    if platform.system() == "Windows":
+        import os
+        # 检查 PATHEXT 环境变量指定的扩展名
+        pathext = os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(";")
+
+        for npm_path in NPM_GLOBAL_PATHS:
+            if not npm_path.exists():
+                continue
+            for ext in pathext:
+                candidate = npm_path / f"{binary_name}{ext}"
+                if candidate.exists():
+                    return str(candidate)
+
+        # 直接检查 .cmd 扩展名（npm 最常见的情况）
+        for npm_path in NPM_GLOBAL_PATHS:
+            if not npm_path.exists():
+                continue
+            candidate = npm_path / f"{binary_name}.cmd"
+            if candidate.exists():
+                return str(candidate)
+
+    return None
 
 
 class OpenCodeAgent(PrimaryAgent):
@@ -33,6 +80,7 @@ class OpenCodeAgent(PrimaryAgent):
         """Initialize the OpenCode agent."""
         self._session_id: Optional[str] = None
         self._opencode_dir = Path.home() / ".opencode"
+        self._binary_path: Optional[str] = None
 
     def is_available(self) -> bool:
         """Check if opencode CLI is available.
@@ -40,7 +88,8 @@ class OpenCodeAgent(PrimaryAgent):
         Returns:
             True if the `opencode` binary is found in PATH
         """
-        return shutil.which("opencode") is not None
+        self._binary_path = _find_binary("opencode")
+        return self._binary_path is not None
 
     async def chat(
         self,
@@ -57,9 +106,13 @@ class OpenCodeAgent(PrimaryAgent):
 
         Returns:
             Complete response text
+
+        Raises:
+            RuntimeError: If the command fails
         """
         # Build command - opencode uses similar flags to claude
-        cmd = ["opencode", "-p", message]
+        binary = self._binary_path or _find_binary("opencode") or "opencode"
+        cmd = [binary, "-p", message]
 
         # Add resume flag if we have a session
         if self._session_id:
@@ -67,24 +120,33 @@ class OpenCodeAgent(PrimaryAgent):
         elif context.session_id:
             cmd.extend(["--resume", context.session_id])
 
-        # Create subprocess
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            cwd=str(context.workspace_path),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        # 使用同步 subprocess.run 替代 asyncio.create_subprocess_exec
+        # 这在 Windows 上更稳定，特别是在 Streamlit 环境中
+        try:
+            result = subprocess.run(
+                cmd,
+                cwd=str(context.workspace_path),
+                capture_output=True,
+                text=True,
+                timeout=300,  # 5 分钟超时
+            )
 
-        # Read output
-        stdout_data, stderr_data = await process.communicate()
-        output = stdout_data.decode("utf-8")
+            output = result.stdout
+
+            # Check for errors
+            if result.returncode != 0:
+                error_msg = result.stderr.strip() or f"Exit code: {result.returncode}"
+                raise RuntimeError(f"OpenCode error: {error_msg}")
+
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("OpenCode command timed out after 5 minutes")
 
         # Update session ID
-        await self._update_session_id()
+        self._update_session_id()
 
         return output
 
-    async def _update_session_id(self) -> None:
+    def _update_session_id(self) -> None:
         """Update session ID from the OpenCode directory.
 
         OpenCode may store session data in ~/.opencode/.

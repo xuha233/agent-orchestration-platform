@@ -5,12 +5,59 @@ Uses the `claude` CLI to interact with Claude Code.
 
 from __future__ import annotations
 
-import asyncio
+import platform
+import subprocess
 import shutil
 from pathlib import Path
 from typing import Optional
 
 from .base import AgentContext, PrimaryAgent
+
+
+# Windows 上常见的 npm 全局安装路径
+NPM_GLOBAL_PATHS = [
+    Path.home() / "AppData" / "Roaming" / "npm",
+    Path.home() / ".npm-global" / "bin",
+    Path("/usr/local/bin"),
+    Path("/usr/bin"),
+]
+
+
+def _find_binary(binary_name: str) -> Optional[str]:
+    """
+    查找 CLI 二进制文件，支持 Windows 的 .cmd/.bat 扩展名
+
+    在 Windows 上，npm 安装的 CLI 通常是 .cmd 文件，
+    shutil.which() 在某些环境下可能无法正确找到它们。
+    """
+    # 首先尝试标准查找
+    result = shutil.which(binary_name)
+    if result:
+        return result
+
+    # 在 Windows 上额外检查常见路径
+    if platform.system() == "Windows":
+        import os
+        # 检查 PATHEXT 环境变量指定的扩展名
+        pathext = os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(";")
+
+        for npm_path in NPM_GLOBAL_PATHS:
+            if not npm_path.exists():
+                continue
+            for ext in pathext:
+                candidate = npm_path / f"{binary_name}{ext}"
+                if candidate.exists():
+                    return str(candidate)
+
+        # 直接检查 .cmd 扩展名（npm 最常见的情况）
+        for npm_path in NPM_GLOBAL_PATHS:
+            if not npm_path.exists():
+                continue
+            candidate = npm_path / f"{binary_name}.cmd"
+            if candidate.exists():
+                return str(candidate)
+
+    return None
 
 
 class ClaudeCodeAgent(PrimaryAgent):
@@ -33,6 +80,7 @@ class ClaudeCodeAgent(PrimaryAgent):
         """Initialize the Claude Code agent."""
         self._session_id: Optional[str] = None
         self._claude_projects_dir = Path.home() / ".claude" / "projects"
+        self._binary_path: Optional[str] = None
 
     def is_available(self) -> bool:
         """Check if claude CLI is available.
@@ -40,7 +88,8 @@ class ClaudeCodeAgent(PrimaryAgent):
         Returns:
             True if the `claude` binary is found in PATH
         """
-        return shutil.which("claude") is not None
+        self._binary_path = _find_binary("claude")
+        return self._binary_path is not None
 
     async def chat(
         self,
@@ -62,7 +111,8 @@ class ClaudeCodeAgent(PrimaryAgent):
             RuntimeError: If the command fails or returns empty output
         """
         # Build command
-        cmd = ["claude", "-p", message, "--dangerously-skip-permissions"]
+        binary = self._binary_path or _find_binary("claude") or "claude"
+        cmd = [binary, "-p", message, "--dangerously-skip-permissions"]
 
         # Add resume flag if we have a session
         if self._session_id:
@@ -70,34 +120,38 @@ class ClaudeCodeAgent(PrimaryAgent):
         elif context.session_id:
             cmd.extend(["--resume", context.session_id])
 
-        # Create subprocess
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            cwd=str(context.workspace_path),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        # 使用同步 subprocess.run 替代 asyncio.create_subprocess_exec
+        # 这在 Windows 上更稳定，特别是在 Streamlit 环境中
+        try:
+            result = subprocess.run(
+                cmd,
+                cwd=str(context.workspace_path),
+                capture_output=True,
+                text=True,
+                timeout=300,  # 5 分钟超时
+            )
 
-        # Read output
-        stdout_data, stderr_data = await process.communicate()
-        output = stdout_data.decode("utf-8")
-        stderr_output = stderr_data.decode("utf-8")
+            output = result.stdout
+            stderr_output = result.stderr
 
-        # Check for errors
-        if process.returncode != 0:
-            error_msg = stderr_output.strip() or f"Exit code: {process.returncode}"
-            raise RuntimeError(f"Claude Code error: {error_msg}")
+            # Check for errors
+            if result.returncode != 0:
+                error_msg = stderr_output.strip() or f"Exit code: {result.returncode}"
+                raise RuntimeError(f"Claude Code error: {error_msg}")
 
-        # Check for empty output with stderr content
-        if not output.strip() and stderr_output.strip():
-            raise RuntimeError(f"Claude Code stderr: {stderr_output.strip()}")
+            # Check for empty output with stderr content
+            if not output.strip() and stderr_output.strip():
+                raise RuntimeError(f"Claude Code stderr: {stderr_output.strip()}")
+
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("Claude Code command timed out after 5 minutes")
 
         # Try to extract session ID from output or projects directory
-        await self._update_session_id(context.workspace_path)
+        self._update_session_id(context.workspace_path)
 
         return output
 
-    async def _update_session_id(self, workspace_path: Path) -> None:
+    def _update_session_id(self, workspace_path: Path) -> None:
         """Update session ID from the Claude projects directory.
 
         Claude Code stores session data in ~/.claude/projects/<encoded-path>/.

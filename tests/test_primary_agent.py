@@ -1,12 +1,11 @@
-﻿"""Tests for the primary agent abstraction layer."""
+"""Tests for the primary agent abstraction layer."""
 
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-import pytest_asyncio
 
 from aop.primary import (
     AgentContext,
@@ -65,18 +64,18 @@ class TestClaudeCodeAgent:
         assert agent.name == "Claude Code"
         assert agent.description == "Anthropic's Claude Code CLI agent"
 
-    @patch("shutil.which")
-    def test_is_available_true(self, mock_which: MagicMock) -> None:
+    @patch("aop.primary.claude_code._find_binary")
+    def test_is_available_true(self, mock_find: MagicMock) -> None:
         """Test is_available returns True when claude is found."""
-        mock_which.return_value = "/usr/bin/claude"
+        mock_find.return_value = "/usr/bin/claude"
         agent = ClaudeCodeAgent()
         assert agent.is_available() is True
-        mock_which.assert_called_once_with("claude")
+        mock_find.assert_called_once_with("claude")
 
-    @patch("shutil.which")
-    def test_is_available_false(self, mock_which: MagicMock) -> None:
+    @patch("aop.primary.claude_code._find_binary")
+    def test_is_available_false(self, mock_find: MagicMock) -> None:
         """Test is_available returns False when claude is not found."""
-        mock_which.return_value = None
+        mock_find.return_value = None
         agent = ClaudeCodeAgent()
         assert agent.is_available() is False
 
@@ -106,14 +105,13 @@ class TestClaudeCodeAgent:
     ) -> None:
         """Test basic chat functionality."""
         with patch("shutil.which", return_value="/usr/bin/claude"):
-            with patch("asyncio.create_subprocess_exec") as mock_subprocess:
-                # Mock the subprocess
-                mock_process = AsyncMock()
-                mock_process.communicate = AsyncMock(
-                    return_value=(b"Hello, I am Claude!", b"")
-                )
-                mock_process.returncode = 0  # Must be int, not AsyncMock
-                mock_subprocess.return_value = mock_process
+            with patch("subprocess.run") as mock_run:
+                # Mock the subprocess result
+                mock_result = MagicMock()
+                mock_result.stdout = "Hello, I am Claude!"
+                mock_result.stderr = ""
+                mock_result.returncode = 0
+                mock_run.return_value = mock_result
 
                 agent = ClaudeCodeAgent()
                 context = AgentContext(workspace_path=tmp_path)
@@ -124,11 +122,13 @@ class TestClaudeCodeAgent:
                 assert result == "Hello, I am Claude!"
 
                 # Verify command was called correctly
-                mock_subprocess.assert_called_once()
-                call_args = mock_subprocess.call_args
-                assert "claude" in call_args[0]
-                assert "-p" in call_args[0]
-                assert "Hello" in call_args[0]
+                mock_run.assert_called_once()
+                call_args = mock_run.call_args
+                # call_args[0] is a tuple, first element is the command list
+                cmd_list = call_args[0][0] if call_args[0] else []
+                assert "claude" in str(cmd_list)  # Check path contains 'claude'
+                assert "-p" in cmd_list
+                assert "Hello" in cmd_list
 
 
 class TestOpenCodeAgent:
@@ -141,18 +141,18 @@ class TestOpenCodeAgent:
         assert agent.name == "OpenCode"
         assert agent.description == "OpenCode CLI agent"
 
-    @patch("shutil.which")
-    def test_is_available_true(self, mock_which: MagicMock) -> None:
+    @patch("aop.primary.opencode._find_binary")
+    def test_is_available_true(self, mock_find: MagicMock) -> None:
         """Test is_available returns True when opencode is found."""
-        mock_which.return_value = "/usr/bin/opencode"
+        mock_find.return_value = "/usr/bin/opencode"
         agent = OpenCodeAgent()
         assert agent.is_available() is True
-        mock_which.assert_called_once_with("opencode")
+        mock_find.assert_called_once_with("opencode")
 
-    @patch("shutil.which")
-    def test_is_available_false(self, mock_which: MagicMock) -> None:
+    @patch("aop.primary.opencode._find_binary")
+    def test_is_available_false(self, mock_find: MagicMock) -> None:
         """Test is_available returns False when opencode is not found."""
-        mock_which.return_value = None
+        mock_find.return_value = None
         agent = OpenCodeAgent()
         assert agent.is_available() is False
 

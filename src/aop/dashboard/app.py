@@ -134,7 +134,7 @@ def render_sidebar():
         sm = st.session_state.settings_manager
         show_dev_console = sm.get_show_dev_console()
 
-        pages = ["🏠 首页", "📜 历史", "📁 工作区", "⚙️ 设置"]
+        pages = ["🏠 首页", "💬 敏捷教练", "📁 工作区", "⚙️ 设置"]
         if show_dev_console:
             pages.append("🖥️ 开发者控制台")
 
@@ -410,7 +410,119 @@ def render_quick_actions(is_openclaw: bool = False):
 # ============ 主页面 ============
 
 def page_home():
-    """首页"""
+    """首页 - 项目概览"""
+    st.title("🏠 项目概览")
+
+    wm = st.session_state.workspace_manager
+    sm = st.session_state.settings_manager
+
+    # === Agent 团队状态 ===
+    st.markdown("### 🤖 Agent 团队状态")
+    agents = get_available_agents()
+
+    if not agents:
+        st.warning("未检测到可用 Agent")
+        st.markdown("""
+        **安装指南：**
+        - Claude Code: `npm install -g @anthropic-ai/claude-code`
+        - OpenCode: `npm install -g opencode`
+        """)
+    else:
+        cols = st.columns(min(len(agents), 3))
+        for i, agent in enumerate(agents):
+            with cols[i % 3]:
+                is_current = st.session_state.current_agent and st.session_state.current_agent.id == agent.id
+                status_color = "🟢" if is_current else "⚪"
+
+                st.markdown(f"""
+                <div class="quick-card">
+                    <h4>{status_color} {agent.name}</h4>
+                    <p>{agent.description}</p>
+                </div>
+                """, unsafe_allow_html=True)
+
+                if is_current:
+                    st.caption("当前使用中")
+
+    st.markdown("---")
+
+    # === 项目统计 ===
+    st.markdown("### 📊 项目统计")
+    workspaces = wm.list_workspaces()
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.metric("工作区总数", len(workspaces))
+
+    with col2:
+        # 当前工作区
+        current_ws = st.session_state.current_workspace
+        st.metric("当前工作区", current_ws.name if current_ws else "未选择")
+
+    with col3:
+        # 会话消息数
+        msg_count = len(st.session_state.messages)
+        st.metric("对话消息数", msg_count)
+
+    with col4:
+        # 主 Agent
+        primary = sm.get_primary_agent()
+        st.metric("主 Agent", primary or "未设置")
+
+    st.markdown("---")
+
+    # === 工作区列表 ===
+    st.markdown("### 📁 工作区列表")
+
+    if not workspaces:
+        st.info("还没有工作区，请在「工作区」页面创建")
+    else:
+        for ws in workspaces:
+            is_current = current_ws and current_ws.id == ws.id
+
+            with st.container():
+                col1, col2, col3 = st.columns([3, 2, 1])
+
+                with col1:
+                    name_display = f"**{ws.name}** {'(当前)' if is_current else ''}"
+                    st.markdown(name_display)
+                    st.caption(f"📂 {ws.project_path}")
+
+                with col2:
+                    st.markdown(f"Agent: `{ws.primary_agent}`")
+
+                with col3:
+                    if not is_current:
+                        if st.button("切换", key=f"home_select_{ws.id}"):
+                            st.session_state.current_workspace = ws
+                            wm.set_current_workspace(ws.id)
+                            st.rerun()
+                    else:
+                        st.markdown("✅")
+
+                st.markdown("---")
+
+    # === 快速操作 ===
+    st.markdown("### ⚡ 快速操作")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        if st.button("💬 开始对话", use_container_width=True):
+            st.info("请前往「敏捷教练」页面开始对话")
+
+    with col2:
+        if st.button("📁 管理工作区", use_container_width=True):
+            st.info("请前往「工作区」页面管理")
+
+    with col3:
+        if st.button("⚙️ 系统设置", use_container_width=True):
+            st.info("请前往「设置」页面配置")
+
+
+def page_coach():
+    """敏捷教练页面 - 对话入口"""
     sm = st.session_state.settings_manager
     primary_agent = sm.get_primary_agent()
     is_openclaw = primary_agent == "openclaw"
@@ -422,6 +534,8 @@ def page_home():
             if agent.id == primary_agent:
                 st.session_state.current_agent = agent
                 break
+
+    st.title("💬 敏捷教练")
 
     # 顶部：项目选择器 + Agent 切换
     col1, col2 = st.columns(2)
@@ -461,29 +575,6 @@ def page_home():
 
     # 快捷指令
     render_quick_actions(is_openclaw=is_openclaw)
-
-
-def page_history():
-    """历史记录页面"""
-    st.title("📜 历史记录")
-
-    if not st.session_state.messages:
-        st.info("还没有对话记录。在首页开始对话！")
-        return
-
-    if st.button("🗑️ 清除对话历史", type="secondary"):
-        st.session_state.messages = []
-        st.session_state.session_id = None
-        if st.session_state.current_agent:
-            st.session_state.current_agent.clear_session()
-        st.rerun()
-
-    st.markdown("---")
-
-    for msg in st.session_state.messages:
-        role_emoji = "👤" if msg["role"] == "user" else "🤖"
-        with st.expander(f"{role_emoji} {msg['role']}", expanded=False):
-            st.markdown(msg["content"])
 
 
 def page_workspaces():
@@ -755,8 +846,8 @@ def main():
 
     if page == "🏠 首页":
         page_home()
-    elif page == "📜 历史":
-        page_history()
+    elif page == "💬 敏捷教练":
+        page_coach()
     elif page == "📁 工作区":
         page_workspaces()
     elif page == "⚙️ 设置":
