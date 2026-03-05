@@ -57,9 +57,12 @@ class ClaudeCodeAgent(PrimaryAgent):
 
         Returns:
             Complete response text
+
+        Raises:
+            RuntimeError: If the command fails or returns empty output
         """
         # Build command
-        cmd = ["claude", "-p", message]
+        cmd = ["claude", "-p", message, "--dangerously-skip-permissions"]
 
         # Add resume flag if we have a session
         if self._session_id:
@@ -78,6 +81,16 @@ class ClaudeCodeAgent(PrimaryAgent):
         # Read output
         stdout_data, stderr_data = await process.communicate()
         output = stdout_data.decode("utf-8")
+        stderr_output = stderr_data.decode("utf-8")
+
+        # Check for errors
+        if process.returncode != 0:
+            error_msg = stderr_output.strip() or f"Exit code: {process.returncode}"
+            raise RuntimeError(f"Claude Code error: {error_msg}")
+
+        # Check for empty output with stderr content
+        if not output.strip() and stderr_output.strip():
+            raise RuntimeError(f"Claude Code stderr: {stderr_output.strip()}")
 
         # Try to extract session ID from output or projects directory
         await self._update_session_id(context.workspace_path)

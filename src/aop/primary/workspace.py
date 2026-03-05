@@ -11,6 +11,62 @@ import uuid
 AOP_DIR = Path.home() / ".aop"
 WORKSPACES_DIR = AOP_DIR / "workspaces"
 SESSIONS_DIR = AOP_DIR / "sessions"
+SETTINGS_FILE = AOP_DIR / "settings.json"
+
+
+class SettingsManager:
+    """全局设置管理器"""
+
+    DEFAULT_SETTINGS = {
+        "primary_agent": None,  # None 表示未锁定，可选 "openclaw" | "claude_code" | "opencode"
+        "show_dev_console": False,  # 是否显示开发者控制台
+    }
+
+    def __init__(self, base_dir: Path = None):
+        self.base_dir = base_dir or AOP_DIR
+        self.settings_file = self.base_dir / "settings.json"
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+
+    def load(self) -> Dict[str, Any]:
+        """加载设置"""
+        if self.settings_file.exists():
+            try:
+                with open(self.settings_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    # 合并默认值
+                    return {**self.DEFAULT_SETTINGS, **data}
+            except (json.JSONDecodeError, KeyError):
+                pass
+        return dict(self.DEFAULT_SETTINGS)
+
+    def save(self, settings: Dict[str, Any]) -> None:
+        """保存设置"""
+        with open(self.settings_file, "w", encoding="utf-8") as f:
+            json.dump(settings, f, ensure_ascii=False, indent=2)
+
+    def get_primary_agent(self) -> Optional[str]:
+        """获取主 Agent 设置"""
+        return self.load().get("primary_agent")
+
+    def set_primary_agent(self, agent_id: Optional[str]) -> None:
+        """设置主 Agent"""
+        settings = self.load()
+        settings["primary_agent"] = agent_id
+        self.save(settings)
+
+    def is_agent_locked(self) -> bool:
+        """检查 Agent 是否被锁定（设置了主 Agent）"""
+        return self.get_primary_agent() is not None
+
+    def get_show_dev_console(self) -> bool:
+        """获取是否显示开发者控制台"""
+        return self.load().get("show_dev_console", False)
+
+    def set_show_dev_console(self, show: bool) -> None:
+        """设置是否显示开发者控制台"""
+        settings = self.load()
+        settings["show_dev_console"] = show
+        self.save(settings)
 
 
 @dataclass

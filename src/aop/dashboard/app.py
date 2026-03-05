@@ -11,8 +11,12 @@ from pathlib import Path
 from typing import Optional
 
 from aop.primary import get_registry, AgentContext, PrimaryAgent
-from aop.primary.workspace import WorkspaceManager, Workspace
+from aop.primary.workspace import WorkspaceManager, Workspace, SettingsManager
 from aop.primary.listener import start_listener, submit_command
+from aop.dashboard.logger import get_dashboard_logger, setup_dashboard_logging
+
+import logging
+_logger = logging.getLogger(__name__)
 
 # Page config
 st.set_page_config(
@@ -75,11 +79,16 @@ def ensure_listener():
 # 模块加载时启动
 ensure_listener()
 
+# 设置 Dashboard 日志
+setup_dashboard_logging()
+
 
 def init_session_state():
     """初始化 session state"""
     if "workspace_manager" not in st.session_state:
         st.session_state.workspace_manager = WorkspaceManager()
+    if "settings_manager" not in st.session_state:
+        st.session_state.settings_manager = SettingsManager()
     if "current_workspace" not in st.session_state:
         st.session_state.current_workspace = None
     if "current_agent" not in st.session_state:
@@ -121,24 +130,52 @@ def render_sidebar():
     with st.sidebar:
         st.title("🤖 AOP")
 
+        # 获取设置，决定是否显示开发者控制台
+        sm = st.session_state.settings_manager
+        show_dev_console = sm.get_show_dev_console()
+
+        pages = ["🏠 首页", "📜 历史", "📁 工作区", "⚙️ 设置"]
+        if show_dev_console:
+            pages.append("🖥️ 开发者控制台")
+
         page = st.radio(
             "导航",
-            ["🏠 首页", "📜 历史", "📁 工作区", "⚙️ 设置"],
+            pages,
             label_visibility="collapsed",
         )
 
         st.markdown("---")
 
-        # 当前工作区状态
-        if st.session_state.current_workspace:
-            ws = st.session_state.current_workspace
-            st.markdown(f"**当前项目**")
-            st.markdown(f"📁 {ws.name}")
-            st.caption(f"📂 {ws.project_path}")
+        # 项目快速切换下拉菜单
+        wm = st.session_state.workspace_manager
+        workspaces = wm.list_workspaces()
 
-            if st.session_state.current_agent:
-                agent = st.session_state.current_agent
-                st.markdown(f"**Agent**: {agent.name}")
+        if workspaces:
+            st.markdown("**项目切换**")
+            workspace_options = {ws.name: ws for ws in workspaces}
+            current_ws = st.session_state.current_workspace
+            current_name = current_ws.name if current_ws else list(workspace_options.keys())[0]
+
+            selected_name = st.selectbox(
+                "选择项目",
+                options=list(workspace_options.keys()),
+                index=list(workspace_options.keys()).index(current_name) if current_name in workspace_options else 0,
+                label_visibility="collapsed",
+                key="sidebar_project_selector",
+            )
+
+            selected_ws = workspace_options.get(selected_name)
+            if selected_ws and selected_ws.id != (current_ws.id if current_ws else None):
+                st.session_state.current_workspace = selected_ws
+                wm.set_current_workspace(selected_ws.id)
+                st.rerun()
+
+        st.markdown("---")
+
+        # 当前 Agent 状态
+        if st.session_state.current_agent:
+            agent = st.session_state.current_agent
+            st.markdown(f"**Agent**: {agent.name}")
 
         st.markdown("---")
         st.markdown("""
@@ -283,6 +320,7 @@ def render_chat():
 
         # 添加用户消息
         st.session_state.messages.append({"role": "user", "content": prompt})
+        _logger.info(f"用户输入: {prompt[:100]}...")
 
         with st.chat_message("user"):
             st.markdown(prompt)
@@ -302,6 +340,8 @@ def render_chat():
                     history=st.session_state.messages[:-1],  # 不包含刚添加的消息
                 )
 
+                _logger.info(f"执行命令: agent={agent.id}, workspace={workspace.project_path}")
+
                 response = run_async(agent.chat(prompt, context))
 
                 # 更新 session ID
@@ -310,15 +350,23 @@ def render_chat():
 
                 placeholder.markdown(response)
                 st.session_state.messages.append({"role": "assistant", "content": response})
+                _logger.info(f"响应成功: {len(response)} 字符")
 
             except Exception as e:
+                import traceback
+                error_trace = traceback.format_exc()
+                _logger.error(f"执行错误: {str(e)}\n{error_trace}")
                 placeholder.error(f"错误: {str(e)}")
 
 
-def render_quick_actions():
-    """渲染快捷指令按钮"""
+def render_quick_actions(is_openclaw: bool = False):
+    """渲染快捷指令按钮
+
+    Args:
+        is_openclaw: 是否为 OpenClaw 模式，True 时按钮改为「复制指令」
+    """
     st.markdown("---")
-    st.markdown("**快捷指令**")
+    st.markdown("**快捷指令**" if not is_openclaw else "**快捷指令（点击复制）**")
 
     col1, col2, col3, col4 = st.columns(4)
 
@@ -332,18 +380,49 @@ def render_quick_actions():
     for i, (label, prompt) in enumerate(quick_prompts.items()):
         col = [col1, col2, col3, col4][i]
         with col:
-            if st.button(label, key=f"quick_{i}", use_container_width=True):
+            # OpenClaw 模式下修改按钮标签
+            button_label = label.replace("🔍", "📋").replace("💡", "📋").replace("📊", "📋").replace("🔧", "📋") if is_openclaw else label
+
+            if st.button(button_label, key=f"quick_{i}", use_container_width=True):
                 if st.session_state.current_workspace and st.session_state.current_agent:
-                    st.session_state.messages.append({"role": "user", "content": prompt})
-                    st.rerun()
+                    if is_openclaw:
+                        # OpenClaw 模式：复制到剪贴板
+                        st.session_state.copied_prompt = prompt
+                        st.toast("已复制到剪贴板", icon="✅")
+                    else:
+                        # 正常模式：发送消息
+                        st.session_state.messages.append({"role": "user", "content": prompt})
+                        st.rerun()
                 else:
                     st.warning("请先选择项目和工作区")
+
+    # OpenClaw 模式下显示复制的内容
+    if is_openclaw and st.session_state.get("copied_prompt"):
+        st.caption(f"已复制: {st.session_state.copied_prompt[:50]}...")
+        # 使用 JavaScript 复制到剪贴板
+        st.markdown(f"""
+        <script>
+            navigator.clipboard.writeText(`{st.session_state.copied_prompt}`);
+        </script>
+        """, unsafe_allow_html=True)
 
 
 # ============ 主页面 ============
 
 def page_home():
     """首页"""
+    sm = st.session_state.settings_manager
+    primary_agent = sm.get_primary_agent()
+    is_openclaw = primary_agent == "openclaw"
+
+    # 如果设置了主 Agent，自动选择
+    if primary_agent and not st.session_state.current_agent:
+        agents = get_available_agents()
+        for agent in agents:
+            if agent.id == primary_agent:
+                st.session_state.current_agent = agent
+                break
+
     # 顶部：项目选择器 + Agent 切换
     col1, col2 = st.columns(2)
 
@@ -351,9 +430,15 @@ def page_home():
         render_project_selector()
 
     with col2:
-        agent = render_agent_selector()
-        if agent:
-            st.session_state.current_agent = agent
+        # 如果设置了主 Agent，隐藏选择器
+        if primary_agent:
+            if st.session_state.current_agent:
+                st.markdown(f"**Agent**: {st.session_state.current_agent.name}")
+                st.caption("（已由全局设置锁定）")
+        else:
+            agent = render_agent_selector()
+            if agent:
+                st.session_state.current_agent = agent
 
     st.markdown("---")
 
@@ -366,12 +451,16 @@ def page_home():
         if not any([workspace_ready, agent_ready]):
             render_welcome()
         render_empty_state()
+    elif is_openclaw:
+        # OpenClaw 模式：显示提示，不显示聊天框
+        st.info("💡 请在 OpenClaw 对话窗口继续操作")
+        st.markdown("快捷指令已改为「复制指令」模式，点击按钮可将指令复制到剪贴板。")
     else:
         # 就绪状态：显示聊天
         render_chat()
 
     # 快捷指令
-    render_quick_actions()
+    render_quick_actions(is_openclaw=is_openclaw)
 
 
 def page_history():
@@ -402,22 +491,30 @@ def page_workspaces():
     st.title("📁 工作区")
 
     wm = st.session_state.workspace_manager
+    sm = st.session_state.settings_manager
+    primary_agent = sm.get_primary_agent()
 
     # 创建新工作区
     with st.expander("➕ 创建新工作区", expanded=False):
         name = st.text_input("工作区名称", placeholder="我的项目")
         project_path = st.text_input("项目路径", placeholder="/path/to/project")
 
-        # Agent 选择
-        agents = get_available_agents()
-        agent_options = {"Claude Code": "claude_code", "OpenCode": "opencode"}
-        default_agent = agents[0].id if agents else "claude_code"
+        # Agent 选择 - 如果设置了主 Agent 则隐藏
+        if primary_agent:
+            st.markdown(f"**默认 Agent**: `{primary_agent}`")
+            st.caption("（已由全局设置锁定）")
+            selected_agent_id = primary_agent
+        else:
+            agents = get_available_agents()
+            agent_options = {"Claude Code": "claude_code", "OpenCode": "opencode"}
+            default_agent = agents[0].id if agents else "claude_code"
 
-        primary_agent = st.selectbox(
-            "默认 Agent",
-            options=list(agent_options.keys()),
-            index=0 if default_agent == "claude_code" else 1,
-        )
+            primary_agent_name = st.selectbox(
+                "默认 Agent",
+                options=list(agent_options.keys()),
+                index=0 if default_agent == "claude_code" else 1,
+            )
+            selected_agent_id = agent_options[primary_agent_name]
 
         if st.button("创建"):
             if name and project_path:
@@ -426,7 +523,7 @@ def page_workspaces():
                     workspace = wm.create_workspace(
                         name=name,
                         project_path=project_path,
-                        primary_agent=agent_options[primary_agent],
+                        primary_agent=selected_agent_id,
                     )
                     st.success(f"创建成功！ID: {workspace.id}")
                     st.rerun()
@@ -444,7 +541,7 @@ def page_workspaces():
     else:
         for ws in workspaces:
             with st.container():
-                col1, col2, col3 = st.columns([3, 2, 1])
+                col1, col2, col3, col4 = st.columns([3, 2, 1, 1])
 
                 with col1:
                     st.markdown(f"**{ws.name}**")
@@ -460,12 +557,97 @@ def page_workspaces():
                         st.success(f"已切换到: {ws.name}")
                         st.rerun()
 
+                with col4:
+                    if st.button("🗑️", key=f"delete_{ws.id}", help="删除工作区"):
+                        # 显示确认对话框
+                        st.session_state[f"confirm_delete_{ws.id}"] = True
+
+                # 删除确认
+                if st.session_state.get(f"confirm_delete_{ws.id}", False):
+                    st.warning(f"确定删除工作区「{ws.name}」？此操作仅删除软件内记录，不会影响本地文件。")
+                    col_confirm, col_cancel = st.columns(2)
+                    with col_confirm:
+                        if st.button("确认删除", key=f"confirm_del_{ws.id}"):
+                            wm.delete_workspace(ws.id)
+                            # 清除当前工作区引用
+                            if st.session_state.current_workspace and st.session_state.current_workspace.id == ws.id:
+                                st.session_state.current_workspace = None
+                            st.success(f"已删除工作区: {ws.name}")
+                            st.session_state[f"confirm_delete_{ws.id}"] = False
+                            st.rerun()
+                    with col_cancel:
+                        if st.button("取消", key=f"cancel_del_{ws.id}"):
+                            st.session_state[f"confirm_delete_{ws.id}"] = False
+                            st.rerun()
+
                 st.markdown("---")
 
 
 def page_settings():
     """设置页面"""
     st.title("⚙️ 设置")
+
+    sm = st.session_state.settings_manager
+
+    # 主 Agent 设置
+    st.markdown("### 主 Agent 设置")
+
+    agent_options = {
+        "未设置（可切换）": None,
+        "Claude Code": "claude_code",
+        "OpenCode": "opencode",
+        "OpenClaw": "openclaw",
+    }
+
+    current_primary = sm.get_primary_agent()
+    current_index = 0
+    for i, (name, agent_id) in enumerate(agent_options.items()):
+        if agent_id == current_primary:
+            current_index = i
+            break
+
+    selected = st.selectbox(
+        "主 Agent",
+        options=list(agent_options.keys()),
+        index=current_index,
+        help="设置主 Agent 后，项目界面将锁定使用该 Agent，无法切换",
+    )
+
+    selected_agent_id = agent_options[selected]
+
+    if selected_agent_id != current_primary:
+        sm.set_primary_agent(selected_agent_id)
+        # 如果设置了主 Agent，自动选择该 Agent
+        if selected_agent_id:
+            agents = get_available_agents()
+            for agent in agents:
+                if agent.id == selected_agent_id:
+                    st.session_state.current_agent = agent
+                    break
+        st.success(f"已设置主 Agent: {selected}")
+        st.rerun()
+
+    # OpenClaw 提示
+    if selected_agent_id == "openclaw":
+        st.info("💡 OpenClaw 已设为主 Agent，项目界面将自动使用 OpenClaw，Agent 选择器已隐藏。")
+
+    st.markdown("---")
+
+    # 开发者控制台设置
+    st.markdown("### 开发者控制台")
+    show_dev_console = sm.get_show_dev_console()
+    new_show_dev = st.toggle(
+        "显示开发者控制台",
+        value=show_dev_console,
+        help="开启后侧边栏将显示「开发者控制台」选项卡",
+    )
+
+    if new_show_dev != show_dev_console:
+        sm.set_show_dev_console(new_show_dev)
+        st.success(f"已{'开启' if new_show_dev else '关闭'}开发者控制台")
+        st.rerun()
+
+    st.markdown("---")
 
     # Agent 状态
     st.markdown("### Agent 状态")
@@ -488,6 +670,83 @@ def page_settings():
     st.code(str(aop_dir))
 
 
+def page_dev_console():
+    """开发者控制台页面"""
+    st.title("🖥️ 开发者控制台")
+
+    logger = get_dashboard_logger()
+
+    # 工具栏
+    col1, col2, col3 = st.columns([2, 2, 1])
+
+    with col1:
+        level_filter = st.selectbox(
+            "日志级别",
+            ["ALL", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+            label_visibility="collapsed",
+        )
+
+    with col2:
+        search = st.text_input("搜索", placeholder="输入关键词...", label_visibility="collapsed")
+
+    with col3:
+        if st.button("🗑️ 清空", use_container_width=True):
+            logger.clear()
+            st.rerun()
+
+    st.markdown("---")
+
+    # 日志统计
+    entries = logger.get_entries(level=None if level_filter == "ALL" else level_filter, search=search or None)
+    total = logger.get_count()
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("总日志数", total)
+    with col2:
+        error_count = len([e for e in entries if e.level == "ERROR"])
+        st.metric("错误", error_count, delta_color="inverse")
+    with col3:
+        warn_count = len([e for e in entries if e.level == "WARNING"])
+        st.metric("警告", warn_count, delta_color="inverse")
+    with col4:
+        st.metric("显示", len(entries))
+
+    st.markdown("---")
+
+    # 日志列表
+    if not entries:
+        st.info("暂无日志记录")
+        return
+
+    for entry in entries:
+        # 级别颜色
+        level_colors = {
+            "DEBUG": "gray",
+            "INFO": "blue",
+            "WARNING": "orange",
+            "ERROR": "red",
+            "CRITICAL": "darkred",
+        }
+        color = level_colors.get(entry.level, "gray")
+
+        with st.container():
+            col1, col2 = st.columns([1, 4])
+            with col1:
+                st.markdown(
+                    f"<span style='color:{color}; font-weight:bold;'>{entry.level}</span>",
+                    unsafe_allow_html=True,
+                )
+                st.caption(entry.timestamp.strftime("%H:%M:%S"))
+            with col2:
+                st.markdown(f"**{entry.message}**")
+                if entry.exception:
+                    with st.expander("查看堆栈", expanded=False):
+                        st.code(entry.exception, language="python")
+
+            st.markdown("---")
+
+
 # ============ 主程序 ============
 
 def main():
@@ -502,6 +761,8 @@ def main():
         page_workspaces()
     elif page == "⚙️ 设置":
         page_settings()
+    elif page == "🖥️ 开发者控制台":
+        page_dev_console()
 
 
 if __name__ == "__main__":
