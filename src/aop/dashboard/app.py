@@ -98,10 +98,6 @@ def init_session_state():
         st.session_state.current_workspace = None
     if "current_agent" not in st.session_state:
         st.session_state.current_agent = None
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-    if "session_id" not in st.session_state:
-        st.session_state.session_id = None
     # 执行状态
     if "execution_running" not in st.session_state:
         st.session_state.execution_running = False
@@ -115,6 +111,50 @@ def init_session_state():
         st.session_state.execution_start_time = None
     if "cancel_requested" not in st.session_state:
         st.session_state.cancel_requested = False
+    # 用于立即停止的 subprocess 进程
+    if "execution_process" not in st.session_state:
+        st.session_state.execution_process = None
+    # 按项目隔离的对话历史存储
+    if "workspace_messages" not in st.session_state:
+        st.session_state.workspace_messages = {}  # {workspace_id: [messages]}
+    if "workspace_sessions" not in st.session_state:
+        st.session_state.workspace_sessions = {}  # {workspace_id: session_id}
+
+
+def get_current_workspace_id() -> Optional[str]:
+    """获取当前工作区的唯一标识"""
+    if st.session_state.current_workspace:
+        return st.session_state.current_workspace.id
+    return None
+
+
+def get_messages_for_workspace(workspace_id: Optional[str]) -> list:
+    """获取指定工作区的对话历史"""
+    if not workspace_id:
+        return []
+    return st.session_state.workspace_messages.get(workspace_id, [])
+
+
+def save_messages_for_workspace(workspace_id: Optional[str], messages: list) -> None:
+    """保存指定工作区的对话历史"""
+    if not workspace_id:
+        return
+    st.session_state.workspace_messages[workspace_id] = messages
+
+
+def get_session_id_for_workspace(workspace_id: Optional[str]) -> Optional[str]:
+    """获取指定工作区的 session_id"""
+    if not workspace_id:
+        return None
+    return st.session_state.workspace_sessions.get(workspace_id)
+
+
+def save_session_id_for_workspace(workspace_id: Optional[str], session_id: Optional[str]) -> None:
+    """保存指定工作区的 session_id"""
+    if not workspace_id:
+        return
+    if session_id:
+        st.session_state.workspace_sessions[workspace_id] = session_id
 
 
 def get_available_agents() -> list:
@@ -430,7 +470,7 @@ def render_project_selector():
     return selected_ws
 
 
-def execute_agent_task(agent, workspace, prompt, session_id):
+def execute_agent_task(agent, workspace, prompt, session_id, workspace_id):
     """在后台线程中执行 Agent 任务
 
     Args:
@@ -438,20 +478,25 @@ def execute_agent_task(agent, workspace, prompt, session_id):
         workspace: 工作区
         prompt: 用户输入
         session_id: 会话 ID（用于恢复对话）
+        workspace_id: 工作区 ID（用于消息隔离）
     """
     try:
+        # 检查是否已取消
+        if st.session_state.cancel_requested:
+            st.session_state.execution_error = "用户取消"
+            return
+
         # 恢复之前的 session
         if session_id:
             agent.resume_session(session_id)
 
-        # 确保 messages 已初始化
-        if 'messages' not in st.session_state:
-            st.session_state.messages = []
-        
+        # 获取当前工作区的消息历史
+        messages = get_messages_for_workspace(workspace_id)
+
         context = AgentContext(
             workspace_path=Path(workspace.project_path),
             session_id=session_id,
-            history=st.session_state.messages[:-1] if st.session_state.messages else [],
+            history=messages[:-1] if messages else [],
         )
 
         _logger.info(f"后台执行: agent={agent.id}, workspace={workspace.project_path}")
@@ -464,13 +509,18 @@ def execute_agent_task(agent, workspace, prompt, session_id):
         finally:
             loop.close()
 
+        # 再次检查是否已取消
+        if st.session_state.cancel_requested:
+            st.session_state.execution_error = "用户取消"
+            return
+
         # 保存结果
         st.session_state.execution_result = response
         st.session_state.execution_error = None
 
-        # 更新 session ID
+        # 更新 session ID（按工作区保存）
         if agent.get_session_id():
-            st.session_state.session_id = agent.get_session_id()
+            save_session_id_for_workspace(workspace_id, agent.get_session_id())
 
         _logger.info(f"后台执行完成: {len(response)} 字符")
 
@@ -482,10 +532,12 @@ def execute_agent_task(agent, workspace, prompt, session_id):
         st.session_state.execution_result = None
     finally:
         st.session_state.execution_running = False
+        st.session_state.execution_process = None
 
 
 def render_chat():
     """渲染聊天界面"""
+    workspace_id = get_current_workspace_id()
 
     # === 检查后台执行状态 ===
     if st.session_state.execution_running:
@@ -496,15 +548,28 @@ def render_chat():
         status_placeholder = st.empty()
         status_placeholder.info(f"🤔 思考中... ({elapsed:.1f}s)")
 
-        # 取消按钮
-        if st.button("⏹️ 取消执行", key="cancel_execution"):
-            st.session_state.cancel_requested = True
-            st.warning("已请求取消，等待当前操作完成...")
+        # 取消按钮 - 使用 type="primary" 让按钮更醒目
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            if st.button("⏹️ 立即取消", key="cancel_execution", type="primary"):
+                st.session_state.cancel_requested = True
+                # 尝试终止后台进程（如果有）
+                if st.session_state.execution_process:
+                    try:
+                        st.session_state.execution_process.terminate()
+                    except Exception:
+                        pass
+                st.warning("已取消执行")
+                st.session_state.execution_running = False
+                st.rerun()
+
+        # 获取当前工作区的消息
+        messages = get_messages_for_workspace(workspace_id)
 
         # 显示已有的历史消息
-        for msg in st.session_state.messages:
+        for msg in messages:
             with st.chat_message(msg["role"]):
-                st.markdown(msg["content"])
+                render_message_content(msg["content"])
 
         # 检查线程是否完成
         thread = st.session_state.execution_thread
@@ -513,16 +578,18 @@ def render_chat():
             st.session_state.execution_running = False
 
             if st.session_state.execution_result:
-                # 添加助手响应
-                st.session_state.messages.append({
+                # 添加助手响应到工作区消息
+                messages.append({
                     "role": "assistant",
                     "content": st.session_state.execution_result
                 })
+                save_messages_for_workspace(workspace_id, messages)
             elif st.session_state.execution_error:
-                st.session_state.messages.append({
+                messages.append({
                     "role": "assistant",
                     "content": f"❌ 错误: {st.session_state.execution_error}"
                 })
+                save_messages_for_workspace(workspace_id, messages)
 
             # 清理执行状态
             st.session_state.execution_thread = None
@@ -534,9 +601,12 @@ def render_chat():
             st.rerun()
 
         # 线程还在运行，使用 time.sleep 等待后 rerun
-        time.sleep(0.5)
+        time.sleep(0.3)
         st.rerun()
         return
+
+    # 获取当前工作区的消息
+    messages = get_messages_for_workspace(workspace_id)
 
     # === 检查是否有待处理的 prompt ===
     if st.session_state.get('pending_prompt'):
@@ -545,14 +615,15 @@ def render_chat():
 
         # 检查是否就绪
         if st.session_state.current_workspace and st.session_state.current_agent:
-            # 添加用户消息
-            st.session_state.messages.append({"role": "user", "content": prompt})
+            # 添加用户消息到工作区消息
+            messages.append({"role": "user", "content": prompt})
+            save_messages_for_workspace(workspace_id, messages)
             _logger.info(f"快捷指令: {prompt[:100]}...")
 
             # 启动后台执行
             agent = st.session_state.current_agent
             workspace = st.session_state.current_workspace
-            session_id = st.session_state.session_id
+            session_id = get_session_id_for_workspace(workspace_id)
 
             st.session_state.execution_running = True
             st.session_state.execution_start_time = time.time()
@@ -562,7 +633,7 @@ def render_chat():
 
             thread = threading.Thread(
                 target=execute_agent_task,
-                args=(agent, workspace, prompt, session_id),
+                args=(agent, workspace, prompt, session_id, workspace_id),
                 daemon=False,
             )
             st.session_state.execution_thread = thread
@@ -571,9 +642,9 @@ def render_chat():
             st.rerun()
 
     # === 显示历史消息 ===
-    for msg in st.session_state.messages:
+    for msg in messages:
         with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+            render_message_content(msg["content"])
 
     # === 聊天输入 ===
     if prompt := st.chat_input("输入你的问题..."):
@@ -586,14 +657,15 @@ def render_chat():
             st.error("请先选择一个 Agent")
             return
 
-        # 添加用户消息
-        st.session_state.messages.append({"role": "user", "content": prompt})
+        # 添加用户消息到工作区消息
+        messages.append({"role": "user", "content": prompt})
+        save_messages_for_workspace(workspace_id, messages)
         _logger.info(f"用户输入: {prompt[:100]}...")
 
         # 启动后台执行
         agent = st.session_state.current_agent
         workspace = st.session_state.current_workspace
-        session_id = st.session_state.session_id
+        session_id = get_session_id_for_workspace(workspace_id)
 
         st.session_state.execution_running = True
         st.session_state.execution_start_time = time.time()
@@ -603,13 +675,41 @@ def render_chat():
 
         thread = threading.Thread(
             target=execute_agent_task,
-            args=(agent, workspace, prompt, session_id),
+            args=(agent, workspace, prompt, session_id, workspace_id),
             daemon=False,
         )
         st.session_state.execution_thread = thread
         thread.start()
 
         st.rerun()
+
+
+def render_message_content(content: str):
+    """渲染消息内容，支持思考部分的折叠显示
+
+    Args:
+        content: 消息内容，可能包含 <thinking>...</thinking> 标签
+    """
+    import re
+
+    # 匹配 <thinking>...</thinking> 标签
+    thinking_pattern = r'<thinking>(.*?)</thinking>'
+    parts = re.split(thinking_pattern, content, flags=re.DOTALL)
+
+    if len(parts) > 1:
+        # 有思考内容，交替渲染
+        for i, part in enumerate(parts):
+            if i % 2 == 0:
+                # 普通内容
+                if part.strip():
+                    st.markdown(part)
+            else:
+                # 思考内容 - 使用折叠卡片
+                with st.expander("🤔 思考过程", expanded=False):
+                    st.markdown(part)
+    else:
+        # 没有思考内容，直接渲染
+        st.markdown(content)
 
 
 def render_quick_actions(is_openclaw: bool = False):
