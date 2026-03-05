@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 from .base import AgentContext, PrimaryAgent
+from .memory_extractor import extract_and_save_memory
 
 
 # Windows 上常见的 npm 全局安装路径
@@ -171,6 +172,17 @@ class OpenCodeAgent(PrimaryAgent):
 
         # Update session ID
         self._update_session_id()
+
+        # 自动提取记忆
+        try:
+            # 保存原始消息（去除上下文前缀）
+            original_message = message
+            if "【用户消息】" in message:
+                original_message = message.split("【用户消息】\n")[-1]
+            extract_and_save_memory(original_message, output, context.workspace_path)
+        except Exception:
+            # 记忆提取失败不应影响主流程
+            pass
 
         return output
 

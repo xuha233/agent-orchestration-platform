@@ -444,10 +444,14 @@ def execute_agent_task(agent, workspace, prompt, session_id):
         if session_id:
             agent.resume_session(session_id)
 
+        # 确保 messages 已初始化
+        if 'messages' not in st.session_state:
+            st.session_state.messages = []
+        
         context = AgentContext(
             workspace_path=Path(workspace.project_path),
             session_id=session_id,
-            history=st.session_state.messages[:-1],
+            history=st.session_state.messages[:-1] if st.session_state.messages else [],
         )
 
         _logger.info(f"后台执行: agent={agent.id}, workspace={workspace.project_path}")
