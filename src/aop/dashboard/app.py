@@ -135,6 +135,8 @@ def get_messages_for_workspace(workspace_id: Optional[str]) -> list:
     """获取指定工作区的对话历史"""
     if not workspace_id:
         return []
+    if 'workspace_messages' not in st.session_state:
+        st.session_state.workspace_messages = {}
     return st.session_state.workspace_messages.get(workspace_id, [])
 
 
@@ -149,6 +151,8 @@ def get_session_id_for_workspace(workspace_id: Optional[str]) -> Optional[str]:
     """获取指定工作区的 session_id"""
     if not workspace_id:
         return None
+    if 'workspace_sessions' not in st.session_state:
+        st.session_state.workspace_sessions = {}
     return st.session_state.workspace_sessions.get(workspace_id)
 
 
