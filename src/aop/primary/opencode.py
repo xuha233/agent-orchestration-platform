@@ -110,15 +110,16 @@ class OpenCodeAgent(PrimaryAgent):
         Raises:
             RuntimeError: If the command fails
         """
-        # Build command - opencode uses similar flags to claude
+        # Build command - opencode uses 'run' subcommand
         binary = self._binary_path or _find_binary("opencode") or "opencode"
-        cmd = [binary, "-p", message]
+        cmd = [binary, "run", message]
 
-        # Add resume flag if we have a session
+        # Add session flag if we have a session
+        # OpenCode uses -s for session, -c for continue last session
         if self._session_id:
-            cmd.extend(["--resume", self._session_id])
+            cmd.extend(["-s", self._session_id])
         elif context.session_id:
-            cmd.extend(["--resume", context.session_id])
+            cmd.extend(["-s", context.session_id])
 
         # 使用同步 subprocess.run 替代 asyncio.create_subprocess_exec
         # 这在 Windows 上更稳定，特别是在 Streamlit 环境中
