@@ -109,11 +109,14 @@ def init_session_state():
         st.session_state.execution_error = None
     if "execution_start_time" not in st.session_state:
         st.session_state.execution_start_time = None
-    if "cancel_requested" not in st.session_state:
-        st.session_state.cancel_requested = False
-    # 用于立即停止的 subprocess 进程
-    if "execution_process" not in st.session_state:
-        st.session_state.execution_process = None
+    # 用于立即取消的 Event（线程安全）
+    if "cancel_event" not in st.session_state:
+        st.session_state.cancel_event = threading.Event()
+    # 后台执行结果存储（避免在线程中直接修改 session_state）
+    if "execution_result_buffer" not in st.session_state:
+        st.session_state.execution_result_buffer = None
+    if "execution_error_buffer" not in st.session_state:
+        st.session_state.execution_error_buffer = None
     # 按项目隔离的对话历史存储
     if "workspace_messages" not in st.session_state:
         st.session_state.workspace_messages = {}  # {workspace_id: [messages]}
@@ -338,6 +341,15 @@ def render_sidebar():
             if selected_ws and selected_ws.id != (current_ws.id if current_ws else None):
                 st.session_state.current_workspace = selected_ws
                 wm.set_current_workspace(selected_ws.id)
+
+                # 检查新工作区的 primary_agent 设置并更新 current_agent
+                if selected_ws.primary_agent:
+                    agents = get_available_agents()
+                    for agent in agents:
+                        if agent.id == selected_ws.primary_agent:
+                            st.session_state.current_agent = agent
+                            break
+
                 st.rerun()
 
         st.markdown("---")
@@ -464,13 +476,25 @@ def render_project_selector():
 
     selected_ws = workspace_options.get(selected_name)
     if selected_ws:
+        # 检查是否切换了工作区
+        current_ws = st.session_state.current_workspace
+        is_switching = not current_ws or current_ws.id != selected_ws.id
+
         st.session_state.current_workspace = selected_ws
         wm.set_current_workspace(selected_ws.id)
+
+        # 如果切换了工作区，检查并更新 Agent
+        if is_switching and selected_ws.primary_agent:
+            agents = get_available_agents()
+            for agent in agents:
+                if agent.id == selected_ws.primary_agent:
+                    st.session_state.current_agent = agent
+                    break
 
     return selected_ws
 
 
-def execute_agent_task(agent, workspace, prompt, session_id, workspace_id):
+def execute_agent_task(agent, workspace, prompt, session_id, workspace_id, cancel_event, result_buffer, error_buffer):
     """在后台线程中执行 Agent 任务
 
     Args:
@@ -479,11 +503,20 @@ def execute_agent_task(agent, workspace, prompt, session_id, workspace_id):
         prompt: 用户输入
         session_id: 会话 ID（用于恢复对话）
         workspace_id: 工作区 ID（用于消息隔离）
+        cancel_event: threading.Event 用于取消信号
+        result_buffer: 字典用于存储执行结果（线程安全）
+        error_buffer: 字典用于存储错误信息（线程安全）
+
+    架构限制说明:
+        agent.chat() 是一个阻塞调用，无法被中断。
+        取消机制只能在调用前后检查，但一旦 chat() 开始执行，
+        必须等待其自然完成。这是底层 Agent SDK 的限制。
+        如需真正可中断的执行，需要 Agent SDK 支持异步取消接口。
     """
     try:
         # 检查是否已取消
-        if st.session_state.cancel_requested:
-            st.session_state.execution_error = "用户取消"
+        if cancel_event.is_set():
+            error_buffer["error"] = "用户取消"
             return
 
         # 恢复之前的 session
@@ -505,18 +538,20 @@ def execute_agent_task(agent, workspace, prompt, session_id, workspace_id):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
+            # 注意：agent.chat() 是阻塞调用，无法被中断
+            # 取消信号只能在调用前后检查
             response = loop.run_until_complete(agent.chat(prompt, context))
         finally:
             loop.close()
 
         # 再次检查是否已取消
-        if st.session_state.cancel_requested:
-            st.session_state.execution_error = "用户取消"
+        if cancel_event.is_set():
+            error_buffer["error"] = "用户取消"
             return
 
-        # 保存结果
-        st.session_state.execution_result = response
-        st.session_state.execution_error = None
+        # 保存结果到缓冲区（线程安全）
+        result_buffer["result"] = response
+        error_buffer["error"] = None
 
         # 更新 session ID（按工作区保存）
         if agent.get_session_id():
@@ -528,11 +563,11 @@ def execute_agent_task(agent, workspace, prompt, session_id, workspace_id):
         import traceback
         error_trace = traceback.format_exc()
         _logger.error(f"后台执行错误: {str(e)}\n{error_trace}")
-        st.session_state.execution_error = str(e)
-        st.session_state.execution_result = None
+        error_buffer["error"] = str(e)
+        result_buffer["result"] = None
     finally:
-        st.session_state.execution_running = False
-        st.session_state.execution_process = None
+        # 使用缓冲区通知主线程执行完成
+        result_buffer["completed"] = True
 
 
 def render_chat():
@@ -552,14 +587,9 @@ def render_chat():
         col1, col2 = st.columns([1, 4])
         with col1:
             if st.button("⏹️ 立即取消", key="cancel_execution", type="primary"):
-                st.session_state.cancel_requested = True
-                # 尝试终止后台进程（如果有）
-                if st.session_state.execution_process:
-                    try:
-                        st.session_state.execution_process.terminate()
-                    except Exception:
-                        pass
-                st.warning("已取消执行")
+                # 设置取消信号（线程安全）
+                st.session_state.cancel_event.set()
+                st.warning("已发送取消请求（注意：正在进行的 AI 调用可能需要等待完成）")
                 st.session_state.execution_running = False
                 st.rerun()
 
@@ -573,30 +603,37 @@ def render_chat():
 
         # 检查线程是否完成
         thread = st.session_state.execution_thread
+        result_buffer = st.session_state.execution_result_buffer
+        error_buffer = st.session_state.execution_error_buffer
+
         if thread and not thread.is_alive():
-            # 线程已完成，处理结果
+            # 线程已完成，从缓冲区获取结果
             st.session_state.execution_running = False
 
-            if st.session_state.execution_result:
+            # 从缓冲区获取结果
+            result = result_buffer.get("result") if result_buffer else None
+            error = error_buffer.get("error") if error_buffer else None
+
+            if result:
                 # 添加助手响应到工作区消息
                 messages.append({
                     "role": "assistant",
-                    "content": st.session_state.execution_result
+                    "content": result
                 })
                 save_messages_for_workspace(workspace_id, messages)
-            elif st.session_state.execution_error:
+            elif error:
                 messages.append({
                     "role": "assistant",
-                    "content": f"❌ 错误: {st.session_state.execution_error}"
+                    "content": f"❌ 错误: {error}"
                 })
                 save_messages_for_workspace(workspace_id, messages)
 
             # 清理执行状态
             st.session_state.execution_thread = None
-            st.session_state.execution_result = None
-            st.session_state.execution_error = None
+            st.session_state.execution_result_buffer = {}
+            st.session_state.execution_error_buffer = {}
             st.session_state.execution_start_time = None
-            st.session_state.cancel_requested = False
+            st.session_state.cancel_event.clear()
 
             st.rerun()
 
@@ -625,15 +662,19 @@ def render_chat():
             workspace = st.session_state.current_workspace
             session_id = get_session_id_for_workspace(workspace_id)
 
+            # 创建结果缓冲区和取消事件
             st.session_state.execution_running = True
             st.session_state.execution_start_time = time.time()
-            st.session_state.execution_result = None
-            st.session_state.execution_error = None
-            st.session_state.cancel_requested = False
+            st.session_state.execution_result_buffer = {}
+            st.session_state.execution_error_buffer = {}
+            st.session_state.cancel_event.clear()
 
             thread = threading.Thread(
                 target=execute_agent_task,
-                args=(agent, workspace, prompt, session_id, workspace_id),
+                args=(agent, workspace, prompt, session_id, workspace_id,
+                      st.session_state.cancel_event,
+                      st.session_state.execution_result_buffer,
+                      st.session_state.execution_error_buffer),
                 daemon=False,
             )
             st.session_state.execution_thread = thread
@@ -667,15 +708,19 @@ def render_chat():
         workspace = st.session_state.current_workspace
         session_id = get_session_id_for_workspace(workspace_id)
 
+        # 创建结果缓冲区和取消事件
         st.session_state.execution_running = True
         st.session_state.execution_start_time = time.time()
-        st.session_state.execution_result = None
-        st.session_state.execution_error = None
-        st.session_state.cancel_requested = False
+        st.session_state.execution_result_buffer = {}
+        st.session_state.execution_error_buffer = {}
+        st.session_state.cancel_event.clear()
 
         thread = threading.Thread(
             target=execute_agent_task,
-            args=(agent, workspace, prompt, session_id, workspace_id),
+            args=(agent, workspace, prompt, session_id, workspace_id,
+                  st.session_state.cancel_event,
+                  st.session_state.execution_result_buffer,
+                  st.session_state.execution_error_buffer),
             daemon=False,
         )
         st.session_state.execution_thread = thread
@@ -1148,6 +1193,15 @@ def page_workspaces():
                     if st.button("选择", key=f"select_{ws.id}"):
                         st.session_state.current_workspace = ws
                         wm.set_current_workspace(ws.id)
+
+                        # 检查工作区的 primary_agent 设置并更新 current_agent
+                        if ws.primary_agent:
+                            agents = get_available_agents()
+                            for agent in agents:
+                                if agent.id == ws.primary_agent:
+                                    st.session_state.current_agent = agent
+                                    break
+
                         st.success(f"已切换到: {ws.name}")
                         st.rerun()
 
