@@ -302,6 +302,49 @@ def render_project_selector():
 
 def render_chat():
     """渲染聊天界面"""
+    # 检查是否有待处理的 prompt（来自快捷按钮）
+    if st.session_state.get('pending_prompt'):
+        prompt = st.session_state.pending_prompt
+        del st.session_state.pending_prompt
+
+        # 检查是否就绪
+        if st.session_state.current_workspace and st.session_state.current_agent:
+            # 添加用户消息
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            _logger.info(f"快捷指令: {prompt[:100]}...")
+
+            # 获取 AI 响应
+            with st.chat_message("user"):
+                st.markdown(prompt)
+
+            with st.chat_message("assistant"):
+                placeholder = st.empty()
+                placeholder.markdown("🤔 思考中...")
+
+                try:
+                    agent = st.session_state.current_agent
+                    workspace = st.session_state.current_workspace
+
+                    context = AgentContext(
+                        workspace_path=Path(workspace.project_path),
+                        session_id=st.session_state.session_id,
+                        history=st.session_state.messages[:-1],
+                    )
+
+                    response = run_async(agent.chat(prompt, context))
+
+                    if agent.get_session_id():
+                        st.session_state.session_id = agent.get_session_id()
+
+                    placeholder.markdown(response)
+                    st.session_state.messages.append({"role": "assistant", "content": response})
+
+                except Exception as e:
+                    import traceback
+                    error_trace = traceback.format_exc()
+                    _logger.error(f"执行错误: {str(e)}\n{error_trace}")
+                    placeholder.error(f"错误: {str(e)}")
+
     # 显示历史消息
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
@@ -390,8 +433,8 @@ def render_quick_actions(is_openclaw: bool = False):
                         st.session_state.copied_prompt = prompt
                         st.toast("已复制到剪贴板", icon="✅")
                     else:
-                        # 正常模式：发送消息
-                        st.session_state.messages.append({"role": "user", "content": prompt})
+                        # 正常模式：设置待处理 prompt 并触发 rerun
+                        st.session_state.pending_prompt = prompt
                         st.rerun()
                 else:
                     st.warning("请先选择项目和工作区")
@@ -428,21 +471,11 @@ def page_home():
         - OpenCode: `npm install -g opencode`
         """)
     else:
-        cols = st.columns(min(len(agents), 3))
-        for i, agent in enumerate(agents):
-            with cols[i % 3]:
-                is_current = st.session_state.current_agent and st.session_state.current_agent.id == agent.id
-                status_color = "🟢" if is_current else "⚪"
-
-                st.markdown(f"""
-                <div class="quick-card">
-                    <h4>{status_color} {agent.name}</h4>
-                    <p>{agent.description}</p>
-                </div>
-                """, unsafe_allow_html=True)
-
-                if is_current:
-                    st.caption("当前使用中")
+        # 改为列表格式显示，信息密度更大
+        for agent in agents:
+            is_current = st.session_state.current_agent and st.session_state.current_agent.id == agent.id
+            status = '🟢 当前使用' if is_current else '⚪ 可用'
+            st.markdown(f'- **{agent.name}**: {agent.description} {status}')
 
     st.markdown("---")
 
