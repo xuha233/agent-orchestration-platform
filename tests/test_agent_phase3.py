@@ -16,7 +16,7 @@ class TestCodebaseAnalyzer:
         info = analyzer.analyze(".")
         
         assert info.language == "python"
-        assert info.framework in ["click", "fastapi", None]
+        assert info.framework in ["click", "fastapi", "streamlit", None]
         assert len(info.dependencies) > 0
     
     def test_detect_language_python(self, tmp_path):

@@ -112,6 +112,7 @@ class TestClaudeCodeAgent:
                 mock_process.communicate = AsyncMock(
                     return_value=(b"Hello, I am Claude!", b"")
                 )
+                mock_process.returncode = 0  # Must be int, not AsyncMock
                 mock_subprocess.return_value = mock_process
 
                 agent = ClaudeCodeAgent()
