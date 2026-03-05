@@ -1,4 +1,4 @@
-﻿"""OpenCode implementation of PrimaryAgent.
+"""OpenCode implementation of PrimaryAgent.
 
 Uses the `opencode` CLI to interact with OpenCode.
 """
@@ -60,6 +60,28 @@ def _find_binary(binary_name: str) -> Optional[str]:
     return None
 
 
+def _load_context_files(workspace_path: Path) -> str:
+    """加载项目上下文文件（SOUL.md, PROJECT_MEMORY.md, WORKFLOW.md, TEAM.md）
+    
+    这些文件帮助 Agent 理解项目背景、角色定位和工作流程。
+    """
+    context_dir = workspace_path / '.aop'
+    if not context_dir.exists():
+        return ''
+    
+    context_parts = []
+    for filename in ['SOUL.md', 'PROJECT_MEMORY.md', 'WORKFLOW.md', 'TEAM.md']:
+        filepath = context_dir / filename
+        if filepath.exists():
+            try:
+                file_content = filepath.read_text(encoding='utf-8')
+                context_parts.append(f'=== {filename} ===\n{file_content}\n')
+            except Exception:
+                pass
+    
+    return '\n'.join(context_parts)
+
+
 class OpenCodeAgent(PrimaryAgent):
     """PrimaryAgent implementation using OpenCode CLI.
 
@@ -69,7 +91,7 @@ class OpenCodeAgent(PrimaryAgent):
     Attributes:
         id: "opencode"
         name: "OpenCode"
-        description: "OpenCode CLI agent"
+        description = "OpenCode CLI agent"
     """
 
     id = "opencode"
@@ -110,6 +132,11 @@ class OpenCodeAgent(PrimaryAgent):
         Raises:
             RuntimeError: If the command fails
         """
+        # 加载项目上下文
+        context_str = _load_context_files(context.workspace_path)
+        if context_str:
+            message = f"【项目上下文】\n{context_str}\n\n【用户消息】\n{message}"
+
         # Build command - opencode uses 'run' subcommand
         binary = self._binary_path or _find_binary("opencode") or "opencode"
         cmd = [binary, "run", message]
