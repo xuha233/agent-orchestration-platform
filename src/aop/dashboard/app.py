@@ -6,9 +6,14 @@ Or: aop dashboard
 """
 
 import asyncio
+import time
+import threading
 import streamlit as st
+import json
+import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, List, Any
+from datetime import datetime
 
 from aop.primary import get_registry, AgentContext, PrimaryAgent
 from aop.primary.workspace import WorkspaceManager, Workspace, SettingsManager
@@ -97,6 +102,19 @@ def init_session_state():
         st.session_state.messages = []
     if "session_id" not in st.session_state:
         st.session_state.session_id = None
+    # 执行状态
+    if "execution_running" not in st.session_state:
+        st.session_state.execution_running = False
+    if "execution_thread" not in st.session_state:
+        st.session_state.execution_thread = None
+    if "execution_result" not in st.session_state:
+        st.session_state.execution_result = None
+    if "execution_error" not in st.session_state:
+        st.session_state.execution_error = None
+    if "execution_start_time" not in st.session_state:
+        st.session_state.execution_start_time = None
+    if "cancel_requested" not in st.session_state:
+        st.session_state.cancel_requested = False
 
 
 def get_available_agents() -> list:
@@ -111,16 +129,128 @@ def get_agent_by_id(agent_id: str) -> Optional[PrimaryAgent]:
     return registry.get(agent_id)
 
 
-# ============ 异步执行封装 ============
+# ============ 数据读取辅助函数 ============
 
-def run_async(coro):
-    """在 Streamlit 中运行异步函数"""
+def get_aop_dir() -> Path:
+    """获取 .aop 目录路径"""
+    # 优先使用当前工作区的 .aop 目录
+    if st.session_state.current_workspace:
+        ws_path = Path(st.session_state.current_workspace.project_path)
+        aop_dir = ws_path / ".aop"
+        if aop_dir.exists():
+            return aop_dir
+    # 回退到当前工作目录
+    return Path.cwd() / ".aop"
+
+
+def read_aop_file(filename: str) -> Optional[str]:
+    """读取 .aop 目录下的文件内容"""
+    aop_dir = get_aop_dir()
+    file_path = aop_dir / filename
+    if file_path.exists():
+        return file_path.read_text(encoding="utf-8")
+    return None
+
+
+def read_aop_json(filename: str) -> Optional[Dict]:
+    """读取 .aop 目录下的 JSON 文件"""
+    content = read_aop_file(filename)
+    if content:
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            pass
+    return None
+
+
+def get_project_stats() -> Dict[str, Any]:
+    """获取项目统计数据"""
+    stats = {
+        "file_count": 0,
+        "line_count": 0,
+        "py_files": 0,
+        "js_files": 0,
+        "md_files": 0,
+    }
+
+    if st.session_state.current_workspace:
+        project_path = Path(st.session_state.current_workspace.project_path)
+    else:
+        project_path = Path.cwd()
+
+    if not project_path.exists():
+        return stats
+
     try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    return loop.run_until_complete(coro)
+        # 统计文件数量
+        for ext, key in [(".py", "py_files"), (".js", "js_files"), (".md", "md_files")]:
+            files = list(project_path.rglob(f"*{ext}"))
+            # 排除 node_modules, .git, venv 等目录
+            files = [f for f in files if not any(p in f.parts for p in ["node_modules", ".git", "venv", "__pycache__", ".venv", "build", "dist"])]
+            stats[key] = len(files)
+
+        # 总文件数
+        all_files = list(project_path.rglob("*"))
+        all_files = [f for f in all_files if f.is_file() and not any(p in f.parts for p in ["node_modules", ".git", "venv", "__pycache__", ".venv", "build", "dist"])]
+        stats["file_count"] = len(all_files)
+
+        # 代码行数（Python 文件）
+        py_files = list(project_path.rglob("*.py"))
+        py_files = [f for f in py_files if not any(p in f.parts for p in ["node_modules", ".git", "venv", "__pycache__", ".venv", "build", "dist"])]
+        total_lines = 0
+        for f in py_files[:100]:  # 限制读取数量
+            try:
+                total_lines += len(f.read_text(encoding="utf-8").splitlines())
+            except (OSError, UnicodeDecodeError):
+                pass
+        stats["line_count"] = total_lines
+
+    except Exception as e:
+        _logger.warning(f"获取项目统计失败: {e}")
+
+    return stats
+
+
+def get_hypotheses_data() -> List[Dict]:
+    """获取假设数据"""
+    data = read_aop_json("hypotheses.json/hypotheses.json")
+    if data and "data" in data:
+        return list(data["data"].values())
+    return []
+
+
+def get_sprint_data() -> Optional[Dict]:
+    """获取最新的 Sprint 数据"""
+    aop_dir = get_aop_dir()
+    sprints_dir = aop_dir / "sprints"
+    if sprints_dir.exists():
+        sprint_files = sorted(sprints_dir.glob("sprint-*.json"), reverse=True)
+        if sprint_files:
+            try:
+                return json.loads(sprint_files[0].read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+                pass
+    return None
+
+
+def parse_md_section(content: str, section_title: str) -> str:
+    """从 Markdown 内容中提取指定章节"""
+    if not content:
+        return ""
+    lines = content.split("\n")
+    in_section = False
+    section_lines = []
+
+    for line in lines:
+        if line.startswith("## "):
+            if section_title in line:
+                in_section = True
+            elif in_section:
+                break
+        elif in_section:
+            section_lines.append(line)
+
+    return "\n".join(section_lines).strip()
 
 
 # ============ 页面组件 ============
@@ -134,7 +264,7 @@ def render_sidebar():
         sm = st.session_state.settings_manager
         show_dev_console = sm.get_show_dev_console()
 
-        pages = ["🏠 首页", "💬 敏捷教练", "📁 工作区", "⚙️ 设置"]
+        pages = ["🏠 首页", "💬 敏捷教练", "📚 项目记忆", "📁 工作区", "⚙️ 设置"]
         if show_dev_console:
             pages.append("🖥️ 开发者控制台")
 
@@ -300,9 +430,111 @@ def render_project_selector():
     return selected_ws
 
 
+def execute_agent_task(agent, workspace, prompt, session_id):
+    """在后台线程中执行 Agent 任务
+
+    Args:
+        agent: PrimaryAgent 实例
+        workspace: 工作区
+        prompt: 用户输入
+        session_id: 会话 ID（用于恢复对话）
+    """
+    try:
+        # 恢复之前的 session
+        if session_id:
+            agent.resume_session(session_id)
+
+        context = AgentContext(
+            workspace_path=Path(workspace.project_path),
+            session_id=session_id,
+            history=st.session_state.messages[:-1],
+        )
+
+        _logger.info(f"后台执行: agent={agent.id}, workspace={workspace.project_path}")
+
+        # 使用 asyncio.run 在新线程中运行
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            response = loop.run_until_complete(agent.chat(prompt, context))
+        finally:
+            loop.close()
+
+        # 保存结果
+        st.session_state.execution_result = response
+        st.session_state.execution_error = None
+
+        # 更新 session ID
+        if agent.get_session_id():
+            st.session_state.session_id = agent.get_session_id()
+
+        _logger.info(f"后台执行完成: {len(response)} 字符")
+
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        _logger.error(f"后台执行错误: {str(e)}\n{error_trace}")
+        st.session_state.execution_error = str(e)
+        st.session_state.execution_result = None
+    finally:
+        st.session_state.execution_running = False
+
+
 def render_chat():
     """渲染聊天界面"""
-    # 检查是否有待处理的 prompt（来自快捷按钮）
+
+    # === 检查后台执行状态 ===
+    if st.session_state.execution_running:
+        # 计算执行时间
+        elapsed = time.time() - st.session_state.execution_start_time if st.session_state.execution_start_time else 0
+
+        # 显示执行状态
+        status_placeholder = st.empty()
+        status_placeholder.info(f"🤔 思考中... ({elapsed:.1f}s)")
+
+        # 取消按钮
+        if st.button("⏹️ 取消执行", key="cancel_execution"):
+            st.session_state.cancel_requested = True
+            st.warning("已请求取消，等待当前操作完成...")
+
+        # 显示已有的历史消息
+        for msg in st.session_state.messages:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+
+        # 检查线程是否完成
+        thread = st.session_state.execution_thread
+        if thread and not thread.is_alive():
+            # 线程已完成，处理结果
+            st.session_state.execution_running = False
+
+            if st.session_state.execution_result:
+                # 添加助手响应
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": st.session_state.execution_result
+                })
+            elif st.session_state.execution_error:
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": f"❌ 错误: {st.session_state.execution_error}"
+                })
+
+            # 清理执行状态
+            st.session_state.execution_thread = None
+            st.session_state.execution_result = None
+            st.session_state.execution_error = None
+            st.session_state.execution_start_time = None
+            st.session_state.cancel_requested = False
+
+            st.rerun()
+
+        # 线程还在运行，使用 time.sleep 等待后 rerun
+        time.sleep(0.5)
+        st.rerun()
+        return
+
+    # === 检查是否有待处理的 prompt ===
     if st.session_state.get('pending_prompt'):
         prompt = st.session_state.pending_prompt
         del st.session_state.pending_prompt
@@ -313,44 +545,33 @@ def render_chat():
             st.session_state.messages.append({"role": "user", "content": prompt})
             _logger.info(f"快捷指令: {prompt[:100]}...")
 
-            # 获取 AI 响应
-            with st.chat_message("user"):
-                st.markdown(prompt)
+            # 启动后台执行
+            agent = st.session_state.current_agent
+            workspace = st.session_state.current_workspace
+            session_id = st.session_state.session_id
 
-            with st.chat_message("assistant"):
-                placeholder = st.empty()
-                placeholder.markdown("🤔 思考中...")
+            st.session_state.execution_running = True
+            st.session_state.execution_start_time = time.time()
+            st.session_state.execution_result = None
+            st.session_state.execution_error = None
+            st.session_state.cancel_requested = False
 
-                try:
-                    agent = st.session_state.current_agent
-                    workspace = st.session_state.current_workspace
+            thread = threading.Thread(
+                target=execute_agent_task,
+                args=(agent, workspace, prompt, session_id),
+                daemon=False,
+            )
+            st.session_state.execution_thread = thread
+            thread.start()
 
-                    context = AgentContext(
-                        workspace_path=Path(workspace.project_path),
-                        session_id=st.session_state.session_id,
-                        history=st.session_state.messages[:-1],
-                    )
+            st.rerun()
 
-                    response = run_async(agent.chat(prompt, context))
-
-                    if agent.get_session_id():
-                        st.session_state.session_id = agent.get_session_id()
-
-                    placeholder.markdown(response)
-                    st.session_state.messages.append({"role": "assistant", "content": response})
-
-                except Exception as e:
-                    import traceback
-                    error_trace = traceback.format_exc()
-                    _logger.error(f"执行错误: {str(e)}\n{error_trace}")
-                    placeholder.error(f"错误: {str(e)}")
-
-    # 显示历史消息
+    # === 显示历史消息 ===
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # 聊天输入
+    # === 聊天输入 ===
     if prompt := st.chat_input("输入你的问题..."):
         # 检查是否就绪
         if not st.session_state.current_workspace:
@@ -365,41 +586,26 @@ def render_chat():
         st.session_state.messages.append({"role": "user", "content": prompt})
         _logger.info(f"用户输入: {prompt[:100]}...")
 
-        with st.chat_message("user"):
-            st.markdown(prompt)
+        # 启动后台执行
+        agent = st.session_state.current_agent
+        workspace = st.session_state.current_workspace
+        session_id = st.session_state.session_id
 
-        # 获取 AI 响应
-        with st.chat_message("assistant"):
-            placeholder = st.empty()
-            placeholder.markdown("🤔 思考中...")
+        st.session_state.execution_running = True
+        st.session_state.execution_start_time = time.time()
+        st.session_state.execution_result = None
+        st.session_state.execution_error = None
+        st.session_state.cancel_requested = False
 
-            try:
-                agent = st.session_state.current_agent
-                workspace = st.session_state.current_workspace
+        thread = threading.Thread(
+            target=execute_agent_task,
+            args=(agent, workspace, prompt, session_id),
+            daemon=False,
+        )
+        st.session_state.execution_thread = thread
+        thread.start()
 
-                context = AgentContext(
-                    workspace_path=Path(workspace.project_path),
-                    session_id=st.session_state.session_id,
-                    history=st.session_state.messages[:-1],  # 不包含刚添加的消息
-                )
-
-                _logger.info(f"执行命令: agent={agent.id}, workspace={workspace.project_path}")
-
-                response = run_async(agent.chat(prompt, context))
-
-                # 更新 session ID
-                if agent.get_session_id():
-                    st.session_state.session_id = agent.get_session_id()
-
-                placeholder.markdown(response)
-                st.session_state.messages.append({"role": "assistant", "content": response})
-                _logger.info(f"响应成功: {len(response)} 字符")
-
-            except Exception as e:
-                import traceback
-                error_trace = traceback.format_exc()
-                _logger.error(f"执行错误: {str(e)}\n{error_trace}")
-                placeholder.error(f"错误: {str(e)}")
+        st.rerun()
 
 
 def render_quick_actions(is_openclaw: bool = False):
@@ -409,16 +615,25 @@ def render_quick_actions(is_openclaw: bool = False):
         is_openclaw: 是否为 OpenClaw 模式，True 时按钮改为「复制指令」
     """
     st.markdown("---")
-    st.markdown("**快捷指令**" if not is_openclaw else "**快捷指令（点击复制）**")
+    st.markdown("**快捷指令**" if not is_openclaw else "**快捷指令（点击复制到剪贴板）**")
 
     col1, col2, col3, col4 = st.columns(4)
 
-    quick_prompts = {
-        "🔍 代码审查": "请帮我审查当前项目的代码，找出潜在问题和改进建议。",
-        "💡 创建假设": "请帮我创建一个关于项目优化的假设。",
-        "📊 查看状态": "请总结当前项目的状态和结构。",
-        "🔧 重构建议": "请分析代码并提供重构建议。",
-    }
+    # 根据模式使用不同的提示语
+    if is_openclaw:
+        quick_prompts = {
+            "📋 run 任务": "-aop run ",
+            "📋 review 审查": "-aop review ",
+            "📋 hypothesis 假设": "-aop hypothesis create ",
+            "📋 status 状态": "-aop status",
+        }
+    else:
+        quick_prompts = {
+            "🔍 代码审查": "请帮我审查当前项目的代码，找出潜在问题和改进建议。",
+            "💡 创建假设": "请帮我创建一个关于项目优化的假设。",
+            "📊 查看状态": "请总结当前项目的状态和结构。",
+            "🔧 重构建议": "请分析代码并提供重构建议。",
+        }
 
     for i, (label, prompt) in enumerate(quick_prompts.items()):
         col = [col1, col2, col3, col4][i]
@@ -459,84 +674,220 @@ def page_home():
     wm = st.session_state.workspace_manager
     sm = st.session_state.settings_manager
 
-    # === Agent 团队状态 ===
-    st.markdown("### 🤖 Agent 团队状态")
+    # === 1. 当前主 Agent 板块 ===
+    st.markdown("### 🤖 当前主 Agent")
+    primary_agent_id = sm.get_primary_agent()
     agents = get_available_agents()
 
-    if not agents:
-        st.warning("未检测到可用 Agent")
-        st.markdown("""
-        **安装指南：**
-        - Claude Code: `npm install -g @anthropic-ai/claude-code`
-        - OpenCode: `npm install -g opencode`
-        """)
+    if primary_agent_id:
+        # 显示设置的主 Agent
+        agent_names = {
+            "claude_code": "Claude Code",
+            "opencode": "OpenCode",
+            "openclaw": "OpenClaw",
+        }
+        agent_name = agent_names.get(primary_agent_id, primary_agent_id)
+        is_available = any(a.id == primary_agent_id for a in agents)
+
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown(f"**{agent_name}**")
+            st.caption("已锁定为主 Agent")
+        with col2:
+            if is_available:
+                st.markdown('<span class="status-badge status-ok">🟢 可用</span>', unsafe_allow_html=True)
+            else:
+                st.markdown('<span class="status-badge status-error">🔴 不可用</span>', unsafe_allow_html=True)
     else:
-        # 改为列表格式显示，信息密度更大
-        for agent in agents:
-            is_current = st.session_state.current_agent and st.session_state.current_agent.id == agent.id
-            status = '🟢 当前使用' if is_current else '⚪ 可用'
-            st.markdown(f'- **{agent.name}**: {agent.description} {status}')
+        # 未设置主 Agent
+        if agents:
+            current = st.session_state.current_agent
+            if current:
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.markdown(f"**{current.name}**")
+                    st.caption(current.description)
+                with col2:
+                    st.markdown('<span class="status-badge status-ok">🟢 使用中</span>', unsafe_allow_html=True)
+            else:
+                st.info("请在「设置」页面设置主 Agent")
+        else:
+            st.warning("未检测到可用 Agent")
+            st.caption("安装：Claude Code 或 OpenCode")
 
     st.markdown("---")
 
-    # === 项目统计 ===
+    # === 2. 子 Agent 状态列表 ===
+    st.markdown("### 👥 子 Agent 状态")
+
+    # 定义子 Agent 角色及其状态
+    sub_agents = [
+        {"name": "Developer", "role": "开发者", "status": "空闲", "progress": "待分配"},
+        {"name": "Reviewer", "role": "审查者", "status": "空闲", "progress": "待分配"},
+        {"name": "Tester", "role": "测试者", "status": "空闲", "progress": "待分配"},
+    ]
+
+    # 从 hypotheses 获取进度信息
+    hypotheses = get_hypotheses_data()
+    active_hypotheses = [h for h in hypotheses if h.get("state") == "testing"]
+
+    if active_hypotheses:
+        for h in active_hypotheses[:1]:
+            statement = h.get("statement", "")
+            if "Developer" in statement or "实现" in statement:
+                sub_agents[0]["status"] = "忙碌"
+                sub_agents[0]["progress"] = statement[:30] + "..." if len(statement) > 30 else statement
+            if "Review" in statement or "审查" in statement:
+                sub_agents[1]["status"] = "忙碌"
+                sub_agents[1]["progress"] = statement[:30] + "..." if len(statement) > 30 else statement
+            if "Test" in statement or "测试" in statement:
+                sub_agents[2]["status"] = "忙碌"
+                sub_agents[2]["progress"] = statement[:30] + "..." if len(statement) > 30 else statement
+
+    # 显示子 Agent 列表
+    for agent in sub_agents:
+        status_icon = "🟢" if agent["status"] == "空闲" else "🟡"
+        st.markdown(f"**{agent['name']}** | {status_icon} {agent['status']} | 进度：{agent['progress']}")
+
+    st.markdown("---")
+
+    # === 3. 项目进度报告 ===
+    st.markdown("### 📈 项目进度报告")
+
+    sprint = get_sprint_data()
+    hypotheses = get_hypotheses_data()
+
+    # 计算假设状态统计
+    h_pending = len([h for h in hypotheses if h.get("state") == "pending"])
+    h_testing = len([h for h in hypotheses if h.get("state") == "testing"])
+    h_validated = len([h for h in hypotheses if h.get("state") == "validated"])
+    h_total = len(hypotheses)
+
+    # 进度百分比
+    progress_pct = int((h_validated / h_total * 100) if h_total > 0 else 0)
+
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        # 当前任务
+        if sprint:
+            st.markdown(f"**当前任务**: {sprint.get('original_input', '无')}")
+            st.caption(f"Sprint ID: {sprint.get('sprint_id', '-')}")
+        else:
+            st.markdown("**当前任务**: 无活动 Sprint")
+
+        # 下一步计划
+        if h_pending > 0:
+            next_h = [h for h in hypotheses if h.get("state") == "pending"][0]
+            st.markdown(f"**下一步计划**: {next_h.get('statement', '-')[:50]}...")
+        else:
+            st.markdown("**下一步计划**: 创建新假设")
+
+    with col2:
+        # 进度条
+        st.metric("验证进度", f"{progress_pct}%")
+        st.progress(progress_pct / 100)
+        st.caption(f"已验证 {h_validated}/{h_total} 假设")
+
+    st.markdown("---")
+
+    # === 4. 项目统计 ===
     st.markdown("### 📊 项目统计")
+
+    stats = get_project_stats()
     workspaces = wm.list_workspaces()
 
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        st.metric("工作区总数", len(workspaces))
+        st.metric("文件数", stats["file_count"])
 
     with col2:
-        # 当前工作区
-        current_ws = st.session_state.current_workspace
-        st.metric("当前工作区", current_ws.name if current_ws else "未选择")
+        st.metric("代码行数", f"{stats['line_count']:,}")
 
     with col3:
-        # 会话消息数
-        msg_count = len(st.session_state.messages)
-        st.metric("对话消息数", msg_count)
+        st.metric("Python 文件", stats["py_files"])
 
     with col4:
-        # 主 Agent
-        primary = sm.get_primary_agent()
-        st.metric("主 Agent", primary or "未设置")
+        st.metric("工作区", len(workspaces))
 
     st.markdown("---")
 
-    # === 工作区列表 ===
-    st.markdown("### 📁 工作区列表")
+    # === 5. 最近活动 ===
+    st.markdown("### 📋 最近活动")
 
-    if not workspaces:
-        st.info("还没有工作区，请在「工作区」页面创建")
+    # 从假设和学习数据构建活动列表
+    activities = []
+
+    # 添加假设相关活动
+    for h in hypotheses[:5]:
+        state = h.get("state", "pending")
+        statement = h.get("statement", "")[:40]
+        if state == "validated":
+            activities.append(f"✅ 假设验证成功: {statement}...")
+        elif state == "testing":
+            activities.append(f"🔬 假设测试中: {statement}...")
+        elif state == "pending":
+            activities.append(f"📝 假设待验证: {statement}...")
+
+    # 添加 Sprint 活动
+    if sprint:
+        sprint_time = sprint.get("created_at", "")
+        if sprint_time:
+            activities.append(f"🚀 Sprint 创建: {sprint.get('original_input', '')[:40]}...")
+
+    if activities:
+        for i, activity in enumerate(activities[:10]):
+            st.markdown(f"{i+1}. {activity}")
     else:
-        for ws in workspaces:
-            is_current = current_ws and current_ws.id == ws.id
+        st.info("暂无最近活动")
 
-            with st.container():
-                col1, col2, col3 = st.columns([3, 2, 1])
+    st.markdown("---")
 
-                with col1:
-                    name_display = f"**{ws.name}** {'(当前)' if is_current else ''}"
-                    st.markdown(name_display)
-                    st.caption(f"📂 {ws.project_path}")
+    # === 6. 待处理问题 ===
+    st.markdown("### ⚠️ 待处理问题")
 
-                with col2:
-                    st.markdown(f"Agent: `{ws.primary_agent}`")
+    issues = []
 
-                with col3:
-                    if not is_current:
-                        if st.button("切换", key=f"home_select_{ws.id}"):
-                            st.session_state.current_workspace = ws
-                            wm.set_current_workspace(ws.id)
-                            st.rerun()
-                    else:
-                        st.markdown("✅")
+    # 待验证假设
+    pending_hypotheses = [h for h in hypotheses if h.get("state") == "pending"]
+    if pending_hypotheses:
+        issues.append(f"📋 {len(pending_hypotheses)} 个待验证假设")
 
-                st.markdown("---")
+    # 测试中假设
+    testing_hypotheses = [h for h in hypotheses if h.get("state") == "testing"]
+    if testing_hypotheses:
+        issues.append(f"🔬 {len(testing_hypotheses)} 个假设正在测试")
+
+    # Agent 状态检查
+    if not agents:
+        issues.append("🔴 未检测到可用 Agent")
+
+    if issues:
+        for issue in issues:
+            st.warning(issue)
+    else:
+        st.success("✅ 无待处理问题")
+
+    st.markdown("---")
+
+    # === 7. 当前迭代目标 ===
+    st.markdown("### 🎯 当前迭代目标")
+
+    # 从 PROJECT_MEMORY.md 读取进行中的任务
+    memory_content = read_aop_file("PROJECT_MEMORY.md")
+    if memory_content:
+        in_progress = parse_md_section(memory_content, "进行中")
+        if in_progress:
+            st.markdown("**进行中**:")
+            st.markdown(in_progress)
+        else:
+            st.info("暂无进行中的迭代目标")
+    else:
+        st.info("未找到项目记忆文件")
 
     # === 快速操作 ===
+    st.markdown("---")
     st.markdown("### ⚡ 快速操作")
 
     col1, col2, col3 = st.columns(3)
@@ -599,9 +950,24 @@ def page_coach():
             render_welcome()
         render_empty_state()
     elif is_openclaw:
-        # OpenClaw 模式：显示提示，不显示聊天框
-        st.info("💡 请在 OpenClaw 对话窗口继续操作")
-        st.markdown("快捷指令已改为「复制指令」模式，点击按钮可将指令复制到剪贴板。")
+        # OpenClaw 模式：显示命令帮助和提示
+        st.success("🟢 OpenClaw 已连接 - 可直接在对话窗口使用 AOP 命令")
+
+        with st.expander("📖 AOP 命令参考", expanded=True):
+            st.markdown("""
+            **命令格式**：`-aop <command> [args]` 或 `aop <command> [args]`
+
+            | 命令 | 说明 | 示例 |
+            |------|------|------|
+            | `run` | 运行任务 | `-aop run 实现登录功能` |
+            | `review` | 代码审查 | `-aop review 检查安全性` |
+            | `hypothesis` | 假设管理 | `-aop hypothesis create "缓存提升50%"` |
+            | `status` | 查看状态 | `-aop status` |
+            | `dashboard` | Dashboard | `-aop dashboard open` |
+            """)
+
+        st.markdown("---")
+        st.markdown("💡 **提示**：快捷指令已改为「复制指令」模式，点击按钮可复制指令到剪贴板。")
     else:
         # 就绪状态：显示聊天
         render_chat()
@@ -794,6 +1160,220 @@ def page_settings():
     st.code(str(aop_dir))
 
 
+def get_memory_files() -> List[Dict]:
+    """获取记忆文件列表"""
+    memories = []
+
+    # 全局记忆文件 - SOUL.md（在用户主目录的 .aop 下）
+    global_aop_dir = Path.home() / ".aop"
+    soul_file = global_aop_dir / "SOUL.md"
+    if soul_file.exists():
+        stat = soul_file.stat()
+        memories.append({
+            "name": "SOUL.md",
+            "path": soul_file,
+            "type": "global",
+            "size": stat.st_size,
+            "modified": datetime.fromtimestamp(stat.st_mtime),
+        })
+
+    # 项目记忆文件 - 当前项目的 .aop 目录
+    aop_dir = get_aop_dir()
+    if aop_dir.exists():
+        for md_file in aop_dir.glob("*.md"):
+            # 排除 SOUL.md（已作为全局记忆处理）
+            if md_file.name == "SOUL.md":
+                continue
+            stat = md_file.stat()
+            memories.append({
+                "name": md_file.name,
+                "path": md_file,
+                "type": "project",
+                "size": stat.st_size,
+                "modified": datetime.fromtimestamp(stat.st_mtime),
+            })
+
+    # 按修改时间排序
+    memories.sort(key=lambda x: x["modified"], reverse=True)
+    return memories
+
+
+def page_memory():
+    """项目记忆管理页面"""
+    st.title("📚 项目记忆")
+
+    # 检查是否选择了项目
+    if not st.session_state.current_workspace:
+        st.warning("请先选择一个项目工作区")
+        st.info("前往「工作区」页面选择或创建工作区")
+        return
+
+    # 初始化编辑状态
+    if "memory_editing" not in st.session_state:
+        st.session_state.memory_editing = None
+    if "memory_content" not in st.session_state:
+        st.session_state.memory_content = ""
+    if "memory_preview" not in st.session_state:
+        st.session_state.memory_preview = False
+
+    # 新建记忆文件
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.markdown(f"**项目**: {st.session_state.current_workspace.name}")
+    with col2:
+        if st.button("➕ 新建记忆", use_container_width=True):
+            st.session_state.memory_creating = True
+
+    # 新建记忆对话框
+    if st.session_state.get("memory_creating", False):
+        with st.container():
+            st.markdown("---")
+            st.markdown("**新建记忆文件**")
+            new_name = st.text_input("文件名（自动添加 .md 后缀）", placeholder="my-memory")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("创建", use_container_width=True):
+                    if new_name:
+                        # 确保文件名以 .md 结尾
+                        filename = new_name if new_name.endswith(".md") else f"{new_name}.md"
+                        aop_dir = get_aop_dir()
+                        aop_dir.mkdir(parents=True, exist_ok=True)
+                        new_path = aop_dir / filename
+                        if new_path.exists():
+                            st.error("文件已存在")
+                        else:
+                            # 创建空文件
+                            new_path.write_text(f"# {new_name}\n\n", encoding="utf-8")
+                            st.success(f"已创建: {filename}")
+                            st.session_state.memory_creating = False
+                            st.rerun()
+                    else:
+                        st.error("请输入文件名")
+            with col2:
+                if st.button("取消", use_container_width=True):
+                    st.session_state.memory_creating = False
+                    st.rerun()
+
+    st.markdown("---")
+
+    # 如果正在编辑，显示编辑器
+    if st.session_state.memory_editing:
+        memory = st.session_state.memory_editing
+        st.markdown(f"### 编辑: {memory['name']}")
+        if memory["type"] == "global":
+            st.caption("🌍 全局记忆 - 所有项目共享")
+        else:
+            st.caption("📁 项目记忆 - 仅当前项目可见")
+
+        # 预览模式切换
+        preview_mode = st.toggle("预览模式", value=st.session_state.memory_preview)
+        st.session_state.memory_preview = preview_mode
+
+        if preview_mode:
+            # 预览模式
+            st.markdown(st.session_state.memory_content)
+        else:
+            # 编辑模式
+            new_content = st.text_area(
+                "内容",
+                value=st.session_state.memory_content,
+                height=400,
+                label_visibility="collapsed",
+            )
+            st.session_state.memory_content = new_content
+
+        # 操作按钮
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if st.button("💾 保存", use_container_width=True):
+                try:
+                    memory["path"].write_text(st.session_state.memory_content, encoding="utf-8")
+                    st.success("保存成功！")
+                    st.session_state.memory_editing = None
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"保存失败: {e}")
+
+        with col2:
+            if st.button("❌ 取消", use_container_width=True):
+                st.session_state.memory_editing = None
+                st.session_state.memory_content = ""
+                st.rerun()
+
+        with col3:
+            if memory["type"] != "global":  # 全局记忆不允许删除
+                if st.button("🗑️ 删除", use_container_width=True):
+                    st.session_state.memory_delete_confirm = memory
+
+        # 删除确认
+        if st.session_state.get("memory_delete_confirm"):
+            st.warning(f"确定删除记忆文件「{memory['name']}」？此操作不可恢复。")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("确认删除", use_container_width=True):
+                    try:
+                        memory["path"].unlink()
+                        st.success(f"已删除: {memory['name']}")
+                        st.session_state.memory_editing = None
+                        st.session_state.memory_delete_confirm = None
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"删除失败: {e}")
+            with col2:
+                if st.button("取消", use_container_width=True):
+                    st.session_state.memory_delete_confirm = None
+                    st.rerun()
+
+        st.markdown("---")
+        st.markdown("### 所有记忆文件")
+
+    # 显示记忆文件列表
+    memories = get_memory_files()
+
+    if not memories:
+        st.info("暂无记忆文件。点击「新建记忆」创建第一个记忆。")
+    else:
+        # 统计信息
+        global_count = len([m for m in memories if m["type"] == "global"])
+        project_count = len([m for m in memories if m["type"] == "project"])
+        st.caption(f"共 {len(memories)} 个记忆文件（{global_count} 全局 / {project_count} 项目）")
+
+        st.markdown("---")
+
+        for memory in memories:
+            with st.container():
+                col1, col2, col3, col4 = st.columns([3, 2, 1, 1])
+
+                with col1:
+                    # 名称和类型标签
+                    if memory["type"] == "global":
+                        st.markdown(f"🌍 **{memory['name']}**")
+                        st.caption("全局记忆 - 所有项目共享")
+                    else:
+                        st.markdown(f"📁 **{memory['name']}**")
+                        st.caption("项目记忆")
+
+                with col2:
+                    # 修改时间
+                    st.caption(f"修改: {memory['modified'].strftime('%Y-%m-%d %H:%M')}")
+
+                with col3:
+                    # 文件大小
+                    size_kb = memory["size"] / 1024
+                    st.caption(f"{size_kb:.1f} KB")
+
+                with col4:
+                    if st.button("编辑", key=f"edit_{memory['name']}", use_container_width=True):
+                        # 读取文件内容
+                        content = memory["path"].read_text(encoding="utf-8")
+                        st.session_state.memory_editing = memory
+                        st.session_state.memory_content = content
+                        st.session_state.memory_preview = False
+                        st.rerun()
+
+                st.markdown("---")
+
+
 def page_dev_console():
     """开发者控制台页面"""
     st.title("🖥️ 开发者控制台")
@@ -881,6 +1461,8 @@ def main():
         page_home()
     elif page == "💬 敏捷教练":
         page_coach()
+    elif page == "📚 项目记忆":
+        page_memory()
     elif page == "📁 工作区":
         page_workspaces()
     elif page == "⚙️ 设置":
