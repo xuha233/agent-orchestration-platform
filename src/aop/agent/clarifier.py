@@ -2,6 +2,9 @@
 RequirementClarifier - 需求澄清器
 
 将模糊的需求描述转换为结构化的明确需求。
+支持双模式：
+- OrchestratorClient 模式：使用中枢 Agent 进行决策
+- LLMClient 模式：直接调用 LLM API（向后兼容）
 """
 
 from __future__ import annotations
@@ -9,11 +12,14 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from typing import List, Callable, Dict, Any
+from typing import List, Callable, Dict, Any, TYPE_CHECKING
 from enum import Enum
 
 from .types import ClarifiedRequirement, QAPair
-from ..llm import LLMClient, LLMMessage
+
+if TYPE_CHECKING:
+    from ..llm import LLMClient, LLMMessage
+    from ..orchestrator import OrchestratorClient
 
 
 CLARIFICATION_SYSTEM_PROMPT = """你是一个需求分析师，负责将模糊的项目描述转化为清晰的结构化需求。
@@ -48,6 +54,10 @@ class RequirementClarifier:
 
     将模糊的需求描述转换为结构化的明确需求。
 
+    支持两种模式：
+    1. OrchestratorClient 模式：使用中枢 Agent 进行决策（推荐）
+    2. LLMClient 模式：直接调用 LLM API（向后兼容）
+
     工作流程:
     1. 分析模糊输入，识别关键维度
     2. 生成澄清问题
@@ -59,10 +69,24 @@ class RequirementClarifier:
         self,
         llm_client: LLMClient | None = None,
         config: ClarificationConfig | None = None,
+        orchestrator_client: OrchestratorClient | None = None,
     ):
+        """
+        初始化需求澄清器
+
+        Args:
+            llm_client: LLM 客户端（向后兼容）
+            config: 澄清器配置
+            orchestrator_client: 中枢 Agent 客户端（推荐）
+        """
         self.llm = llm_client
         self.config = config or ClarificationConfig()
+        self.orchestrator = orchestrator_client
         self.clarification_history: List[QAPair] = []
+
+    def _has_decision_engine(self) -> bool:
+        """检查是否有决策引擎可用"""
+        return self.orchestrator is not None or self.llm is not None
 
     def clarify(
         self,
@@ -113,20 +137,58 @@ class RequirementClarifier:
         """
         识别需求的关键维度
 
-        如果有 LLM 客户端，使用 LLM 进行智能维度识别；
-        否则返回默认维度。
+        优先使用 OrchestratorClient，其次使用 LLMClient，最后返回默认维度。
         """
-        if not self.llm:
+        if not self._has_decision_engine():
             return self._default_dimensions()
 
         prompt = f"分析以下需求，识别需要澄清的关键维度：\n\n{input_text}\n\n输出 JSON: {{\"dimensions\": [\"维度1\", \"维度2\"]}}"
 
         try:
-            response = self.llm.complete(
-                [
-                    LLMMessage(role="system", content=CLARIFICATION_SYSTEM_PROMPT),
-                    LLMMessage(role="user", content=prompt),
-                ],
+            # 优先使用 OrchestratorClient
+            if self.orchestrator:
+                return self._call_decision_engine(prompt, CLARIFICATION_SYSTEM_PROMPT)
+
+            # 回退到 LLMClient
+            if self.llm:
+                from ..llm import LLMMessage
+                response = self.llm.complete(
+                    [
+                        LLMMessage(role="system", content=CLARIFICATION_SYSTEM_PROMPT),
+                        LLMMessage(role="user", content=prompt),
+                    ],
+                    temperature=self.config.llm_temperature,
+                    max_tokens=self.config.llm_max_tokens,
+                )
+
+                data = json.loads(self._extract_json(response.content))
+                dimensions = data.get("dimensions", self._default_dimensions())
+                return dimensions if dimensions else self._default_dimensions()
+
+        except Exception as e:
+            import sys
+            print(f"[AOP] Dimension identification failed: {e}", file=sys.stderr)
+
+        return self._default_dimensions()
+
+    def _call_decision_engine(self, prompt: str, system_prompt: str) -> list[str]:
+        """
+        调用决策引擎（OrchestratorClient）
+
+        Args:
+            prompt: 用户提示
+            system_prompt: 系统提示
+
+        Returns:
+            解析后的维度列表
+        """
+        if not self.orchestrator:
+            return self._default_dimensions()
+
+        try:
+            response = self.orchestrator.complete(
+                messages=[{"role": "user", "content": prompt}],
+                system=system_prompt,
                 temperature=self.config.llm_temperature,
                 max_tokens=self.config.llm_max_tokens,
             )
@@ -134,9 +196,10 @@ class RequirementClarifier:
             data = json.loads(self._extract_json(response.content))
             dimensions = data.get("dimensions", self._default_dimensions())
             return dimensions if dimensions else self._default_dimensions()
+
         except Exception as e:
             import sys
-            print(f"[AOP] LLM dimension identification failed: {e}", file=sys.stderr)
+            print(f"[AOP] Orchestrator call failed: {e}", file=sys.stderr)
             return self._default_dimensions()
 
     def _extract_json(self, text: str) -> str:

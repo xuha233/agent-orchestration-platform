@@ -1101,3 +1101,10 @@ try:
 except ImportError:
     pass  # Agent module not available
 
+# Register orchestrator command group
+try:
+    from .orchestrator import orchestrator as orchestrator_group
+    cli.add_command(orchestrator_group, name="orchestrator")
+except ImportError:
+    pass  # Orchestrator module not available
+

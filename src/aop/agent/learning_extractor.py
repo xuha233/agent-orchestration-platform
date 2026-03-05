@@ -2,16 +2,22 @@
 LearningExtractor - 学习提取器
 
 从执行日志中自动提取学习经验。
+支持双模式：
+- OrchestratorClient 模式：使用中枢 Agent 进行深度分析（推荐）
+- 规则模式：基于规则的分析（向后兼容）
 """
 
 from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import List, Dict, Any
+from typing import List, Dict, Any, TYPE_CHECKING
 import re
 
 from .types import ExtractedLearning
+
+if TYPE_CHECKING:
+    from ..orchestrator import OrchestratorClient
 
 
 @dataclass
@@ -49,6 +55,10 @@ class LearningExtractor:
 
     从执行日志中自动提取学习经验。
 
+    支持两种模式：
+    1. OrchestratorClient 模式：使用中枢 Agent 进行深度分析（推荐）
+    2. 规则模式：基于规则的分析（向后兼容）
+
     提取策略:
     1. 错误模式识别 - 识别常见错误并分类
     2. 成功模式识别 - 识别成功的关键因素
@@ -57,11 +67,25 @@ class LearningExtractor:
     5. 跨阶段关联分析 - 分析不同阶段之间的依赖和影响
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+        orchestrator_client: OrchestratorClient | None = None,
+    ):
+        """
+        初始化学习提取器
+
+        Args:
+            orchestrator_client: 中枢 Agent 客户端（可选，用于深度分析）
+        """
+        self.orchestrator = orchestrator_client
         self.known_error_patterns = self._load_error_patterns()
         self.known_success_patterns = self._load_success_patterns()
         self._pattern_stats: Dict[str, PatternStats] = {}
         self._phase_relations: List[PhaseRelation] = []
+
+    def _has_decision_engine(self) -> bool:
+        """检查是否有决策引擎可用"""
+        return self.orchestrator is not None
 
     def extract(self, execution_results: List[dict]) -> List[ExtractedLearning]:
         """
@@ -95,6 +119,12 @@ class LearningExtractor:
                 i.recommendation for i in all_insights
                 if i.recommendation and i.phase == phase
             ]
+
+            # 使用 Orchestrator 进行深度分析（如果可用）
+            if self.orchestrator:
+                enhanced_insights = self._enhance_with_orchestrator(learning, results)
+                learning.insights.extend(enhanced_insights)
+
             learnings.append(learning)
 
         # 跨阶段学习
@@ -103,6 +133,90 @@ class LearningExtractor:
             learnings.append(cross_phase_learning)
 
         return learnings
+
+    def _enhance_with_orchestrator(
+        self,
+        learning: ExtractedLearning,
+        results: List[dict],
+    ) -> List[str]:
+        """
+        使用 Orchestrator 进行深度分析
+
+        Args:
+            learning: 初步提取的学习
+            results: 该阶段的执行结果
+
+        Returns:
+            增强的洞察列表
+        """
+        if not self.orchestrator:
+            return []
+
+        try:
+            # 构建分析提示
+            prompt = f"""分析以下执行结果，提取深度洞察：
+
+阶段: {learning.phase}
+成功的操作: {learning.what_worked}
+失败的操作: {learning.what_failed}
+
+请输出 JSON 格式的洞察列表，每个洞察包含:
+- insight: 洞察描述
+- recommendation: 具体建议
+
+输出格式: {{"insights": [{{"insight": "...", "recommendation": "..."}}]}}
+"""
+            response = self.orchestrator.complete(
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=1024,
+            )
+
+            import json
+            data = json.loads(self._extract_json(response.content))
+            return [
+                item.get("recommendation", "")
+                for item in data.get("insights", [])
+                if item.get("recommendation")
+            ]
+
+        except Exception as e:
+            import sys
+            print(f"[AOP] Orchestrator enhancement failed: {e}", file=sys.stderr)
+            return []
+
+    def _extract_json(self, text: str) -> str:
+        """从文本中提取 JSON 字符串"""
+        text = text.strip()
+
+        # 尝试直接解析
+        if text.startswith("{") and text.endswith("}"):
+            return text
+
+        # 尝试提取三反引号代码块 (```json ... ```)
+        import re
+        triple_match = re.search(r"```(?:json)?\s*\n?([\s\S]*?)\n?```", text)
+        if triple_match:
+            return triple_match.group(1).strip()
+
+        # 尝试提取单反引号代码块
+        single_match = re.search(r"`(?:json)?\s*([\s\S]*?)`", text)
+        if single_match:
+            return single_match.group(1).strip()
+
+        # 尝试匹配花括号包围的 JSON（处理嵌套）
+        brace_start = text.find("{")
+        if brace_start != -1:
+            depth = 0
+            for i, char in enumerate(text[brace_start:], brace_start):
+                if char == "{":
+                    depth += 1
+                elif char == "}":
+                    depth -= 1
+                    if depth == 0:
+                        return text[brace_start:i + 1]
+
+        return text
 
     def _group_by_phase(self, results: List[dict]) -> Dict[str, List[dict]]:
         """按阶段分组结果"""

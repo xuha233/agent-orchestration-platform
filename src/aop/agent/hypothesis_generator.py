@@ -2,7 +2,9 @@
 HypothesisGenerator - 假设生成器
 
 基于澄清后的需求，自动生成可验证的假设。
-支持 LLM 驱动的智能生成和基于规则的回退生成。
+支持双模式：
+- OrchestratorClient 模式：使用中枢 Agent 进行决策（推荐）
+- LLMClient 模式：直接调用 LLM API（向后兼容）
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ from .types import GeneratedHypothesis, HypothesisType, ClarifiedRequirement, Hy
 
 if TYPE_CHECKING:
     from ..llm import LLMClient, LLMMessage
+    from ..orchestrator import OrchestratorClient
 
 
 HYPOTHESIS_GENERATION_SYSTEM_PROMPT = """你是一个技术架构专家，负责分析项目需求并生成技术假设。
@@ -61,9 +64,10 @@ class HypothesisGenerator:
 
     基于澄清后的需求，自动生成可验证的假设。
 
-    支持两种模式：
-    1. LLM 驱动模式：使用大语言模型智能生成假设
-    2. 回退模式：基于规则的硬编码假设生成
+    支持三种模式：
+    1. OrchestratorClient 模式：使用中枢 Agent 进行决策（推荐）
+    2. LLMClient 模式：直接调用 LLM API（向后兼容）
+    3. 回退模式：基于规则的硬编码假设生成
 
     假设生成策略:
     1. 从需求中提取关键决策点
@@ -77,9 +81,23 @@ class HypothesisGenerator:
         self,
         llm_client: LLMClientProtocol | None = None,
         config: HypothesisGenerationConfig | None = None,
+        orchestrator_client: OrchestratorClient | None = None,
     ):
+        """
+        初始化假设生成器
+
+        Args:
+            llm_client: LLM 客户端（向后兼容）
+            config: 假设生成配置
+            orchestrator_client: 中枢 Agent 客户端（推荐）
+        """
         self.llm = llm_client
         self.config = config or HypothesisGenerationConfig()
+        self.orchestrator = orchestrator_client
+
+    def _has_decision_engine(self) -> bool:
+        """检查是否有决策引擎可用"""
+        return self.orchestrator is not None or self.llm is not None
 
     def generate(
         self,
@@ -96,45 +114,58 @@ class HypothesisGenerator:
         Returns:
             生成的假设列表
         """
-        if not self.llm:
+        if not self._has_decision_engine():
             return self._fallback_generate(requirement)
 
         try:
             prompt = self._build_prompt(requirement, project_context)
-            
-            # 导入 LLMMessage（运行时可能不存在）
-            try:
-                from ..llm import LLMMessage
-                messages = [
-                    LLMMessage(role="system", content=HYPOTHESIS_GENERATION_SYSTEM_PROMPT),
-                    LLMMessage(role="user", content=prompt),
-                ]
-            except ImportError:
-                # 如果 LLMMessage 不可用，使用字典格式
-                messages = [
-                    {"role": "system", "content": HYPOTHESIS_GENERATION_SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
-                ]
 
-            response = self.llm.complete(
-                messages,
-                temperature=self.config.temperature,
-                max_tokens=self.config.max_tokens,
-            )
+            # 优先使用 OrchestratorClient
+            if self.orchestrator:
+                response = self.orchestrator.complete(
+                    messages=[{"role": "user", "content": prompt}],
+                    system=HYPOTHESIS_GENERATION_SYSTEM_PROMPT,
+                    temperature=self.config.temperature,
+                    max_tokens=self.config.max_tokens,
+                )
+                content = response.content
+            # 回退到 LLMClient
+            elif self.llm:
+                # 导入 LLMMessage（运行时可能不存在）
+                try:
+                    from ..llm import LLMMessage
+                    messages = [
+                        LLMMessage(role="system", content=HYPOTHESIS_GENERATION_SYSTEM_PROMPT),
+                        LLMMessage(role="user", content=prompt),
+                    ]
+                except ImportError:
+                    # 如果 LLMMessage 不可用，使用字典格式
+                    messages = [
+                        {"role": "system", "content": HYPOTHESIS_GENERATION_SYSTEM_PROMPT},
+                        {"role": "user", "content": prompt},
+                    ]
 
-            # 提取响应内容
-            content = response.content if hasattr(response, 'content') else str(response)
+                response = self.llm.complete(
+                    messages,
+                    temperature=self.config.temperature,
+                    max_tokens=self.config.max_tokens,
+                )
+                # 提取响应内容
+                content = response.content if hasattr(response, 'content') else str(response)
+            else:
+                return self._fallback_generate(requirement)
+
             hypotheses = self._parse_response(content)
-            
+
             if not hypotheses and self.config.enable_fallback:
                 return self._fallback_generate(requirement)
-            
+
             return self._sort_by_priority(hypotheses)
-        
+
         except Exception as e:
-            # LLM 调用失败时记录错误并回退到规则生成
+            # 调用失败时记录错误并回退到规则生成
             import sys
-            print(f"[AOP] LLM hypothesis generation failed: {e}", file=sys.stderr)
+            print(f"[AOP] Hypothesis generation failed: {e}", file=sys.stderr)
             if self.config.enable_fallback:
                 return self._fallback_generate(requirement)
             return []

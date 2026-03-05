@@ -2,6 +2,9 @@
 AgentDriver - 全自动 Agent 团队驱动器
 
 从模糊需求到交付的全自动执行。
+支持双模式：
+- OrchestratorClient 模式：使用中枢 Agent 进行决策和调度（推荐）
+- LLMClient 模式：直接调用 LLM API（向后兼容）
 """
 
 from __future__ import annotations
@@ -11,7 +14,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import List, Callable, Dict, Any
+from typing import List, Callable, Dict, Any, TYPE_CHECKING, Literal
 
 from .types import (
     SprintContext,
@@ -28,7 +31,10 @@ from .learning_extractor import LearningExtractor
 from .persistence import SprintPersistence
 from .scheduler import TaskScheduler
 from ..core.engine import ExecutionEngine
-from ..llm import LLMClient, ClaudeClient, LocalLLMClient
+
+if TYPE_CHECKING:
+    from ..llm import LLMClient, ClaudeClient, LocalLLMClient
+    from ..orchestrator import OrchestratorClient, OrchestratorConfig
 
 
 class AgentDriver:
@@ -38,16 +44,24 @@ class AgentDriver:
     这是 OpenClaw/Claude Code 的统一入口。
     从模糊需求到交付，全自动执行。
 
+    支持两种模式：
+    1. OrchestratorClient 模式：使用中枢 Agent 进行决策和调度（推荐）
+    2. LLMClient 模式：直接调用 LLM API（向后兼容）
+
     使用示例:
+        # 使用 Orchestrator 模式（推荐）
         driver = AgentDriver()
-        result = driver.run_from_vague_description(
-            "帮我做一个电商系统",
-            clarifications_callback=lambda q: input(q)
-        )
-        
+        result = driver.run_from_vague_description("帮我做一个电商系统")
+
+        # 指定 Orchestrator 类型
+        driver = AgentDriver(config=AgentDriverConfig(orchestrator_type="claude-code"))
+
+        # 向后兼容：使用 LLMClient 模式
+        driver = AgentDriver(llm_client=my_llm_client)
+
         # 恢复中断的冲刺
         result = driver.resume_sprint("sprint-abc123")
-        
+
         # 获取活跃冲刺列表
         active = driver.get_active_sprints()
     """
@@ -56,30 +70,63 @@ class AgentDriver:
         self,
         config: AgentDriverConfig | None = None,
         llm_client: LLMClient | None = None,
+        orchestrator: OrchestratorClient | None = None,
     ):
+        """
+        初始化 AgentDriver
+
+        Args:
+            config: 驱动器配置
+            llm_client: LLM 客户端（向后兼容，优先级低于 orchestrator）
+            orchestrator: 中枢 Agent 客户端（推荐）
+        """
         self.config = config or AgentDriverConfig()
         self.context: SprintContext | None = None
+        self._orchestrator: OrchestratorClient | None = orchestrator
+        self._llm: LLMClient | None = llm_client
 
-        # 初始化 LLM 客户端
-        if llm_client:
-            self.llm = llm_client
+        # 初始化 Orchestrator 或 LLM 客户端
+        if orchestrator:
+            # 优先使用传入的 orchestrator
+            self._orchestrator = orchestrator
+        elif self.config.orchestrator_type != "auto":
+            # 根据配置创建 orchestrator
+            self._orchestrator = self._create_orchestrator()
         else:
-            self.llm = self._create_llm_client()
+            # 自动检测最佳 orchestrator
+            self._orchestrator = self._auto_detect_orchestrator()
 
-        # 初始化各组件（传入 LLM 客户端）
-        self.clarifier = RequirementClarifier(llm_client=self.llm)
-        self.hypothesis_generator = HypothesisGenerator(llm_client=self.llm)
+        # 如果没有 orchestrator，回退到 LLMClient
+        if not self._orchestrator:
+            if llm_client:
+                self._llm = llm_client
+            else:
+                self._llm = self._create_llm_client()
+
+        # 初始化各组件（传入 OrchestratorClient 或 LLMClient）
+        self.clarifier = RequirementClarifier(
+            llm_client=self._llm,
+            orchestrator_client=self._orchestrator,
+        )
+        self.hypothesis_generator = HypothesisGenerator(
+            llm_client=self._llm,
+            orchestrator_client=self._orchestrator,
+        )
         self.validator = AutoValidator()
-        self.learning_extractor = LearningExtractor()
+        self.learning_extractor = LearningExtractor(
+            orchestrator_client=self._orchestrator,
+        )
 
         # 存储路径
         self.storage_path = self.config.storage_path or Path(".aop")
-        
+
         # 初始化持久化管理器
         self.persistence = SprintPersistence(str(self.storage_path / "sprints"))
 
     def _create_llm_client(self) -> LLMClient | None:
-        """根据配置创建 LLM 客户端"""
+        """根据配置创建 LLM 客户端（向后兼容）"""
+        from ..llm import ClaudeClient, LocalLLMClient
+
         if self.config.llm_provider == "claude":
             return ClaudeClient(
                 api_key=self.config.llm_api_key,
@@ -88,6 +135,93 @@ class AgentDriver:
         elif self.config.llm_provider == "local":
             return LocalLLMClient()
         return None
+
+    def _create_orchestrator(self) -> OrchestratorClient | None:
+        """
+        根据配置创建 OrchestratorClient
+
+        Returns:
+            OrchestratorClient 实例，如果创建失败则返回 None
+        """
+        from ..orchestrator import create_orchestrator, OrchestratorConfig
+
+        orch_type = self.config.orchestrator_type
+        if orch_type == "auto":
+            return self._auto_detect_orchestrator()
+
+        try:
+            config = OrchestratorConfig(
+                timeout=self.config.default_timeout,
+            )
+            return create_orchestrator(
+                orchestrator_type=orch_type,
+                config=config,
+                llm_client=self._llm,
+            )
+        except Exception as e:
+            import sys
+            print(f"[AOP] Failed to create orchestrator '{orch_type}': {e}", file=sys.stderr)
+            return None
+
+    def _auto_detect_orchestrator(self) -> OrchestratorClient | None:
+        """
+        自动检测最佳可用的 Orchestrator
+
+        优先级: claude-code > opencode > openclaw > api
+
+        Returns:
+            最佳可用的 OrchestratorClient 实例
+        """
+        from ..orchestrator import (
+            get_best_orchestrator,
+            create_orchestrator,
+            OrchestratorConfig,
+        )
+
+        try:
+            best_type = get_best_orchestrator()
+            if best_type == "api" and not self._llm:
+                # API 模式需要 LLMClient
+                return None
+
+            config = OrchestratorConfig(
+                timeout=self.config.default_timeout,
+            )
+            return create_orchestrator(
+                orchestrator_type=best_type,
+                config=config,
+                llm_client=self._llm,
+            )
+        except Exception as e:
+            import sys
+            print(f"[AOP] Auto-detect orchestrator failed: {e}", file=sys.stderr)
+            return None
+
+    def get_orchestrator_info(self) -> Dict[str, Any]:
+        """
+        获取当前使用的 Orchestrator 信息
+
+        Returns:
+            Orchestrator 信息字典
+        """
+        if self._orchestrator:
+            return {
+                "type": self._orchestrator.orchestrator_type,
+                "capabilities": [c.value for c in self._orchestrator.capabilities],
+                "mode": "orchestrator",
+            }
+        elif self._llm:
+            return {
+                "type": "llm_client",
+                "provider": self.config.llm_provider,
+                "model": self.config.llm_model,
+                "mode": "llm",
+            }
+        else:
+            return {
+                "type": "none",
+                "mode": "fallback",
+            }
 
     def run_from_vague_description(
         self,
@@ -437,12 +571,80 @@ class AgentDriver:
         """
         执行任务
 
-        使用 TaskScheduler 调度假设对应的任务，
-        然后使用 ExecutionEngine 并行执行。
+        优先使用 OrchestratorClient 执行，其次使用 ExecutionEngine。
         """
         if not self.context or not self.context.hypotheses:
             return []
 
+        results: List[Dict[str, Any]] = []
+
+        # 优先使用 OrchestratorClient 执行
+        if self._orchestrator and self._orchestrator.supports(
+            self._get_capability("task_execution")
+        ):
+            return self._execute_with_orchestrator()
+
+        # 回退到 ExecutionEngine
+        return self._execute_with_engine()
+
+    def _get_capability(self, name: str):
+        """获取 OrchestratorCapability"""
+        from ..orchestrator import OrchestratorCapability
+        return getattr(OrchestratorCapability, name.upper(), None)
+
+    def _execute_with_orchestrator(self) -> List[Dict[str, Any]]:
+        """使用 OrchestratorClient 执行任务"""
+        if not self.context or not self._orchestrator:
+            return []
+
+        results: List[Dict[str, Any]] = []
+
+        for i, h in enumerate(self.context.hypotheses):
+            # 支持 GeneratedHypothesis 对象和字典两种格式
+            if hasattr(h, 'statement'):
+                statement = h.statement
+                hypothesis_id = f"h{i}"
+            else:
+                h_dict = h if isinstance(h, dict) else {}
+                statement = h_dict.get("statement", "")
+                hypothesis_id = h_dict.get("hypothesis_id", f"h{i}")
+
+            try:
+                response = self._orchestrator.execute(
+                    prompt=statement,
+                    repo_root=str(self.storage_path),
+                )
+
+                result = {
+                    "task_id": f"task-{i}",
+                    "hypothesis_id": hypothesis_id,
+                    "success": response.finish_reason == "stop",
+                    "state": "completed" if response.finish_reason == "stop" else "failed",
+                    "provider_results": {
+                        "orchestrator": {
+                            "success": response.finish_reason == "stop",
+                            "output": response.content,
+                        }
+                    },
+                    "duration_seconds": 0,
+                    "errors": [] if response.finish_reason == "stop" else [response.finish_reason],
+                }
+                results.append(result)
+
+            except Exception as e:
+                result = {
+                    "task_id": f"task-{i}",
+                    "hypothesis_id": hypothesis_id,
+                    "success": False,
+                    "state": "failed",
+                    "errors": [str(e)],
+                }
+                results.append(result)
+
+        return results
+
+    def _execute_with_engine(self) -> List[Dict[str, Any]]:
+        """使用 ExecutionEngine 执行任务（向后兼容）"""
         # 从配置获取参数，初始化调度器和执行引擎
         scheduler = TaskScheduler(providers=self.config.providers)
         engine = ExecutionEngine(

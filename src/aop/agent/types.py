@@ -169,6 +169,10 @@ class AgentDriverConfig:
     llm_model: str = "claude-sonnet-4-20250514"
     llm_api_key: str | None = None
 
+    # Orchestrator 配置（新增）
+    orchestrator_type: Literal["claude-code", "opencode", "openclaw", "api", "auto"] = "auto"
+    """中枢类型：claude-code, opencode, openclaw, api, auto（自动检测）"""
+
     # 执行配置
     providers: List[str] = field(default_factory=lambda: ["claude", "codex"])
     default_timeout: int = 600

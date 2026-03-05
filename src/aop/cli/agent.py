@@ -56,7 +56,13 @@ def agent():
 @click.option("--providers", "-P", default="claude", help="使用的Provider")
 @click.option("--storage", "-s", default=".aop", help="存储路径")
 @click.option("--resume", "-r", default=None, help="恢复指定冲刺ID")
-def run_agent(description: str, interactive: bool, providers: str, storage: str, resume: str):
+@click.option(
+    "--orchestrator", "-o",
+    type=click.Choice(["claude-code", "opencode", "openclaw", "api", "auto"]),
+    default=None,
+    help="使用的中枢类型 (claude-code, opencode, openclaw, api, auto)"
+)
+def run_agent(description: str, interactive: bool, providers: str, storage: str, resume: str, orchestrator: str):
     """
     启动全自动 Agent 团队
 
@@ -75,13 +81,30 @@ def run_agent(description: str, interactive: bool, providers: str, storage: str,
       5. 自动验证
       6. 学习提取
     """
+    # 解析 orchestrator 参数
+    orch_type = orchestrator or "auto"
+    if orch_type == "auto":
+        # 自动选择最佳中枢
+        try:
+            from ..orchestrator import get_best_orchestrator
+            orch_type = get_best_orchestrator()
+        except Exception:
+            orch_type = "api"  # 回退到 API 方式
+
     config = AgentDriverConfig(
         storage_path=Path(storage),
         auto_execute=True,
         parallel_execution=True,
         auto_validate=True,
         auto_learn=True,
+        orchestrator_type=orch_type,
     )
+
+    # 显示中枢信息
+    if HAS_RICH:
+        console.print(f"[dim]使用中枢: {orch_type}[/dim]")
+    else:
+        click.echo(f"使用中枢: {orch_type}")
 
     driver = AgentDriver(config)
 
