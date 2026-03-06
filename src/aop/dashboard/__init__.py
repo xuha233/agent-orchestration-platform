@@ -1,5 +1,7 @@
 """AOP Dashboard - Web UI for Agent Orchestration Platform."""
 
+import os
+
 __version__ = "0.1.0"
 
 
