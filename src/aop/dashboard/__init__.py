@@ -9,6 +9,9 @@ def run_dashboard(port: int = 8501, host: str = "localhost"):
     import sys
     from pathlib import Path
     
+    # Disable streamlit usage stats prompt
+    os.environ["STREAMLIT_BROWSER_GATHER_USAGE_STATS"] = "false"
+    
     app_path = Path(__file__).parent / "app.py"
     
     subprocess.run([
@@ -16,4 +19,5 @@ def run_dashboard(port: int = 8501, host: str = "localhost"):
         str(app_path),
         "--server.port", str(port),
         "--server.headless", "true",
+        "--browser.gatherUsageStats", "false",
     ])
