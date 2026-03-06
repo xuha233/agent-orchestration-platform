@@ -34,8 +34,8 @@ NPM_GLOBAL_PATHS = [
 ]
 
 # OpenClaw 默认配置
-DEFAULT_CDP_PORT = 18792
-DEFAULT_GATEWAY_PORT = 19876
+DEFAULT_GATEWAY_PORT = 18789  # OpenClaw Gateway 默认端口
+DEFAULT_CDP_PORT = 18792     # Chrome CDP 默认端口
 
 
 def _find_binary(binary_name: str) -> Optional[str]:
@@ -77,8 +77,8 @@ class OpenClawOrchestrator(OrchestratorClient):
     def __init__(self, config: Optional[OrchestratorConfig] = None):
         self.config = config or OrchestratorConfig()
         self._binary_path: Optional[str] = None
-        self._cdp_port = DEFAULT_CDP_PORT
         self._gateway_port = DEFAULT_GATEWAY_PORT
+        self._cdp_port = DEFAULT_CDP_PORT
 
     @property
     def orchestrator_type(self) -> str:
@@ -103,22 +103,19 @@ class OpenClawOrchestrator(OrchestratorClient):
         if binary:
             self._binary_path = binary
 
-        # 2. 检查 Gateway 服务是否运行
+        # 2. 检查 Gateway 服务是否运行 (端口 18789)
         gateway_running = _is_port_open(self._gateway_port)
 
-        # 3. 检查 CDP 端口是否可用（浏览器自动化）
+        # 3. 检查 CDP 端口是否可用（浏览器自动化，端口 18792）
         cdp_available = _is_port_open(self._cdp_port)
 
         # 判断整体状态
-        if gateway_running and cdp_available:
+        if gateway_running:
             reason = "ready"
-            detected = True
-        elif gateway_running:
-            reason = "gateway_running_no_browser"
             detected = True
         elif cli_installed:
             reason = "cli_installed_gateway_not_running"
-            detected = False  # CLI 安装了但服务没跑，需要启动
+            detected = False
         else:
             reason = "not_installed"
             detected = False
@@ -130,7 +127,7 @@ class OpenClawOrchestrator(OrchestratorClient):
             detected=detected,
             binary_path=binary,
             version=version,
-            auth_ok=gateway_running,  # Gateway 运行即认证通过
+            auth_ok=gateway_running,
             capabilities=self.capabilities,
             reason=reason,
         )
@@ -142,7 +139,6 @@ class OpenClawOrchestrator(OrchestratorClient):
         **kwargs
     ) -> OrchestratorResponse:
         """通过 OpenClaw 进行决策"""
-        # TODO: 调用 OpenClaw API
         raise NotImplementedError("OpenClaw integration pending")
 
     def execute(
@@ -153,7 +149,6 @@ class OpenClawOrchestrator(OrchestratorClient):
         **kwargs
     ) -> OrchestratorResponse:
         """通过 OpenClaw 执行任务"""
-        # TODO: 调用 OpenClaw 执行 API
         raise NotImplementedError("OpenClaw integration pending")
 
     def dispatch(
@@ -165,7 +160,6 @@ class OpenClawOrchestrator(OrchestratorClient):
         **kwargs
     ) -> List[OrchestratorResponse]:
         """OpenClaw 调度多 Agent"""
-        # TODO: 使用 OpenClaw 的多 Agent 调度能力
         raise NotImplementedError("OpenClaw integration pending")
 
     def _get_version(self) -> Optional[str]:
