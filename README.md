@@ -11,14 +11,14 @@
 
 <p align="center">
   <strong>Automated Multi-Agent Orchestration Platform</strong><br>
-  <em>Workflow + Execution + LLM Intelligence, All in One</em>
+  <em>One Command. Agent Team. Done.</em>
 </p>
 
 <p align="center">
-  <a href="#-why-aop">Why AOP</a> • 
+  <a href="#-one-line-agent-team">Quick Start</a> • 
   <a href="#-vs-mco">vs MCO</a> • 
-  <a href="#-quick-start">Quick Start</a> • 
-  <a href="#-core-features">Core Features</a>
+  <a href="#-core-features">Core Features</a> • 
+  <a href="#-command-reference">Commands</a>
 </p>
 
 ---
@@ -27,217 +27,170 @@ English | [简体中文](README.zh-CN.md)
 
 ---
 
-## 🚀 Why AOP?
+## 🚀 One Line. Agent Team. Done.
 
-**One command. Multiple agents working in parallel.**
-
-```
-Your Idea → AOP → Multiple Agents Execute in Parallel → Auto-Aggregated Results
+```bash
+aop agent run "Build an e-commerce system"
 ```
 
-AOP is an **automation-first** multi-agent orchestration platform — not just a scheduler:
+AOP automatically:
+1. **Clarifies requirements** (asks follow-up questions if unclear)
+2. **Generates hypotheses** (testable assumptions)
+3. **Decomposes tasks** (parallel execution plan)
+4. **Dispatches agents** (multiple providers working together)
+5. **Validates results** (auto-verification with evidence)
+6. **Extracts learnings** (knowledge for future projects)
 
-| What You Need | What AOP Provides |
-|--------------|-------------------|
-| Multiple AI agents working together | ✅ Parallel execution with auto-deduplication |
-| No manual timeout management | ✅ Dynamic timeout extension — agents request their own extensions |
-| Automated validation | ✅ Smart validator with evidence collection |
-| Knowledge retention | ✅ Learning extraction, cross-project sharing |
-| Project complexity assessment | ✅ Auto-analysis with team configuration recommendations |
-| Resume interrupted work | ✅ Sprint persistence, recover anytime |
-
----
-
-## ⚡ AOP vs MCO
-
-MCO (Multi-CLI Orchestrator) is an excellent execution engine. AOP builds on top with a **complete automation workflow layer**:
-
-| Feature | MCO | AOP |
-|---------|-----|-----|
-| **Execution Model** | Parallel dispatch ✅ | Parallel dispatch ✅ |
-| **Timeout Management** | Fixed timeout | 🆕 **Dynamic Extension**: Agents can request extensions |
-| **Hypothesis Management** | ❌ | ✅ Hypothesis-Driven Development (HDD) |
-| **Learning Capture** | ❌ | ✅ Auto-extraction, cross-project sharing |
-| **Project Assessment** | ❌ | ✅ Complexity analysis, team recommendations |
-| **Codebase Analysis** | ❌ | ✅ Language/framework/architecture auto-detection |
-| **Smart Validation** | ❌ | ✅ Auto-validate hypotheses, collect evidence |
-| **Knowledge Base** | ❌ | ✅ Similar problem matching, solution reuse |
-| **State Recovery** | ❌ | ✅ Sprint persistence, resume interrupted work |
-| **LLM Integration** | CLI calls | ✅ Native LLM client (Claude/Local) |
-| **Dependency Scheduling** | ❌ | ✅ Topological sort, batch parallel execution |
-
-**In one sentence**: MCO is the engine. AOP is the complete automation pipeline.
+**You state the goal. AOP handles the rest.**
 
 ---
 
 ## 🏃 Quick Start
 
-### One-Click Install
-
-Send this prompt to your AI assistant (Claude / GPT / OpenCode / etc.):
-
-```
-Help me install AOP: https://github.com/xuha233/agent-orchestration-platform
-Read the AI Agent Installation Guide in the README and help me complete the setup.
-```
-
-### Manual Install
+### Zero-Config (Recommended)
 
 ```bash
 # Install
 pip install git+https://github.com/xuha233/agent-orchestration-platform.git
 
-# Verify environment
+# Check environment
 aop doctor
 
-# Run your first task
-aop run -p "Analyze the current project architecture" -P claude,gemini
+# One-liner to launch Agent team
+aop agent run "Help me analyze this project's architecture"
 ```
+
+### Interactive Mode
+
+```bash
+# AOP will ask clarifying questions
+aop agent run -i "Build a REST API"
+```
+
+### Resume Interrupted Work
+
+```bash
+# List all sprints
+aop agent list
+
+# Resume a specific sprint
+aop agent run -r sprint-abc123
+```
+
+### Advanced Usage
+
+For fine-grained control:
+
+```bash
+# Multi-agent code review
+aop review -p "Check for security issues" -P claude,gemini --synthesize
+
+# General multi-provider task
+aop run -p "Analyze architecture" -P claude,codex
+
+# Web Dashboard
+aop dashboard --open-browser
+```
+
+---
+
+## ⚡ MCO or AOP?
+
+| Your Scenario | Recommendation |
+|--------------|----------------|
+| "I want to say one sentence, agents do the work" | **AOP** `aop agent run "..."` |
+| "I need fine-grained control over every parameter" | **MCO** more flexible CLI |
+| "CI/CD integration with SARIF output" | **MCO** mature SARIF support |
+| "Building a large project, need knowledge retention" | **AOP** auto learning extraction |
+| "My work gets interrupted frequently" | **AOP** Sprint persistence + resume |
+
+**In one sentence: MCO is the engine. AOP is the automation pipeline.**
 
 ---
 
 ## ✨ Core Features
 
-### 🤖 Automation Layer
+### 🤖 Full Automation
 
-#### Dynamic Timeout Extension
-
-Agents can request timeout extensions for complex tasks:
-
-```python
-# Agent outputs structured request
-[TIMEOUT_EXTENSION_REQUEST]
-{"requested_seconds": 300, "reason": "Need more time for analysis", "progress_summary": "50% complete"}
-[/TIMEOUT_EXTENSION_REQUEST]
-
-# Main agent auto-approves, agent continues execution
-```
-
-**Benefit**: No more lost work due to fixed timeouts.
-
-#### Hypothesis Dependency Graph
-
-Automatically plan execution order based on hypothesis dependencies:
-
-```python
-from aop.workflow.hypothesis.graph import HypothesisGraph
-
-graph = HypothesisGraph()
-graph.add_hypothesis("h1", dependencies=[])     # Execute first
-graph.add_hypothesis("h2", dependencies=["h1"]) # After h1
-graph.add_hypothesis("h3", dependencies=["h1"]) # Parallel with h2
-
-batches = graph.get_execution_order()
-# [["h1"], ["h2", "h3"]]  ← h2 and h3 run in parallel
-```
+| What You Need | What AOP Does |
+|--------------|----------------|
+| Multiple agents working together | ✅ Parallel execution with auto-deduplication |
+| No manual timeout management | ✅ Dynamic timeout extension — agents request their own |
+| Automated validation | ✅ Smart validator with evidence collection |
+| Knowledge retention | ✅ Learning extraction, cross-project sharing |
+| Resume interrupted work | ✅ Sprint persistence, recover anytime |
 
 ### 🧠 Intelligence Layer
 
-#### Codebase Auto-Analysis
+**Codebase Auto-Analysis**
+- Language/framework/architecture auto-detection
+- Project complexity assessment
+- Team configuration recommendations
 
-Automatically detect project language, framework, architecture patterns:
-
-```python
-from aop.agent.analyzer import CodebaseAnalyzer
-
-analyzer = CodebaseAnalyzer()
-info = analyzer.analyze(".")
-# Language: python
-# Framework: fastapi
-# Patterns: ["MVC", "Layered"]
-# Entry points: ["main.py", "app.py"]
-```
-
-#### Project Complexity Assessment
-
-Evaluate project complexity and get team configuration recommendations:
-
-```bash
-aop project assess \
-  --problem-clarity medium \
-  --data-availability high \
-  --tech-novelty low \
-  --business-risk medium
-```
-
-| Project Type | Characteristics | Recommended Team |
-|-------------|-----------------|------------------|
-| `exploratory` | High novelty, low data | Research-focused |
-| `optimization` | Clear goals, existing code | Performance team |
-| `transformation` | Medium risk, medium clarity | Balanced team |
-| `compliance_sensitive` | High business risk | Security-focused |
+**Hypothesis-Driven Development (HDD)**
+- Generate testable assumptions from requirements
+- Dependency-aware execution ordering
+- Track validation status
 
 ### 📚 Knowledge Layer
 
-#### Auto Learning Extraction
+**Auto Learning Extraction**
+- What worked / What didn't
+- Key insights and risks
+- Suggestions for improvement
 
-Automatically extract learnings from execution results:
+**Cross-Project Knowledge Base**
+- Similar problem matching
+- Historical solution reuse
 
-```python
-from aop.agent.learning import LearningExtractor
+---
 
-extractor = LearningExtractor()
-learnings = extractor.extract(results)
-# Auto-identifies:
-# - What worked
-# - Key insights
-# - Risk identification
-# - Improvement suggestions
-```
+## 📋 Command Reference
 
-#### Cross-Project Knowledge Base
+### 🚀 Agent Automation (Zero-Config)
 
-Auto-match historical solutions for similar problems:
+| Command | Purpose |
+|---------|---------|
+| `aop agent run "task"` | 🌟 One-liner, fully automated execution |
+| `aop agent run -i "task"` | Interactive mode with follow-up questions |
+| `aop agent run -r <sprint-id>` | Resume interrupted sprint |
+| `aop agent status` | View current sprint status |
+| `aop agent next` | Get AI-suggested next steps |
+| `aop agent list` | List all sprints |
 
-```python
-from aop.agent.knowledge import KnowledgeBase
+### 🔧 Fine-Grained Control
 
-kb = KnowledgeBase()
-similar = kb.find_similar({
-    "framework": "fastapi",
-    "error_type": "validation"
-})
-# Returns historical solutions for similar problems
-```
+| Command | Purpose |
+|---------|---------|
+| `aop review -p "..."` | Multi-agent code review |
+| `aop run -p "..."` | Execute multi-agent task |
+| `aop dashboard` | Launch web UI |
 
-### 🔄 Workflow Layer
+### 🧠 Hypothesis & Learning
 
-#### Hypothesis-Driven Development (HDD)
+| Command | Purpose |
+|---------|---------|
+| `aop hypothesis create "..."` | Create hypothesis |
+| `aop hypothesis list` | List hypotheses |
+| `aop hypothesis update H-xxx -s validated` | Update status |
+| `aop learning capture` | Capture learning |
+| `aop learning export` | Export to Markdown |
 
-```bash
-# Create hypothesis
-aop hypothesis create "Adding cache reduces response time by 50%" -p quick_win
+### 🏗 Project & Environment
 
-# List hypotheses
-aop hypothesis list --state pending
+| Command | Purpose |
+|---------|---------|
+| `aop doctor` | Check environment and provider status |
+| `aop init <name>` | Initialize new project |
+| `aop project assess` | Assess project complexity |
 
-# Update status
-aop hypothesis update H-D5BFC589 -s validated
-```
+### 🎯 Orchestrator Management
 
-**Workflow**: Hypothesis → Validate → Learn → Iterate
-
-| State | Description |
-|-------|-------------|
-| `pending` | Awaiting validation |
-| `validated` | Confirmed through testing |
-| `refuted` | Disproven |
-| `inconclusive` | Results ambiguous, needs more data |
-
-#### Sprint Persistence
-
-Interrupted work can be resumed anytime:
-
-```python
-from aop.agent.persistence import SprintPersistence
-
-persistence = SprintPersistence()
-persistence.save(sprint_context)  # Save current state
-
-# Resume later
-loaded = persistence.load("sprint-123")
-active = persistence.get_latest_active()
-```
+| Command | Purpose |
+|---------|---------|
+| `aop orchestrator doctor` | Detect available orchestrators |
+| `aop orchestrator list` | List available orchestrators |
+| `aop orchestrator use <type>` | Set project orchestrator |
 
 ---
 
@@ -253,53 +206,36 @@ active = persistence.get_latest_active()
 
 ---
 
-## 📋 Command Reference
-
-| Command | Purpose |
-|---------|---------|
-| `aop doctor` | Check environment and provider status |
-| `aop init <name>` | Initialize new project |
-| `aop review -p "..."` | Multi-agent code review |
-| `aop run -p "..."` | Execute multi-agent task |
-| `aop hypothesis create "..."` | Create hypothesis |
-| `aop hypothesis list` | List hypotheses |
-| `aop hypothesis update H-xxx -s validated` | Update hypothesis status |
-| `aop learning capture` | Capture learning |
-| `aop learning export` | Export learnings to Markdown |
-| `aop project assess` | Assess project complexity |
-
----
-
 ## 🏗 Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Workflow Layer                            │
+│                    Automation Layer                          │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
-│  │ Hypothesis  │ │  Learning   │ │    Team     │            │
-│  │  Manager    │ │    Log      │ │  Config     │            │
+│  │  Agent      │ │  Hypothesis │ │  Learning   │            │
+│  │  Driver     │ │  Generator  │ │  Extractor  │            │
+│  └─────────────┘ └─────────────┘ └─────────────┘            │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
+│  │   Auto      │ │  Codebase   │ │   Sprint    │            │
+│  │  Validator  │ │   Analyzer  │ │ Persistence │            │
 │  └─────────────┘ └─────────────┘ └─────────────┘            │
 └─────────────────────────────┬───────────────────────────────┘
                               │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                 Automation Layer (NEW)                       │
+┌─────────────────────────────┴───────────────────────────────┐
+│                   Orchestrator Layer                         │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
-│  │   Auto      │ │   Codebase  │ │   Task      │            │
-│  │  Validator  │ │   Analyzer  │ │  Scheduler  │            │
+│  │Claude-Code  │ │  OpenCode   │ │  OpenClaw   │            │
 │  └─────────────┘ └─────────────┘ └─────────────┘            │
-│  ┌─────────────┐ ┌─────────────┐                            │
-│  │ Knowledge   │ │   Sprint    │                            │
-│  │    Base     │ │ Persistence │                            │
-│  └─────────────┘ └─────────────┘                            │
+│  ┌─────────────┐                                            │
+│  │  API Mode   │  ← Direct LLM API calls                    │
+│  └─────────────┘                                            │
 └─────────────────────────────┬───────────────────────────────┘
                               │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
+┌─────────────────────────────┴───────────────────────────────┐
 │                    Execution Layer                           │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
-│  │  Orchestrator│ │   Timeout   │ │   Report    │            │
-│  │   Runtime    │ │   Manager   │ │  Formatters │            │
+│  │  Parallel   │ │   Timeout   │ │   Report    │            │
+│  │  Dispatch   │ │   Manager   │ │  Formatters │            │
 │  └─────────────┘ └─────────────┘ └─────────────┘            │
 └─────────────────────────────┬───────────────────────────────┘
                               │
@@ -347,9 +283,9 @@ mypy src/aop/
 
 ## 🙏 Acknowledgments
 
-AOP's execution engine is inspired by and builds upon concepts from the [MCO (Multi-CLI Orchestrator)](https://github.com/mco-org/mco) project. We gratefully acknowledge the MCO team for their excellent work in multi-agent orchestration patterns.
+AOP's execution layer was inspired by concepts from the [MCO (Multi-CLI Orchestrator)](https://github.com/mco-org/mco) project. We gratefully acknowledge the MCO team for their excellent work in multi-agent orchestration patterns.
 
-The workflow methodology layer is based on [AAIF (AI Agile Incubation Framework)](https://github.com/xuha233/agent-team-template), providing the hypothesis-driven development approach.
+The workflow methodology is based on [AAIF (AI Agile Incubation Framework)](https://github.com/xuha233/agent-team-template), providing the hypothesis-driven development approach.
 
 ---
 
@@ -416,14 +352,14 @@ aop doctor
 | Qwen | `export DASHSCOPE_API_KEY=xxx` |
 | OpenCode | No config needed |
 
-### Initialize Project
+### Quick Start
 
 ```bash
-aop init my-project -P claude,gemini
-cd my-project
+# Check available orchestrators
+aop orchestrator doctor
 
-# Create first hypothesis
-aop hypothesis create "If I [user idea], then [expected outcome]" -p quick_win
+# One-liner to start
+aop agent run "Your task description here"
 ```
 
 ### Common Issues
@@ -434,11 +370,11 @@ aop hypothesis create "If I [user idea], then [expected outcome]" -p quick_win
 
 ### After Installation
 
-**Ask the user:** "Installation complete! What project do you want to build with AOP?"
+**Ask the user:** "Installation complete! What do you want to build with AOP?"
 
-**Create hypothesis based on response:**
+**Run the agent:**
 ```bash
-aop hypothesis create "If [idea], then [outcome]" -p quick_win
+aop agent run "[user's description]"
 ```
 
 ---

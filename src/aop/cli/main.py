@@ -190,14 +190,63 @@ def _show_next_steps():
     console.print(steps)
 
 
-@click.group()
-@click.version_option(version="0.1.0", prog_name="aop")
-def cli():
+@click.group(invoke_without_command=True)
+@click.version_option(version="0.3.0", prog_name="aop")
+@click.option("--port", "-p", default=8501, help="Dashboard port (default: 8501)")
+@click.option("--host", "-h", default="localhost", help="Dashboard host (default: localhost)")
+@click.option("--no-browser", is_flag=True, help="Don't open browser automatically")
+@click.pass_context
+def cli(ctx, port: int, host: str, no_browser: bool):
     """Agent Orchestration Platform.
     
     A unified platform for multi-agent code review and analysis.
+    
+    Running 'aop' without a subcommand starts the Dashboard.
     """
-    pass
+    # If no subcommand is invoked, start the dashboard
+    if ctx.invoked_subcommand is None:
+        _start_dashboard(port=port, host=host, open_browser=not no_browser)
+
+
+def _start_dashboard(port: int, host: str, open_browser: bool):
+    """Start the AOP Dashboard."""
+    try:
+        from ..dashboard import run_dashboard
+        import webbrowser
+        import threading
+        import time
+        
+        console.print(Panel.fit(
+            f"[bold cyan]🤖 AOP Dashboard[/bold cyan]\n\n"
+            f"Starting at: [link]http://{host}:{port}[/link]\n\n"
+            f"[dim]Press Ctrl+C to stop[/dim]",
+            title="AOP - Agent Orchestration Platform",
+            border_style="blue",
+        ))
+        
+        if open_browser:
+            # Delay browser open slightly to let server start
+            def open_browser_delayed():
+                time.sleep(1.5)  # Wait for server to be ready
+                webbrowser.open(f"http://{host}:{port}")
+            
+            threading.Thread(target=open_browser_delayed, daemon=True).start()
+        
+        run_dashboard(port=port, host=host)
+        
+    except ImportError:
+        console.print("[bold red]Error: streamlit is not installed[/bold red]")
+        console.print("\nInstall with:")
+        console.print("  [cyan]pip install streamlit[/cyan]")
+        console.print("\nOr reinstall AOP with dashboard support:")
+        console.print("  [cyan]pip install git+https://github.com/xuha233/agent-orchestration-platform.git[/cyan]")
+        sys.exit(EXIT_ERROR)
+    except KeyboardInterrupt:
+        console.print("\n[dim]Dashboard stopped[/dim]")
+        sys.exit(EXIT_SUCCESS)
+    except Exception as e:
+        console.print(f"[bold red]Error starting dashboard: {e}[/bold red]")
+        sys.exit(EXIT_ERROR)
 
 
 @cli.command()

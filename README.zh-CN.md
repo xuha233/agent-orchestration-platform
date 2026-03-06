@@ -11,14 +11,14 @@
 
 <p align="center">
   <strong>自动化多 Agent 协作平台</strong><br>
-  <em>Workflow + Execution + LLM Intelligence, All in One</em>
+  <em>一行命令。Agent 团队。搞定。</em>
 </p>
 
 <p align="center">
-  <a href="#-为什么选择-aop">为什么选择</a> • 
-  <a href="#-vs-mco">对比 MCO</a> • 
-  <a href="#-快速开始">快速开始</a> • 
-  <a href="#-核心功能">核心功能</a>
+  <a href="#-一行命令agent-团队干活">快速开始</a> • 
+  <a href="#-选-mco-还是-aop">对比 MCO</a> • 
+  <a href="#-核心功能">核心功能</a> • 
+  <a href="#-命令参考">命令一览</a>
 </p>
 
 ---
@@ -27,217 +27,170 @@
 
 ---
 
-## 🚀 为什么选择 AOP?
+## 🚀 一行命令。Agent 团队。搞定。
 
-**一条命令，多个 Agent 并行工作。**
-
-```
-你的想法 → AOP → 多个 Agent 并行执行 → 自动聚合结果
+```bash
+aop agent run "做一个电商系统"
 ```
 
-AOP 是一个**自动化优先**的多 Agent 协作平台，不仅仅是调度器：
+AOP 会自动：
+1. **澄清需求**（不确定会追问）
+2. **生成假设**（可验证的假设）
+3. **拆解任务**（并行执行计划）
+4. **调度 Agent**（多个 Provider 协同工作）
+5. **验证结果**（自动验证，收集证据）
+6. **提取学习**（沉淀知识供后续项目使用）
 
-| 你需要的 | AOP 提供的 |
-|---------|-----------|
-| 让多个 AI 同时工作 | ✅ 并行执行，自动去重 |
-| 不想手动管理超时 | ✅ 动态超时延长，Agent 自己申请延期 |
-| 想要自动化验证 | ✅ 智能验证器，自动收集证据 |
-| 需要知识沉淀 | ✅ 学习提取，跨项目共享 |
-| 项目复杂度评估 | ✅ 自动分析，团队配置建议 |
-| 希望能恢复中断的工作 | ✅ Sprint 持久化，随时恢复 |
-
----
-
-## ⚡ AOP vs MCO
-
-MCO (Multi-CLI Orchestrator) 是优秀的执行引擎，AOP 在此基础上增加了**完整的自动化工作流层**：
-
-| 特性 | MCO | AOP |
-|------|-----|-----|
-| **执行模型** | 并行调度 ✅ | 并行调度 ✅ |
-| **超时管理** | 固定超时 | 🆕 **动态延长**：Agent 可申请延期 |
-| **假设管理** | ❌ | ✅ 假设驱动开发 (HDD) |
-| **学习沉淀** | ❌ | ✅ 自动提取，跨项目共享 |
-| **项目评估** | ❌ | ✅ 复杂度分析，团队建议 |
-| **代码分析** | ❌ | ✅ 语言/框架/架构自动识别 |
-| **智能验证** | ❌ | ✅ 自动验证假设，收集证据 |
-| **知识库** | ❌ | ✅ 相似问题匹配，解决方案复用 |
-| **状态恢复** | ❌ | ✅ Sprint 持久化，中断恢复 |
-| **LLM 集成** | CLI 调用 | ✅ 原生 LLM 客户端 (Claude/Local) |
-| **依赖调度** | ❌ | ✅ 拓扑排序，批量并行 |
-
-**一句话总结**：MCO 是引擎，AOP 是完整的自动化流水线。
+**你说需求，AOP 帮你干完。**
 
 ---
 
 ## 🏃 快速开始
 
-### 一键安装
-
-把这个提示词发给你的 AI 助手（Claude / GPT / OpenCode 等）：
-
-```
-帮我安装 AOP：https://github.com/xuha233/agent-orchestration-platform
-阅读 README 中的 AI Agent 安装指南，帮我完成安装和配置。
-```
-
-### 手动安装
+### 开箱即用（推荐）
 
 ```bash
 # 安装
 pip install git+https://github.com/xuha233/agent-orchestration-platform.git
 
-# 验证环境
+# 检查环境
 aop doctor
 
-# 运行第一个任务
-aop run -p "分析当前项目的架构" -P claude,gemini
+# 一行命令启动 Agent 团队
+aop agent run "帮我分析这个项目的架构"
 ```
+
+### 交互式模式
+
+```bash
+# AOP 会追问澄清问题
+aop agent run -i "做一个 REST API"
+```
+
+### 恢复中断的工作
+
+```bash
+# 列出所有冲刺
+aop agent list
+
+# 恢复指定冲刺
+aop agent run -r sprint-abc123
+```
+
+### 高级用法
+
+需要精细控制时：
+
+```bash
+# 多 Agent 代码审查
+aop review -p "检查安全问题" -P claude,gemini --synthesize
+
+# 通用多 Provider 任务
+aop run -p "分析架构" -P claude,codex
+
+# Web Dashboard
+aop dashboard --open-browser
+```
+
+---
+
+## ⚡ 选 MCO 还是 AOP？
+
+| 你的场景 | 推荐 |
+|---------|------|
+| "我想说一句话，Agent 自己干活" | **AOP** `aop agent run "..."` |
+| "我要精细控制每个参数" | **MCO** 更灵活的命令行 |
+| "我要 CI/CD 集成代码审查" | **MCO** SARIF 输出成熟 |
+| "我要开发大项目，需要知识沉淀" | **AOP** 自动学习提取 |
+| "我经常被打断，需要恢复" | **AOP** Sprint 持久化恢复 |
+
+**一句话总结：MCO 是引擎，AOP 是自动化流水线。**
 
 ---
 
 ## ✨ 核心功能
 
-### 🤖 自动化执行层
+### 🤖 全自动化
 
-#### 动态超时延长
+| 你需要的 | AOP 做的 |
+|---------|---------|
+| 让多个 AI 同时工作 | ✅ 并行执行，自动去重 |
+| 不想手动管理超时 | ✅ 动态超时延长，Agent 自己申请延期 |
+| 想要自动化验证 | ✅ 智能验证器，自动收集证据 |
+| 需要知识沉淀 | ✅ 学习提取，跨项目共享 |
+| 希望能恢复中断的工作 | ✅ Sprint 持久化，随时恢复 |
 
-Agent 执行复杂任务时，可以申请延长超时：
+### 🧠 智能层
 
-```python
-# Agent 输出结构化请求
-[TIMEOUT_EXTENSION_REQUEST]
-{"requested_seconds": 300, "reason": "需要更多时间分析", "progress_summary": "已完成 50%"}
-[/TIMEOUT_EXTENSION_REQUEST]
+**代码库自动分析**
+- 语言/框架/架构自动识别
+- 项目复杂度评估
+- 团队配置建议
 
-# 主 Agent 自动批准，Agent 继续执行
-```
+**假设驱动开发 (HDD)**
+- 从需求生成可验证假设
+- 依赖感知的执行顺序
+- 跟踪验证状态
 
-**优势**：不再因为固定超时而丢失已完成的工作。
+### 📚 知识层
 
-#### 假设依赖图
+**学习自动提取**
+- 什么有效 / 什么无效
+- 关键洞察和风险
+- 改进建议
 
-根据假设之间的依赖关系，自动规划执行顺序：
+**跨项目知识库**
+- 相似问题匹配
+- 历史解决方案复用
 
-```python
-from aop.workflow.hypothesis.graph import HypothesisGraph
+---
 
-graph = HypothesisGraph()
-graph.add_hypothesis("h1", dependencies=[])     # 先执行
-graph.add_hypothesis("h2", dependencies=["h1"]) # h1 完成后执行
-graph.add_hypothesis("h3", dependencies=["h1"]) # 与 h2 并行
+## 📋 命令参考
 
-batches = graph.get_execution_order()
-# [["h1"], ["h2", "h3"]]  ← h2 和 h3 并行执行
-```
+### 🚀 Agent 自动化（开箱即用）
 
-### 🧠 智能分析层
-
-#### 代码库自动分析
-
-自动识别项目的语言、框架、架构模式：
-
-```python
-from aop.agent.analyzer import CodebaseAnalyzer
-
-analyzer = CodebaseAnalyzer()
-info = analyzer.analyze(".")
-# Language: python
-# Framework: fastapi
-# Patterns: ["MVC", "Layered"]
-# Entry points: ["main.py", "app.py"]
-```
-
-#### 项目复杂度评估
-
-评估项目复杂度，获得团队配置建议：
-
-```bash
-aop project assess \
-  --problem-clarity medium \
-  --data-availability high \
-  --tech-novelty low \
-  --business-risk medium
-```
-
-| 项目类型 | 特征 | 推荐团队 |
-|---------|------|---------|
-| `exploratory` | 高新颖性，低数据 | 研究型团队 |
-| `optimization` | 目标清晰，有现有代码 | 性能团队 |
-| `transformation` | 中等风险，中等清晰度 | 平衡团队 |
-| `compliance_sensitive` | 高业务风险 | 安全团队 |
-
-### 📚 知识管理层
-
-#### 学习自动提取
-
-从执行结果中自动提取学习：
-
-```python
-from aop.agent.learning import LearningExtractor
-
-extractor = LearningExtractor()
-learnings = extractor.extract(results)
-# 自动识别：
-# - 什么有效
-# - 关键洞察
-# - 风险识别
-# - 改进建议
-```
-
-#### 跨项目知识库
-
-相似问题自动匹配历史解决方案：
-
-```python
-from aop.agent.knowledge import KnowledgeBase
-
-kb = KnowledgeBase()
-similar = kb.find_similar({
-    "framework": "fastapi",
-    "error_type": "validation"
-})
-# 返回历史上解决过类似问题的方案
-```
-
-### 🔄 工作流层
-
-#### 假设驱动开发 (HDD)
-
-```bash
-# 创建假设
-aop hypothesis create "添加缓存可将响应时间降低 50%" -p quick_win
-
-# 列出假设
-aop hypothesis list --state pending
-
-# 更新状态
-aop hypothesis update H-D5BFC589 -s validated
-```
-
-**工作流**：假设 → 验证 → 学习 → 迭代
-
-| 状态 | 描述 |
+| 命令 | 用途 |
 |------|------|
-| `pending` | 待验证 |
-| `validated` | 验证通过 |
-| `refuted` | 已反驳 |
-| `inconclusive` | 结果不明确 |
+| `aop agent run "任务"` | 🌟 一行命令，全自动执行 |
+| `aop agent run -i "任务"` | 交互式追问模式 |
+| `aop agent run -r <sprint-id>` | 恢复中断的冲刺 |
+| `aop agent status` | 查看当前冲刺状态 |
+| `aop agent next` | 获取 AI 建议的下一步 |
+| `aop agent list` | 列出所有冲刺 |
 
-#### Sprint 持久化
+### 🔧 精细控制
 
-中断的工作可以随时恢复：
+| 命令 | 用途 |
+|------|------|
+| `aop review -p "..."` | 多 Agent 代码审查 |
+| `aop run -p "..."` | 执行多 Agent 任务 |
+| `aop dashboard` | 启动 Web UI |
 
-```python
-from aop.agent.persistence import SprintPersistence
+### 🧠 假设与学习
 
-persistence = SprintPersistence()
-persistence.save(sprint_context)  # 保存当前状态
+| 命令 | 用途 |
+|------|------|
+| `aop hypothesis create "..."` | 创建假设 |
+| `aop hypothesis list` | 列出假设 |
+| `aop hypothesis update H-xxx -s validated` | 更新状态 |
+| `aop learning capture` | 捕获学习 |
+| `aop learning export` | 导出为 Markdown |
 
-# 稍后恢复
-loaded = persistence.load("sprint-123")
-active = persistence.get_latest_active()
-```
+### 🏗 项目与环境
+
+| 命令 | 用途 |
+|------|------|
+| `aop doctor` | 检查环境和 Provider 状态 |
+| `aop init <name>` | 初始化新项目 |
+| `aop project assess` | 评估项目复杂度 |
+
+### 🎯 Orchestrator 管理
+
+| 命令 | 用途 |
+|------|------|
+| `aop orchestrator doctor` | 检测可用的 Orchestrator |
+| `aop orchestrator list` | 列出可用的 Orchestrator |
+| `aop orchestrator use <type>` | 设置项目的 Orchestrator |
 
 ---
 
@@ -253,53 +206,36 @@ active = persistence.get_latest_active()
 
 ---
 
-## 📋 命令参考
-
-| 命令 | 用途 |
-|------|------|
-| `aop doctor` | 检查环境和 Provider 状态 |
-| `aop init <name>` | 初始化新项目 |
-| `aop review -p "..."` | 多 Agent 代码审查 |
-| `aop run -p "..."` | 执行多 Agent 任务 |
-| `aop hypothesis create "..."` | 创建假设 |
-| `aop hypothesis list` | 列出假设 |
-| `aop hypothesis update H-xxx -s validated` | 更新假设状态 |
-| `aop learning capture` | 捕获学习 |
-| `aop learning export` | 导出学习到 Markdown |
-| `aop project assess` | 评估项目复杂度 |
-
----
-
 ## 🏗 架构
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Workflow Layer                            │
+│                    Automation Layer                          │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
-│  │ Hypothesis  │ │  Learning   │ │    Team     │            │
-│  │  Manager    │ │    Log      │ │  Config     │            │
+│  │  Agent      │ │  Hypothesis │ │  Learning   │            │
+│  │  Driver     │ │  Generator  │ │  Extractor  │            │
+│  └─────────────┘ └─────────────┘ └─────────────┘            │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
+│  │   Auto      │ │  Codebase   │ │   Sprint    │            │
+│  │  Validator  │ │   Analyzer  │ │ Persistence │            │
 │  └─────────────┘ └─────────────┘ └─────────────┘            │
 └─────────────────────────────┬───────────────────────────────┘
                               │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                 Automation Layer (NEW)                       │
+┌─────────────────────────────┴───────────────────────────────┐
+│                   Orchestrator Layer                         │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
-│  │   Auto      │ │   Codebase  │ │   Task      │            │
-│  │  Validator  │ │   Analyzer  │ │  Scheduler  │            │
+│  │Claude-Code  │ │  OpenCode   │ │  OpenClaw   │            │
 │  └─────────────┘ └─────────────┘ └─────────────┘            │
-│  ┌─────────────┐ ┌─────────────┐                            │
-│  │ Knowledge   │ │   Sprint    │                            │
-│  │    Base     │ │ Persistence │                            │
-│  └─────────────┘ └─────────────┘                            │
+│  ┌─────────────┐                                            │
+│  │  API Mode   │  ← 直接 LLM API 调用                       │
+│  └─────────────┘                                            │
 └─────────────────────────────┬───────────────────────────────┘
                               │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
+┌─────────────────────────────┴───────────────────────────────┐
 │                    Execution Layer                           │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
-│  │  Orchestrator│ │   Timeout   │ │   Report    │            │
-│  │   Runtime    │ │   Manager   │ │  Formatters │            │
+│  │  Parallel   │ │   Timeout   │ │   Report    │            │
+│  │  Dispatch   │ │   Manager   │ │  Formatters │            │
 │  └─────────────┘ └─────────────┘ └─────────────┘            │
 └─────────────────────────────┬───────────────────────────────┘
                               │
@@ -347,7 +283,7 @@ mypy src/aop/
 
 ## 🙏 致谢
 
-AOP 的执行引擎灵感来自 [MCO (Multi-CLI Orchestrator)](https://github.com/mco-org/mco) 项目。感谢 MCO 团队在多 Agent 编排模式上的优秀工作。
+AOP 的执行层灵感来自 [MCO (Multi-CLI Orchestrator)](https://github.com/mco-org/mco) 项目的概念。感谢 MCO 团队在多 Agent 编排模式上的优秀工作。
 
 工作流方法论基于 [AAIF (AI Agile Incubation Framework)](https://github.com/xuha233/agent-team-template)，提供假设驱动开发方法。
 
@@ -416,14 +352,14 @@ aop doctor
 | Qwen | `export DASHSCOPE_API_KEY=xxx` |
 | OpenCode | 无需配置 |
 
-### 初始化项目
+### 快速开始
 
 ```bash
-aop init my-project -P claude,gemini
-cd my-project
+# 检测可用的 Orchestrator
+aop orchestrator doctor
 
-# 创建第一个假设
-aop hypothesis create "如果我[用户想法]，那么[预期结果]" -p quick_win
+# 一行命令启动
+aop agent run "你的任务描述"
 ```
 
 ### 常见问题
@@ -436,9 +372,9 @@ aop hypothesis create "如果我[用户想法]，那么[预期结果]" -p quick_
 
 **询问用户：** "安装完成！你想用 AOP 做什么项目？"
 
-**根据回答创建假设：**
+**运行 Agent：**
 ```bash
-aop hypothesis create "如果[想法]，那么[结果]" -p quick_win
+aop agent run "[用户的描述]"
 ```
 
 ---
