@@ -8,7 +8,6 @@ __version__ = "0.1.0"
 
 def run_dashboard(port: int = 8501, host: str = "localhost"):
     """Run the Streamlit dashboard."""
-    import subprocess
     from pathlib import Path
     
     # Disable streamlit usage stats prompt
@@ -16,17 +15,22 @@ def run_dashboard(port: int = 8501, host: str = "localhost"):
     
     app_path = Path(__file__).parent / "app.py"
     
-    # Use sys.executable to ensure correct Python environment
-    cmd = [
-        sys.executable, "-m", "streamlit", "run",
+    # Use os.execvp to replace current process with streamlit
+    # This avoids subprocess issues with PowerShell pipes
+    cmd = "streamlit"
+    args = [
+        "streamlit", "run",
         str(app_path),
         "--server.port", str(port),
         "--server.headless", "true",
         "--browser.gatherUsageStats", "false",
     ]
     
-    # Run with proper signal handling
     try:
-        subprocess.run(cmd, check=False)
+        os.execvp(cmd, args)
     except KeyboardInterrupt:
         print("\nDashboard stopped.")
+    except FileNotFoundError:
+        print("Error: streamlit not found. Please install it:")
+        print("  pip install streamlit")
+        sys.exit(1)
