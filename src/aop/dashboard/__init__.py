@@ -3,7 +3,8 @@
 import os
 import sys
 import subprocess
-import signal
+import time
+import webbrowser
 
 __version__ = "0.1.0"
 
@@ -17,41 +18,54 @@ def run_dashboard(port: int = 8501, host: str = "localhost"):
     
     app_path = Path(__file__).parent / "app.py"
     
-    # Build arguments for streamlit
-    args = [
-        sys.executable,  # Use the same Python interpreter
-        "-m", "streamlit",
-        "run",
-        str(app_path),
-        "--server.port", str(port),
-        "--server.headless", "true",
-        "--browser.gatherUsageStats", "false",
-    ]
+    # Build the command
+    python_exe = sys.executable
+    cmd = f'"{python_exe}" -m streamlit run "{app_path}" --server.port {port} --server.headless true --browser.gatherUsageStats false'
     
     try:
-        # Use subprocess to run streamlit in a separate process
-        # This avoids issues with running Click commands within Click commands
-        process = subprocess.Popen(args)
-        
-        # Set up signal handler to forward Ctrl+C to the child process
-        def handle_sigint(signum, frame):
-            # On Windows, we need to terminate the process
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-            print("\nDashboard stopped.")
-            sys.exit(0)
-        
-        # Register the signal handler
-        signal.signal(signal.SIGINT, handle_sigint)
-        
-        # Wait for the streamlit process to complete
-        process.wait()
+        if sys.platform == "win32":
+            # On Windows, use `start` command to launch in a new window
+            # /B = start without creating a new window (but still detached)
+            # This keeps the process running even when parent exits
+            full_cmd = f'start /b "" {cmd}'
+            subprocess.run(full_cmd, shell=True)
+            
+            # Wait a moment for the server to start
+            time.sleep(2)
+            
+            # Check if the server is running
+            import socket
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            result = sock.connect_ex(('localhost', port))
+            sock.close()
+            
+            if result == 0:
+                print(f"Dashboard started at http://{host}:{port}")
+                print("Press Ctrl+C to stop (or close this terminal)")
+                
+                # Open browser
+                webbrowser.open(f"http://{host}:{port}")
+                
+                # Keep the script running to maintain the dashboard
+                # This is a simple busy-wait loop
+                while True:
+                    time.sleep(1)
+            else:
+                print("Failed to start dashboard. Check if port is in use.")
+                sys.exit(1)
+        else:
+            # On Unix-like systems
+            subprocess.Popen(
+                f'nohup {cmd} &',
+                shell=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            print(f"Dashboard started at http://{host}:{port}")
         
     except KeyboardInterrupt:
-        print("\nDashboard stopped.")
+        print("\nDashboard stopped. The server may still be running in the background.")
+        print(f"To stop: taskkill /F /IM streamlit.exe 2>nul || pkill -f streamlit")
     except FileNotFoundError:
         print("Error: streamlit not found. Please install it:")
         print("  pip install streamlit")
