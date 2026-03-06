@@ -3,12 +3,16 @@ OpenClaw 作为中枢 Agent
 
 通过 OpenClaw 客户端实现决策和执行。
 OpenClaw 可以通过其 MCP 或 API 接口调用其他 Agent。
-
-注意：当前为占位实现，待后续集成 OpenClaw SDK。
 """
 
 from __future__ import annotations
 
+import os
+import platform
+import subprocess
+import shutil
+import socket
+from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 from .base import OrchestratorClient
@@ -21,13 +25,60 @@ from .types import (
 )
 
 
+# Windows 上常见的 npm 全局安装路径
+NPM_GLOBAL_PATHS = [
+    Path.home() / "AppData" / "Roaming" / "npm",
+    Path.home() / ".npm-global" / "bin",
+    Path("/usr/local/bin"),
+    Path("/usr/bin"),
+]
+
+# OpenClaw 默认配置
+DEFAULT_CDP_PORT = 18792
+DEFAULT_GATEWAY_PORT = 19876
+
+
+def _find_binary(binary_name: str) -> Optional[str]:
+    """查找 CLI 二进制文件"""
+    result = shutil.which(binary_name)
+    if result:
+        return result
+
+    if platform.system() == "Windows":
+        pathext = os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(";")
+        for npm_path in NPM_GLOBAL_PATHS:
+            if not npm_path.exists():
+                continue
+            for ext in pathext:
+                candidate = npm_path / f"{binary_name}{ext}"
+                if candidate.exists():
+                    return str(candidate)
+
+    return None
+
+
+def _is_port_open(port: int, host: str = "localhost") -> bool:
+    """检查端口是否开放"""
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(2)
+        result = sock.connect_ex((host, port))
+        sock.close()
+        return result == 0
+    except Exception:
+        return False
+
+
 class OpenClawOrchestrator(OrchestratorClient):
     """OpenClaw 中枢适配器"""
 
+    BINARY_NAME = "openclaw"
+
     def __init__(self, config: Optional[OrchestratorConfig] = None):
         self.config = config or OrchestratorConfig()
-        # TODO: 初始化 OpenClaw 客户端连接
-        # self._client = openclaw.Client(...)
+        self._binary_path: Optional[str] = None
+        self._cdp_port = DEFAULT_CDP_PORT
+        self._gateway_port = DEFAULT_GATEWAY_PORT
 
     @property
     def orchestrator_type(self) -> str:
@@ -46,15 +97,42 @@ class OpenClawOrchestrator(OrchestratorClient):
 
     def detect(self) -> OrchestratorPresence:
         """检测 OpenClaw 是否可用"""
-        # TODO: 实现 OpenClaw 检测逻辑
-        # 1. 检查 OpenClaw 服务是否运行
-        # 2. 检查连接状态
-        # 3. 获取版本信息
+        # 1. 检查 openclaw CLI 是否安装
+        binary = _find_binary(self.BINARY_NAME)
+        cli_installed = binary is not None
+        if binary:
+            self._binary_path = binary
+
+        # 2. 检查 Gateway 服务是否运行
+        gateway_running = _is_port_open(self._gateway_port)
+
+        # 3. 检查 CDP 端口是否可用（浏览器自动化）
+        cdp_available = _is_port_open(self._cdp_port)
+
+        # 判断整体状态
+        if gateway_running and cdp_available:
+            reason = "ready"
+            detected = True
+        elif gateway_running:
+            reason = "gateway_running_no_browser"
+            detected = True
+        elif cli_installed:
+            reason = "cli_installed_gateway_not_running"
+            detected = False  # CLI 安装了但服务没跑，需要启动
+        else:
+            reason = "not_installed"
+            detected = False
+
+        version = self._get_version() if binary else None
 
         return OrchestratorPresence(
             orchestrator_type=self.orchestrator_type,
-            detected=False,  # 待实现
-            reason="openclaw_integration_pending",
+            detected=detected,
+            binary_path=binary,
+            version=version,
+            auth_ok=gateway_running,  # Gateway 运行即认证通过
+            capabilities=self.capabilities,
+            reason=reason,
         )
 
     def complete(
@@ -65,8 +143,6 @@ class OpenClawOrchestrator(OrchestratorClient):
     ) -> OrchestratorResponse:
         """通过 OpenClaw 进行决策"""
         # TODO: 调用 OpenClaw API
-        # response = self._client.chat(messages, system=system)
-        # return OrchestratorResponse(...)
         raise NotImplementedError("OpenClaw integration pending")
 
     def execute(
@@ -88,15 +164,26 @@ class OpenClawOrchestrator(OrchestratorClient):
         parallel: bool = True,
         **kwargs
     ) -> List[OrchestratorResponse]:
-        """
-        OpenClaw 调度多 Agent
-
-        OpenClaw 原生支持多 Agent 调度，可以直接使用其调度能力
-        """
+        """OpenClaw 调度多 Agent"""
         # TODO: 使用 OpenClaw 的多 Agent 调度能力
-        # response = self._client.dispatch(prompt, agents, parallel=parallel)
-        # return [self._parse_response(r) for r in response]
         raise NotImplementedError("OpenClaw integration pending")
+
+    def _get_version(self) -> Optional[str]:
+        """获取 OpenClaw 版本"""
+        if not self._binary_path:
+            return None
+        try:
+            result = subprocess.run(
+                [self._binary_path, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode == 0:
+                return result.stdout.strip().split('\n')[0][:50]
+        except Exception:
+            pass
+        return None
 
 
 __all__ = [
