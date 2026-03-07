@@ -73,6 +73,9 @@ class OrchestrationConfig:
     use_llm_evaluator: bool = True
     llm_eval_threshold: float = 6.0  # 低于此分数需要人工审查
 
+    # Phase 3: Dynamic Timeout
+    use_dynamic_timeout: bool = True
+
     # Phase 5: Error Recovery
     use_error_recovery: bool = True
     max_retries: int = 3
@@ -419,15 +422,32 @@ class AgentOrchestrator:
                 })
             return results
         
+        # Phase 3: 初始化动态超时管理器
+        timeout_manager = SubagentTimeoutManager(
+            base_timeout=self.config.exec_timeout,
+            max_extensions=3,
+        ) if self.config.use_dynamic_timeout else None
+        
         # 并行执行
         self._report("execute", f"Executing {len(tasks)} tasks in parallel (max {max_workers} workers)")
         
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # 提交所有任务
-            future_to_task = {
-                executor.submit(self._execute_single_task, task): task
-                for task in tasks
-            }
+            # 提交所有任务（Phase 3: 使用动态超时）
+            future_to_task = {}
+            for task in tasks:
+                # 计算动态超时
+                if timeout_manager:
+                    hypothesis = task.get("hypothesis")
+                    statement = getattr(hypothesis, 'statement', '') if hypothesis else ''
+                    complexity = timeout_manager.estimate_complexity(statement)
+                    dynamic_timeout = timeout_manager.get_timeout(complexity)
+                    task["timeout"] = dynamic_timeout
+                    if self.config.verbose:
+                        self._report("timeout", f"Task {task['task_id']}: {complexity.value} complexity, {dynamic_timeout}s timeout")
+                else:
+                    task["timeout"] = self.config.exec_timeout
+                
+                future_to_task[executor.submit(self._execute_single_task, task)] = task
             
             # 收集结果
             for future in as_completed(future_to_task):
