@@ -600,28 +600,25 @@ def execute_agent_task_streaming(
 
         _logger.info(f"流式执行: agent={agent.id}, workspace={workspace.project_path}")
 
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        # 使用同步流式方法（兼容 Windows）
+        full_response = []
         
-        try:
-            async def run_stream():
-                full_response = []
-                async for token in agent.chat_stream(prompt, context):
-                    token_queue.put(token)
-                    full_response.append(token)
-                return ''.join(full_response)
-            
-            response = loop.run_until_complete(run_stream())
-            result_buffer["result"] = response
-            token_queue.done()
-            
-            if agent.get_session_id():
-                save_session_id_for_workspace(workspace_id, agent.get_session_id())
-            
-            _logger.info(f"流式执行完成: {len(response)} 字符")
-            
-        finally:
-            loop.close()
+        # 定义回调
+        def on_token(token):
+            token_queue.put(token)
+        
+        # 调用 agent 的同步流式方法
+        for token in agent.chat_stream_sync(prompt, context, on_token=on_token):
+            full_response.append(token)
+        
+        response = ''.join(full_response)
+        result_buffer["result"] = response
+        token_queue.done()
+        
+        if agent.get_session_id():
+            save_session_id_for_workspace(workspace_id, agent.get_session_id())
+        
+        _logger.info(f"流式执行完成: {len(response)} 字符")
 
     except Exception as e:
         import traceback

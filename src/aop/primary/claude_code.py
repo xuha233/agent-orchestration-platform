@@ -5,12 +5,13 @@ Uses the `claude` CLI to interact with Claude Code.
 
 from __future__ import annotations
 
-import asyncio
-import platform
 import subprocess
+import threading
+import queue
+import platform
 import shutil
 from pathlib import Path
-from typing import Optional, AsyncIterator, Callable
+from typing import Optional, AsyncIterator, Callable, Generator
 
 from .base import AgentContext, PrimaryAgent
 from .memory_extractor import extract_and_save_memory
@@ -28,19 +29,13 @@ NPM_GLOBAL_PATHS = [
 def _find_binary(binary_name: str) -> Optional[str]:
     """
     查找 CLI 二进制文件，支持 Windows 的 .cmd/.bat 扩展名
-
-    在 Windows 上，npm 安装的 CLI 通常是 .cmd 文件，
-    shutil.which() 在某些环境下可能无法正确找到它们。
     """
-    # 首先尝试标准查找
     result = shutil.which(binary_name)
     if result:
         return result
 
-    # 在 Windows 上额外检查常见路径
     if platform.system() == "Windows":
         import os
-        # 检查 PATHEXT 环境变量指定的扩展名
         pathext = os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(";")
 
         for npm_path in NPM_GLOBAL_PATHS:
@@ -51,7 +46,6 @@ def _find_binary(binary_name: str) -> Optional[str]:
                 if candidate.exists():
                     return str(candidate)
 
-        # 直接检查 .cmd 扩展名（npm 最常见的情况）
         for npm_path in NPM_GLOBAL_PATHS:
             if not npm_path.exists():
                 continue
@@ -63,10 +57,7 @@ def _find_binary(binary_name: str) -> Optional[str]:
 
 
 def _load_context_files(workspace_path: Path) -> str:
-    """加载项目上下文文件（SOUL.md, PROJECT_MEMORY.md, WORKFLOW.md, TEAM.md）
-    
-    这些文件帮助 Agent 理解项目背景、角色定位和工作流程。
-    """
+    """加载项目上下文文件"""
     context_dir = workspace_path / '.aop'
     if not context_dir.exists():
         return ''
@@ -85,33 +76,18 @@ def _load_context_files(workspace_path: Path) -> str:
 
 
 class ClaudeCodeAgent(PrimaryAgent):
-    """PrimaryAgent implementation using Claude Code CLI.
-
-    This agent uses the `claude` command-line tool to interact with
-    Claude Code. It supports session management via --resume flag.
-
-    Attributes:
-        id: "claude_code"
-        name: "Claude Code"
-        description: "Anthropic's Claude Code CLI agent"
-    """
+    """PrimaryAgent implementation using Claude Code CLI with streaming support."""
 
     id = "claude_code"
     name = "Claude Code"
     description = "Anthropic's Claude Code CLI agent"
 
     def __init__(self) -> None:
-        """Initialize the Claude Code agent."""
         self._session_id: Optional[str] = None
         self._claude_projects_dir = Path.home() / ".claude" / "projects"
         self._binary_path: Optional[str] = None
 
     def is_available(self) -> bool:
-        """Check if claude CLI is available.
-
-        Returns:
-            True if the `claude` binary is found in PATH
-        """
         self._binary_path = _find_binary("claude")
         return self._binary_path is not None
 
@@ -121,150 +97,155 @@ class ClaudeCodeAgent(PrimaryAgent):
         context: AgentContext,
         stream: bool = True,
     ) -> str:
-        """Chat with Claude Code.
-
-        Args:
-            message: The user message to send
-            context: Execution context with workspace and session info
-            stream: Whether to stream the response (default True)
-
-        Returns:
-            Complete response text
-
-        Raises:
-            RuntimeError: If the command fails or returns empty output
-        """
-        # 加载项目上下文
+        """Chat with Claude Code."""
         context_str = _load_context_files(context.workspace_path)
         if context_str:
             message = f"【项目上下文】\n{context_str}\n\n【用户消息】\n{message}"
 
-        # Build command
         binary = self._binary_path or _find_binary("claude") or "claude"
         cmd = [binary, "-p", message, "--dangerously-skip-permissions"]
 
-        # Add resume flag if we have a session
         if self._session_id:
             cmd.extend(["--resume", self._session_id])
         elif context.session_id:
             cmd.extend(["--resume", context.session_id])
 
-        # 使用同步 subprocess.run 替代 asyncio.create_subprocess_exec
-        # 这在 Windows 上更稳定，特别是在 Streamlit 环境中
         try:
             result = subprocess.run(
                 cmd,
                 cwd=str(context.workspace_path),
                 capture_output=True,
                 text=True,
-                timeout=300,  # 5 分钟超时
+                timeout=300,
             )
 
             output = result.stdout
             stderr_output = result.stderr
 
-            # Check for errors
             if result.returncode != 0:
                 error_msg = stderr_output.strip() or f"Exit code: {result.returncode}"
                 raise RuntimeError(f"Claude Code error: {error_msg}")
 
-            # Check for empty output with stderr content
             if not output.strip() and stderr_output.strip():
                 raise RuntimeError(f"Claude Code stderr: {stderr_output.strip()}")
 
         except subprocess.TimeoutExpired:
             raise RuntimeError("Claude Code command timed out after 5 minutes")
 
-        # Try to extract session ID from output or projects directory
         self._update_session_id(context.workspace_path)
 
-        # 自动提取记忆
         try:
-            # 保存原始消息（去除上下文前缀）
             original_message = message
             if "【用户消息】" in message:
                 original_message = message.split("【用户消息】\n")[-1]
             extract_and_save_memory(original_message, output, context.workspace_path)
         except Exception:
-            # 记忆提取失败不应影响主流程
             pass
 
         return output
 
-    async def chat_stream(
+    def chat_stream_sync(
         self,
         message: str,
         context: AgentContext,
         on_token: Optional[Callable[[str], None]] = None,
-    ) -> AsyncIterator[str]:
-        """Chat with Claude Code and yield tokens as they arrive.
-
-        Uses subprocess with real-time stdout reading for streaming.
-
-        Args:
-            message: The user message to send
-            context: Execution context with workspace and session info
-            on_token: Optional callback for each token
-
-        Yields:
-            Individual tokens/chunks as they are generated
+    ) -> Generator[str, None, None]:
+        """同步流式执行，兼容 Windows
+        
+        使用 subprocess.Popen + 线程读取 stdout 实现
         """
-        # 加载项目上下文
         context_str = _load_context_files(context.workspace_path)
         if context_str:
             message = f"【项目上下文】\n{context_str}\n\n【用户消息】\n{message}"
 
-        # Build command
         binary = self._binary_path or _find_binary("claude") or "claude"
         cmd = [binary, "-p", message, "--dangerously-skip-permissions"]
 
-        # Add resume flag if we have a session
         if self._session_id:
             cmd.extend(["--resume", self._session_id])
         elif context.session_id:
             cmd.extend(["--resume", context.session_id])
 
-        # Use asyncio subprocess for streaming
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        # 使用 Popen 启动进程
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
             cwd=str(context.workspace_path),
+            bufsize=1,  # 行缓冲
         )
 
+        # 使用队列传递输出
+        output_queue = queue.Queue()
+
+        def read_stdout():
+            try:
+                for line in iter(process.stdout.readline, ''):
+                    if line:
+                        output_queue.put(('stdout', line))
+            except Exception as e:
+                output_queue.put(('error', str(e)))
+            finally:
+                output_queue.put(('done', None))
+
+        def read_stderr():
+            try:
+                for line in iter(process.stderr.readline, ''):
+                    if line:
+                        output_queue.put(('stderr', line))
+            except Exception:
+                pass
+
+        # 启动读取线程
+        stdout_thread = threading.Thread(target=read_stdout, daemon=True)
+        stderr_thread = threading.Thread(target=read_stderr, daemon=True)
+        stdout_thread.start()
+        stderr_thread.start()
+
         full_response = []
-        
+
         try:
-            # Read stdout in real-time
             while True:
-                chunk = await process.stdout.read(1024)
-                if not chunk:
-                    break
-                
-                text = chunk.decode('utf-8', errors='replace')
-                full_response.append(text)
-                
-                if on_token:
-                    on_token(text)
-                
-                yield text
+                try:
+                    msg_type, content = output_queue.get(timeout=0.1)
 
-            # Wait for process to complete
-            returncode = await process.wait()
-            
-            if returncode != 0:
-                stderr = await process.stderr.read()
-                error_msg = stderr.decode('utf-8', errors='replace').strip()
-                raise RuntimeError(f"Claude Code error: {error_msg or returncode}")
+                    if msg_type == 'done':
+                        break
+                    elif msg_type == 'stdout':
+                        full_response.append(content)
+                        if on_token:
+                            on_token(content)
+                        yield content
+                    elif msg_type == 'stderr':
+                        pass
+                    elif msg_type == 'error':
+                        raise RuntimeError(content)
 
-        except asyncio.CancelledError:
-            process.kill()
-            raise
+                except queue.Empty:
+                    if process.poll() is not None:
+                        break
+                    continue
 
-        # Update session ID
+        finally:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+
+        # 检查返回码
+        if process.returncode != 0:
+            stderr_output = process.stderr.read()
+            raise RuntimeError(f"Claude Code error: {stderr_output or process.returncode}")
+
+        # 更新 session
         self._update_session_id(context.workspace_path)
 
-        # Extract memory
+        # 提取记忆
         try:
             complete_response = ''.join(full_response)
             original_message = message
@@ -274,60 +255,39 @@ class ClaudeCodeAgent(PrimaryAgent):
         except Exception:
             pass
 
+    async def chat_stream(
+        self,
+        message: str,
+        context: AgentContext,
+        on_token: Optional[Callable[[str], None]] = None,
+    ) -> AsyncIterator[str]:
+        """异步流式执行 - 通过调用同步方法实现"""
+        for token in self.chat_stream_sync(message, context, on_token):
+            yield token
+
     def _update_session_id(self, workspace_path: Path) -> None:
-        """Update session ID from the Claude projects directory.
-
-        Claude Code stores session data in ~/.claude/projects/<encoded-path>/.
-
-        Args:
-            workspace_path: The workspace path to look up
-        """
         if not self._claude_projects_dir.exists():
             return
 
-        # Encode the workspace path similar to how Claude does it
-        # Claude uses a base64-like encoding of the path
         try:
-            # Look for the most recent session directory
-            # This is a simplified approach - actual implementation
-            # might need to match Claude's exact encoding
             path_str = str(workspace_path.absolute())
-            # Simple hash-like approach for finding matching directory
             for project_dir in self._claude_projects_dir.iterdir():
                 if project_dir.is_dir():
-                    # Check if this project dir matches our workspace
-                    # Claude encodes the path in the directory name
                     if path_str.replace("\\", "/").replace(":", "") in project_dir.name.replace("-", ""):
-                        # Find the most recent session file
                         session_files = list(project_dir.glob("*.json"))
                         if session_files:
                             latest = max(session_files, key=lambda p: p.stat().st_mtime)
                             self._session_id = latest.stem
                             return
         except Exception:
-            # If we can't determine the session ID, that's OK
             pass
 
     def get_session_id(self) -> Optional[str]:
-        """Get the current session ID.
-
-        Returns:
-            The current session ID if one exists, None otherwise
-        """
         return self._session_id
 
     def resume_session(self, session_id: str) -> bool:
-        """Resume a previous session.
-
-        Args:
-            session_id: The session ID to resume
-
-        Returns:
-            True if the session ID was set successfully
-        """
         self._session_id = session_id
         return True
 
     def clear_session(self) -> None:
-        """Clear the current session."""
         self._session_id = None

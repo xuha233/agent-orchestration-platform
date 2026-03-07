@@ -1,16 +1,14 @@
-"""OpenCode implementation of PrimaryAgent with streaming support.
-
-Uses the `opencode` CLI to interact with OpenCode.
-"""
+"""OpenCode implementation of PrimaryAgent with streaming support - Windows fix."""
 
 from __future__ import annotations
 
-import asyncio
-import platform
 import subprocess
+import threading
+import queue
+import platform
 import shutil
 from pathlib import Path
-from typing import Optional, AsyncIterator, Callable
+from typing import Optional, AsyncIterator, Callable, Generator
 
 from .base import AgentContext, PrimaryAgent
 from .memory_extractor import extract_and_save_memory
@@ -133,12 +131,13 @@ class OpenCodeAgent(PrimaryAgent):
 
         return output
 
-    async def chat_stream(
+    def chat_stream_sync(
         self,
         message: str,
         context: AgentContext,
         on_token: Optional[Callable[[str], None]] = None,
-    ) -> AsyncIterator[str]:
+    ) -> Generator[str, None, None]:
+        """同步流式执行，兼容 Windows"""
         context_str = _load_context_files(context.workspace_path)
         if context_str:
             message = f"【项目上下文】\n{context_str}\n\n【用户消息】\n{message}"
@@ -151,39 +150,77 @@ class OpenCodeAgent(PrimaryAgent):
         elif context.session_id:
             cmd.extend(["-s", context.session_id])
 
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
             cwd=str(context.workspace_path),
+            bufsize=1,
         )
 
+        output_queue = queue.Queue()
+
+        def read_stdout():
+            try:
+                for line in iter(process.stdout.readline, ''):
+                    if line:
+                        output_queue.put(('stdout', line))
+            except Exception as e:
+                output_queue.put(('error', str(e)))
+            finally:
+                output_queue.put(('done', None))
+
+        def read_stderr():
+            try:
+                for line in iter(process.stderr.readline, ''):
+                    if line:
+                        output_queue.put(('stderr', line))
+            except Exception:
+                pass
+
+        stdout_thread = threading.Thread(target=read_stdout, daemon=True)
+        stderr_thread = threading.Thread(target=read_stderr, daemon=True)
+        stdout_thread.start()
+        stderr_thread.start()
+
         full_response = []
-        
+
         try:
             while True:
-                chunk = await process.stdout.read(1024)
-                if not chunk:
-                    break
-                
-                text = chunk.decode('utf-8', errors='replace')
-                full_response.append(text)
-                
-                if on_token:
-                    on_token(text)
-                
-                yield text
+                try:
+                    msg_type, content = output_queue.get(timeout=0.1)
 
-            returncode = await process.wait()
-            
-            if returncode != 0:
-                stderr = await process.stderr.read()
-                error_msg = stderr.decode('utf-8', errors='replace').strip()
-                raise RuntimeError(f"OpenCode error: {error_msg or returncode}")
+                    if msg_type == 'done':
+                        break
+                    elif msg_type == 'stdout':
+                        full_response.append(content)
+                        if on_token:
+                            on_token(content)
+                        yield content
+                    elif msg_type == 'stderr':
+                        pass
+                    elif msg_type == 'error':
+                        raise RuntimeError(content)
 
-        except asyncio.CancelledError:
-            process.kill()
-            raise
+                except queue.Empty:
+                    if process.poll() is not None:
+                        break
+                    continue
+
+        finally:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+
+        if process.returncode != 0:
+            stderr_output = process.stderr.read()
+            raise RuntimeError(f"OpenCode error: {stderr_output or process.returncode}")
 
         self._update_session_id()
 
@@ -195,6 +232,16 @@ class OpenCodeAgent(PrimaryAgent):
             extract_and_save_memory(original_message, complete_response, context.workspace_path)
         except Exception:
             pass
+
+    async def chat_stream(
+        self,
+        message: str,
+        context: AgentContext,
+        on_token: Optional[Callable[[str], None]] = None,
+    ) -> AsyncIterator[str]:
+        """异步流式执行 - 通过调用同步方法实现"""
+        for token in self.chat_stream_sync(message, context, on_token):
+            yield token
 
     def _update_session_id(self) -> None:
         if not self._opencode_dir.exists():
