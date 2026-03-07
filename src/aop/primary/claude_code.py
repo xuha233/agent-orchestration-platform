@@ -8,22 +8,37 @@ from __future__ import annotations
 import subprocess
 import threading
 import queue
+import sys
 import platform
 import shutil
+import logging
 from pathlib import Path
 from typing import Optional, AsyncIterator, Callable, Generator
 
 from .base import AgentContext, PrimaryAgent
 from .memory_extractor import extract_and_save_memory
 
+_logger = logging.getLogger(__name__)
+
 
 # Windows 上常见的 npm 全局安装路径
-NPM_GLOBAL_PATHS = [
-    Path.home() / "AppData" / "Roaming" / "npm",
-    Path.home() / ".npm-global" / "bin",
-    Path("/usr/local/bin"),
-    Path("/usr/bin"),
-]
+def _get_npm_global_paths():
+    """获取 npm 全局路径（跨平台）"""
+    paths = []
+    if sys.platform == "win32":
+        paths.append(Path.home() / "AppData" / "Roaming" / "npm")
+    else:
+        paths.extend([
+            Path("/usr/local/bin"),
+            Path("/usr/bin"),
+        ])
+    # 通用路径
+    npm_global = Path.home() / ".npm-global" / "bin"
+    if npm_global.exists():
+        paths.append(npm_global)
+    return paths
+
+NPM_GLOBAL_PATHS = _get_npm_global_paths()
 
 
 def _find_binary(binary_name: str) -> Optional[str]:
@@ -36,7 +51,7 @@ def _find_binary(binary_name: str) -> Optional[str]:
 
     if platform.system() == "Windows":
         import os
-        pathext = os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(";")
+        pathext = os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD" if sys.platform == "win32" else "").split(";") if sys.platform == "win32" else [""]
 
         for npm_path in NPM_GLOBAL_PATHS:
             if not npm_path.exists():
@@ -103,7 +118,14 @@ class ClaudeCodeAgent(PrimaryAgent):
             message = f"【项目上下文】\n{context_str}\n\n【用户消息】\n{message}"
 
         binary = self._binary_path or _find_binary("claude") or "claude"
-        cmd = [binary, "-p", message, "--dangerously-skip-permissions"]
+        _logger.info(f"[CLI Binary] {binary}")
+        # 使用 stream-json 格式获取结构化输出（包含 thinking）
+        cmd = [
+            binary, "-p", message, 
+            "--output-format", "stream-json",
+            "--verbose",
+            "--dangerously-skip-permissions"
+        ]
         
         # Session 隔离策略：
         # 1. 如果有 session_id（工作区专属），使用 --session-id 确保独立
@@ -179,7 +201,14 @@ class ClaudeCodeAgent(PrimaryAgent):
             message = f"【项目上下文】\n{context_str}\n\n【用户消息】\n{message}"
 
         binary = self._binary_path or _find_binary("claude") or "claude"
-        cmd = [binary, "-p", message, "--dangerously-skip-permissions"]
+        _logger.info(f"[CLI Binary] {binary}")
+        # 使用 stream-json 格式获取结构化输出（包含 thinking）
+        cmd = [
+            binary, "-p", message, 
+            "--output-format", "stream-json",
+            "--verbose",
+            "--dangerously-skip-permissions"
+        ]
         
         # Session 隔离策略：
         # 1. 如果有 session_id（工作区专属），使用 --session-id 确保独立
@@ -255,10 +284,56 @@ class ClaudeCodeAgent(PrimaryAgent):
                     if msg_type == 'done':
                         break
                     elif msg_type == 'stdout':
-                        full_response.append(content)
-                        if on_token:
-                            on_token(content)
-                        yield content
+                        # 解析 JSON 输出
+                        line = content.strip()
+                        if not line:
+                            continue
+                        # 调试：打印原始行
+                        _logger.info(f"[CLI原始] {line[:200]}...")
+                        try:
+                            import json
+                            data = json.loads(line)
+                            _logger.info(f"[CLI解析] type={data.get('type')}")
+                            
+                            # 处理 assistant 消息
+                            if data.get('type') == 'assistant':
+                                msg = data.get('message', {})
+                                content_list = msg.get('content', [])
+                                _logger.info(f"[CLI调试] assistant message, content items: {len(content_list)}")
+                                
+                                for item in content_list:
+                                    item_type = item.get('type')
+                                    _logger.info(f"[CLI调试] item type: {item_type}")
+                                    
+                                    if item_type == 'thinking':
+                                        # 思考内容，用标签包裹
+                                        thinking_text = item.get('thinking', '')
+                                        if thinking_text:
+                                            formatted = f'<thinking>{thinking_text}</thinking>'
+                                            full_response.append(formatted)
+                                            if on_token:
+                                                on_token(formatted)
+                                            yield formatted
+                                    elif item.get('type') == 'text':
+                                        # 普通文本
+                                        text = item.get('text', '')
+                                        if text:
+                                            full_response.append(text)
+                                            if on_token:
+                                                on_token(text)
+                                            yield text
+                            elif data.get('type') == 'result':
+                                # 最终结果，已处理完毕
+                                pass
+                            else:
+                                # 其他类型，原样输出（可能是 tool_use 等）
+                                pass
+                        except json.JSONDecodeError:
+                            # 不是 JSON，原样输出
+                            full_response.append(content)
+                            if on_token:
+                                on_token(content)
+                            yield content
                     elif msg_type == 'stderr':
                         pass
                     elif msg_type == 'error':

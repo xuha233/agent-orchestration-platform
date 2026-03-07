@@ -7,6 +7,7 @@ OpenCode CLI 作为中枢 Agent
 from __future__ import annotations
 
 import os
+import sys
 import platform
 import subprocess
 import shutil
@@ -24,12 +25,23 @@ from .types import (
 
 
 # Windows 上常见的 npm 全局安装路径
-NPM_GLOBAL_PATHS = [
-    Path.home() / "AppData" / "Roaming" / "npm",
-    Path.home() / ".npm-global" / "bin",
-    Path("/usr/local/bin"),
-    Path("/usr/bin"),
-]
+def _get_npm_global_paths():
+    """获取 npm 全局路径（跨平台）"""
+    paths = []
+    if sys.platform == "win32":
+        paths.append(Path.home() / "AppData" / "Roaming" / "npm")
+    else:
+        paths.extend([
+            Path("/usr/local/bin"),
+            Path("/usr/bin"),
+        ])
+    # 通用路径
+    npm_global = Path.home() / ".npm-global" / "bin"
+    if npm_global.exists():
+        paths.append(npm_global)
+    return paths
+
+NPM_GLOBAL_PATHS = _get_npm_global_paths()
 
 
 def _find_binary(binary_name: str) -> Optional[str]:
@@ -47,7 +59,7 @@ def _find_binary(binary_name: str) -> Optional[str]:
     # 在 Windows 上额外检查常见路径
     if platform.system() == "Windows":
         # 检查 PATHEXT 环境变量指定的扩展名
-        pathext = os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(";")
+        pathext = os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD" if sys.platform == "win32" else "").split(";") if sys.platform == "win32" else [""]
 
         for npm_path in NPM_GLOBAL_PATHS:
             if not npm_path.exists():

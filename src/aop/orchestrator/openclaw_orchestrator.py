@@ -8,6 +8,7 @@ OpenClaw 可以通过其 MCP 或 API 接口调用其他 Agent。
 from __future__ import annotations
 
 import os
+import sys
 import platform
 import subprocess
 import shutil
@@ -26,12 +27,23 @@ from .types import (
 
 
 # Windows 上常见的 npm 全局安装路径
-NPM_GLOBAL_PATHS = [
-    Path.home() / "AppData" / "Roaming" / "npm",
-    Path.home() / ".npm-global" / "bin",
-    Path("/usr/local/bin"),
-    Path("/usr/bin"),
-]
+def _get_npm_global_paths():
+    """获取 npm 全局路径（跨平台）"""
+    paths = []
+    if sys.platform == "win32":
+        paths.append(Path.home() / "AppData" / "Roaming" / "npm")
+    else:
+        paths.extend([
+            Path("/usr/local/bin"),
+            Path("/usr/bin"),
+        ])
+    # 通用路径
+    npm_global = Path.home() / ".npm-global" / "bin"
+    if npm_global.exists():
+        paths.append(npm_global)
+    return paths
+
+NPM_GLOBAL_PATHS = _get_npm_global_paths()
 
 # OpenClaw 默认配置
 DEFAULT_GATEWAY_PORT = 18789  # OpenClaw Gateway 默认端口
@@ -45,7 +57,7 @@ def _find_binary(binary_name: str) -> Optional[str]:
         return result
 
     if platform.system() == "Windows":
-        pathext = os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(";")
+        pathext = os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD" if sys.platform == "win32" else "").split(";") if sys.platform == "win32" else [""]
         for npm_path in NPM_GLOBAL_PATHS:
             if not npm_path.exists():
                 continue
@@ -138,8 +150,44 @@ class OpenClawOrchestrator(OrchestratorClient):
         system: Optional[str] = None,
         **kwargs
     ) -> OrchestratorResponse:
-        """通过 OpenClaw 进行决策"""
-        raise NotImplementedError("OpenClaw integration pending")
+        """通过 OpenClaw Gateway API 进行决策"""
+        import httpx
+        
+        # 构建请求
+        url = f"http://localhost:{self._gateway_port}/api/chat"
+        
+        # 合并消息
+        full_prompt = ""
+        if system:
+            full_prompt += system + "\n\n"
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            if role == "user":
+                full_prompt += f"User: {content}\n"
+            elif role == "assistant":
+                full_prompt += f"Assistant: {content}\n"
+        
+        try:
+            response = httpx.post(
+                url,
+                json={"message": full_prompt},
+                timeout=kwargs.get("timeout", 60.0)
+            )
+            response.raise_for_status()
+            result = response.json()
+            
+            return OrchestratorResponse(
+                content=result.get("content", result.get("response", "")),
+                finish_reason="stop",
+                usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            )
+        except Exception as e:
+            return OrchestratorResponse(
+                content=f"OpenClaw Gateway 错误: {str(e)}",
+                finish_reason="error",
+                usage={},
+            )
 
     def execute(
         self,
@@ -148,8 +196,36 @@ class OpenClawOrchestrator(OrchestratorClient):
         target_paths: Optional[List[str]] = None,
         **kwargs
     ) -> OrchestratorResponse:
-        """通过 OpenClaw 执行任务"""
-        raise NotImplementedError("OpenClaw integration pending")
+        """通过 OpenClaw Gateway API 执行任务"""
+        import httpx
+        
+        url = f"http://localhost:{self._gateway_port}/api/chat"
+        
+        # 构建完整提示
+        full_prompt = prompt
+        if repo_root and repo_root != ".":
+            full_prompt = f"[工作目录: {repo_root}]\n{prompt}"
+        
+        try:
+            response = httpx.post(
+                url,
+                json={"message": full_prompt},
+                timeout=kwargs.get("timeout", 120.0)
+            )
+            response.raise_for_status()
+            result = response.json()
+            
+            return OrchestratorResponse(
+                content=result.get("content", result.get("response", "")),
+                finish_reason="stop",
+                usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            )
+        except Exception as e:
+            return OrchestratorResponse(
+                content=f"OpenClaw Gateway 错误: {str(e)}",
+                finish_reason="error",
+                usage={},
+            )
 
     def dispatch(
         self,
@@ -159,8 +235,37 @@ class OpenClawOrchestrator(OrchestratorClient):
         parallel: bool = True,
         **kwargs
     ) -> List[OrchestratorResponse]:
-        """OpenClaw 调度多 Agent"""
-        raise NotImplementedError("OpenClaw integration pending")
+        """OpenClaw 调度多 Agent（通过 Gateway）"""
+        import httpx
+        
+        url = f"http://localhost:{self._gateway_port}/api/chat"
+        
+        # 构建调度提示
+        agent_list = ", ".join(agents)
+        full_prompt = f"[调度 Agent: {agent_list}]\n[并行: {parallel}]\n{prompt}"
+        if repo_root and repo_root != ".":
+            full_prompt = f"[工作目录: {repo_root}]\n{full_prompt}"
+        
+        try:
+            response = httpx.post(
+                url,
+                json={"message": full_prompt},
+                timeout=kwargs.get("timeout", 180.0)
+            )
+            response.raise_for_status()
+            result = response.json()
+            
+            return [OrchestratorResponse(
+                content=result.get("content", result.get("response", "")),
+                finish_reason="stop",
+                usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            )]
+        except Exception as e:
+            return [OrchestratorResponse(
+                content=f"OpenClaw Gateway 错误: {str(e)}",
+                finish_reason="error",
+                usage={},
+            )]
 
     def _get_version(self) -> Optional[str]:
         """获取 OpenClaw 版本"""

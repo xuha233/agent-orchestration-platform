@@ -155,7 +155,7 @@ class CodebaseAnalyzer:
         if src_dir.exists():
             for name in root_entries:
                 if (src_dir / name).exists():
-                    entries.append(f"src/{name}")
+                    entries.append(str(Path("src") / name))
         
         # 检查常见的应用目录结构
         for subdir in ["app", "server", "api"]:
@@ -163,7 +163,7 @@ class CodebaseAnalyzer:
             if subdir_path.exists():
                 for name in ["main.py", "app.py", "__init__.py"]:
                     if (subdir_path / name).exists():
-                        entries.append(f"{subdir}/{name}")
+                        entries.append(str(Path(subdir) / name))
         
         return entries
     

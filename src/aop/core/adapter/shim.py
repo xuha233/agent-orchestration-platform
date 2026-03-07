@@ -1,4 +1,4 @@
-﻿"""Shim adapter base class for AOP.
+"""Shim adapter base class for AOP.
 
 Provides a common implementation for provider adapters that:
 - Execute commands as subprocesses
@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 import sys
 import shutil
 import signal
@@ -141,7 +142,7 @@ class ShimAdapterBase:
             if resolved:
                 cmd[0] = resolved
 
-        artifact_root = str(input_task.metadata.get("artifact_root", "/tmp/aop"))
+        artifact_root = str(input_task.metadata.get("artifact_root", os.path.join(tempfile.gettempdir(), "aop")))
         paths = expected_paths(artifact_root, input_task.task_id, (self.id,))
         root = paths["root"]
         paths["providers_dir"].mkdir(parents=True, exist_ok=True)

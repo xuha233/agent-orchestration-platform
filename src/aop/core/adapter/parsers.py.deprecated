@@ -129,7 +129,7 @@ class ClaudeParser(OutputParser):
     def _parse_section(self, section: str) -> List[ParsedIssue]:
         """Parse a section of output."""
         issues: List[ParsedIssue] = []
-        lines = section.strip().split("\n")
+        lines = section.strip().splitlines()
         
         current_issue: Optional[ParsedIssue] = None
         severity = "medium"
@@ -175,7 +175,7 @@ class CodexParser(OutputParser):
     def parse(self, output: str) -> List[NormalizedFinding]:
         """Parse Codex CLI output."""
         findings: List[NormalizedFinding] = []
-        lines = output.strip().split("\n")
+        lines = output.strip().splitlines()
         
         current_issue: Optional[ParsedIssue] = None
         
@@ -214,7 +214,7 @@ class GeminiParser(OutputParser):
     def parse(self, output: str) -> List[NormalizedFinding]:
         """Parse Gemini CLI output."""
         findings: List[NormalizedFinding] = []
-        lines = output.strip().split("\n")
+        lines = output.strip().splitlines()
         
         current_issue: Optional[ParsedIssue] = None
         in_code_block = False
@@ -274,7 +274,7 @@ class OpenCodeParser(OutputParser):
             if not section.strip():
                 continue
             
-            lines = section.strip().split("\n")
+            lines = section.strip().splitlines()
             if not lines:
                 continue
             
@@ -310,7 +310,7 @@ class QwenParser(OutputParser):
     def parse(self, output: str) -> List[NormalizedFinding]:
         """Parse Qwen CLI output."""
         findings: List[NormalizedFinding] = []
-        lines = output.strip().split("\n")
+        lines = output.strip().splitlines()
         
         current_issue: Optional[ParsedIssue] = None
         

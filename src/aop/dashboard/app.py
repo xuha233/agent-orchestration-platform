@@ -5,9 +5,11 @@ Run with: streamlit run app.py
 Or: aop dashboard
 """
 
-import asyncio
 import time
+import asyncio
 import threading
+import re
+import sys
 import streamlit as st
 import json
 import subprocess
@@ -15,16 +17,17 @@ from pathlib import Path
 from typing import Optional, Dict, List, Any
 from datetime import datetime
 
-from aop.primary import get_registry, AgentContext, PrimaryAgent
+from aop.primary import get_registry
+from aop.primary.base import PrimaryAgent
 from aop.primary.workspace import WorkspaceManager, Workspace, SettingsManager
 from aop.primary.listener import start_listener, submit_command
 from aop.dashboard.logger import get_dashboard_logger, setup_dashboard_logging
-from aop.dashboard.streaming import TokenQueue, parse_thinking_tags
 
 import logging
 _logger = logging.getLogger(__name__)
 
 # Page config
+from aop.memory import build_agent_system_prompt
 st.set_page_config(
     page_title="AOP Dashboard",
     page_icon="🤖",
@@ -70,6 +73,24 @@ st.markdown("""
 
 # 启动命令监听器（模块加载时立即启动）
 _listener_started = False
+
+def check_openclaw_status() -> tuple:
+    """检查 OpenClaw Gateway 是否运行
+    返回: (is_running: bool, status_text: str)
+    """
+    import socket
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(2)
+        result = sock.connect_ex(("127.0.0.1", 18792))
+        sock.close()
+        if result == 0:
+            return True, "运行中"
+        else:
+            return False, "未运行"
+    except Exception as e:
+        return False, f"检测失败: {e}"
+
 
 def ensure_listener():
     """确保监听器已启动"""
@@ -418,90 +439,6 @@ def render_welcome():
 """, unsafe_allow_html=True)
 
 
-def render_empty_state():
-    """渲染空状态提示"""
-    col1, col2 = st.columns(2)
-
-    with col1:
-        if st.button("📁 选择项目", use_container_width=True):
-            st.info("请从左侧菜单进入「工作区」页面")
-
-    with col2:
-        agents = get_available_agents()
-        if not agents:
-            st.button("⚙️ 配置 Agent", use_container_width=True)
-            st.caption("未检测到可用 Agent，请先安装 Claude Code 或 OpenCode")
-
-
-def render_agent_selector():
-    """渲染 Agent 选择器"""
-    agents = get_available_agents()
-
-    if not agents:
-        st.warning("⚠️ 未检测到可用 Agent")
-        st.markdown("""
-**安装指南：**
-- Claude Code: `npm install -g @anthropic-ai/claude-code`
-- OpenCode: `npm install -g opencode`
-""")
-        return None
-
-    agent_options = {agent.name: agent for agent in agents}
-
-    # 默认选择第一个可用 Agent
-    default_agent = agents[0]
-    if st.session_state.current_agent:
-        default_agent = st.session_state.current_agent
-
-    selected_name = st.selectbox(
-        "选择 Agent",
-        options=list(agent_options.keys()),
-        index=list(agent_options.keys()).index(default_agent.name) if default_agent.name in agent_options else 0,
-    )
-
-    return agent_options.get(selected_name)
-
-
-def render_project_selector():
-    """渲染项目选择器"""
-    wm = st.session_state.workspace_manager
-    workspaces = wm.list_workspaces()
-
-    if not workspaces:
-        if st.button("➕ 创建工作区"):
-            st.info("请在「工作区」页面创建新工作区")
-        return None
-
-    workspace_options = {ws.name: ws for ws in workspaces}
-
-    # 默认选择当前工作区或第一个
-    default_ws = st.session_state.current_workspace or workspaces[0]
-    default_name = default_ws.name if default_ws else list(workspace_options.keys())[0]
-
-    selected_name = st.selectbox(
-        "选择项目",
-        options=list(workspace_options.keys()),
-        index=list(workspace_options.keys()).index(default_name) if default_name in workspace_options else 0,
-    )
-
-    selected_ws = workspace_options.get(selected_name)
-    if selected_ws:
-        # 检查是否切换了工作区
-        current_ws = st.session_state.current_workspace
-        is_switching = not current_ws or current_ws.id != selected_ws.id
-
-        st.session_state.current_workspace = selected_ws
-        wm.set_current_workspace(selected_ws.id)
-
-        # 如果切换了工作区，检查并更新 Agent
-        if is_switching and selected_ws.primary_agent:
-            agents = get_available_agents()
-            for agent in agents:
-                if agent.id == selected_ws.primary_agent:
-                    st.session_state.current_agent = agent
-                    break
-
-    return selected_ws
 
 
 def execute_agent_task(agent, workspace, prompt, session_id, workspace_id, cancel_event, result_buffer, error_buffer):
@@ -580,348 +517,8 @@ def execute_agent_task(agent, workspace, prompt, session_id, workspace_id, cance
         result_buffer["completed"] = True
 
 
-def execute_agent_task_streaming(
-    agent, workspace, prompt, session_id, workspace_id, 
-    token_queue: TokenQueue, result_buffer, error_buffer
-):
-    """流式执行 Agent 任务，实时输出 token
-    
-    Args:
-        token_queue: TokenQueue 用于跨线程传递流式输出
-    """
-    try:
-        if session_id:
-            agent.resume_session(session_id)
-
-        context = AgentContext(
-            workspace_path=Path(workspace.project_path),
-            session_id=session_id,
-        )
-
-        _logger.info(f"流式执行: agent={agent.id}, workspace={workspace.project_path}")
-
-        # 使用同步流式方法（兼容 Windows）
-        full_response = []
-        
-        # 定义回调
-        def on_token(token):
-            token_queue.put(token)
-        
-        # 调用 agent 的同步流式方法
-        for token in agent.chat_stream_sync(prompt, context, on_token=on_token):
-            full_response.append(token)
-        
-        response = ''.join(full_response)
-        result_buffer["result"] = response
-        token_queue.done()
-        
-        if agent.get_session_id():
-            save_session_id_for_workspace(workspace_id, agent.get_session_id())
-        
-        _logger.info(f"流式执行完成: {len(response)} 字符")
-
-    except Exception as e:
-        import traceback
-        error_trace = traceback.format_exc()
-        _logger.error(f"流式执行错误: {str(e)}\n{error_trace}")
-        token_queue.set_error(str(e))
-        error_buffer["error"] = str(e)
-    finally:
-        result_buffer["completed"] = True
 
 
-def render_chat():
-    """渲染聊天界面"""
-    workspace_id = get_current_workspace_id()
-
-    # === 检查后台执行状态 ===
-    if st.session_state.execution_running:
-        token_queue = st.session_state.token_queue
-        elapsed = time.time() - st.session_state.execution_start_time if st.session_state.execution_start_time else 0
-
-        # 获取当前工作区的消息
-        messages = get_messages_for_workspace(workspace_id)
-
-        # 显示已有的历史消息
-        for msg in messages:
-            with st.chat_message(msg["role"]):
-                render_message_content(msg["content"], message_index=messages.index(msg))
-
-        # === 使用 st.status 显示流式输出 ===
-        with st.status("🤔 思考中...", expanded=True) as status:
-            content_placeholder = st.empty()
-            thinking_info = st.empty()  # 只显示思考摘要
-            
-            streaming_content = st.session_state.get("streaming_content", "")
-            
-            if token_queue and not token_queue.is_done():
-                # 持续读取 token 直到完成（在同一次渲染中）
-                last_update_time = 0
-                last_thinking_len = 0
-                
-                while True:
-                    token = token_queue.get(timeout=0.05)
-                    
-                    if token:
-                        streaming_content += token
-                        st.session_state.streaming_content = streaming_content
-                        
-                        # 解析思考标签
-                        parts = parse_thinking_tags(streaming_content)
-                        
-                        # 更新普通内容
-                        if parts['normal']:
-                            content_placeholder.markdown(parts['normal'])
-                        
-                        # 每隔 0.3 秒更新一次思考摘要（减少刷新频率）
-                        thinking_len = len(parts['thinking']) if parts['thinking'] else 0
-                        current_time = time.time()
-                        if thinking_len != last_thinking_len and (current_time - last_update_time > 0.3 or thinking_len > last_thinking_len + 100):
-                            if thinking_len > 0:
-                                thinking_info.caption(f"💭 思考中... ({thinking_len} 字符)")
-                            last_thinking_len = thinking_len
-                            last_update_time = current_time
-                    
-                    # 检查是否完成
-                    if token_queue.is_done():
-                        break
-                    
-                    # 更新状态（每隔 0.5 秒）
-                    if token is None or (time.time() - last_update_time > 0.5):
-                        elapsed = time.time() - st.session_state.execution_start_time
-                        status.update(label=f"🤔 思考中... ({elapsed:.1f}s)")
-                    
-                    # 短暂休眠避免 CPU 占用过高
-                    if not token:
-                        time.sleep(0.05)
-                
-                # 完成
-                status.update(label="✅ 完成", state="complete")
-                
-                # 解析最终内容
-                parts = parse_thinking_tags(streaming_content)
-                final_content = parts['normal']
-                error = token_queue.get_error()
-                
-                if error:
-                    messages.append({"role": "assistant", "content": f"❌ 错误: {error}"})
-                elif streaming_content:
-                    messages.append({"role": "assistant", "content": streaming_content})
-                
-                save_messages_for_workspace(workspace_id, messages)
-                
-                # 清理状态
-                st.session_state.streaming_content = ""
-                st.session_state.token_queue = None
-                st.session_state.execution_running = False
-                st.session_state.execution_thread = None
-                st.session_state.execution_start_time = None
-                
-                # 等待一下让用户看到完成状态
-                time.sleep(0.5)
-                st.rerun()
-            
-            else:
-                # 没有 token_queue，等待初始化
-                status.update(label=f"🤔 初始化中... ({elapsed:.1f}s)")
-                time.sleep(0.2)
-                st.rerun()
-        
-        return
-
-    # 获取当前工作区的消息
-    messages = get_messages_for_workspace(workspace_id)
-
-    # === 检查是否有待处理的 prompt ===
-    if st.session_state.get('pending_prompt'):
-        prompt = st.session_state.pending_prompt
-        del st.session_state.pending_prompt
-
-        # 检查是否就绪
-        if st.session_state.current_workspace and st.session_state.current_agent:
-            # 添加用户消息到工作区消息
-            messages.append({"role": "user", "content": prompt})
-            save_messages_for_workspace(workspace_id, messages)
-            _logger.info(f"快捷指令: {prompt[:100]}...")
-
-            # 启动后台执行
-            agent = st.session_state.current_agent
-            workspace = st.session_state.current_workspace
-            session_id = get_session_id_for_workspace(workspace_id)
-
-            # 创建结果缓冲区和取消事件
-            st.session_state.execution_running = True
-            st.session_state.execution_start_time = time.time()
-            st.session_state.execution_result_buffer = {}
-            st.session_state.execution_error_buffer = {}
-            st.session_state.cancel_event.clear()
-
-            thread = threading.Thread(
-                target=execute_agent_task,
-                args=(agent, workspace, prompt, session_id, workspace_id,
-                      st.session_state.cancel_event,
-                      st.session_state.execution_result_buffer,
-                      st.session_state.execution_error_buffer),
-                daemon=False,
-            )
-            st.session_state.execution_thread = thread
-            thread.start()
-
-            st.rerun()
-
-    # === 显示历史消息 ===
-    for msg in messages:
-        with st.chat_message(msg["role"]):
-            render_message_content(msg["content"], message_index=messages.index(msg))
-
-    # === 聊天输入 ===
-    if prompt := st.chat_input("输入你的问题..."):
-        # 检查是否就绪
-        if not st.session_state.current_workspace:
-            st.error("请先选择一个项目工作区")
-            return
-
-        if not st.session_state.current_agent:
-            st.error("请先选择一个 Agent")
-            return
-
-        # 添加用户消息到工作区消息
-        messages.append({"role": "user", "content": prompt})
-        save_messages_for_workspace(workspace_id, messages)
-        _logger.info(f"用户输入: {prompt[:100]}...")
-
-        # 启动流式执行
-        agent = st.session_state.current_agent
-        workspace = st.session_state.current_workspace
-        session_id = get_session_id_for_workspace(workspace_id)
-
-        # 创建 token 队列和结果缓冲区
-        token_queue = TokenQueue()
-        st.session_state.token_queue = token_queue
-        st.session_state.streaming_content = ""
-        st.session_state.execution_running = True
-        st.session_state.execution_start_time = time.time()
-        st.session_state.execution_result_buffer = {}
-        st.session_state.execution_error_buffer = {}
-        st.session_state.cancel_event.clear()
-
-        thread = threading.Thread(
-            target=execute_agent_task_streaming,
-            args=(agent, workspace, prompt, session_id, workspace_id,
-                  token_queue,
-                  st.session_state.execution_result_buffer,
-                  st.session_state.execution_error_buffer),
-            daemon=False,
-        )
-        st.session_state.execution_thread = thread
-        thread.start()
-
-        st.rerun()
-
-
-def render_message_content(content: str, message_index: int = 0):
-    """渲染消息内容，支持思考部分的折叠显示
-
-    Args:
-        content: 消息内容，可能包含 <thinking>...</thinking> 标签
-        message_index: 消息索引，用于保存折叠状态
-    """
-    import re
-
-    # 匹配 <thinking>...</thinking> 标签
-    thinking_pattern = r'<thinking>(.*?)</thinking>'
-    parts = re.split(thinking_pattern, content, flags=re.DOTALL)
-
-    if len(parts) > 1:
-        # 有思考内容，交替渲染
-        thinking_index = 0
-        for i, part in enumerate(parts):
-            if i % 2 == 0:
-                # 普通内容
-                if part.strip():
-                    st.markdown(part)
-            else:
-                # 思考内容 - 使用固定 key
-                thinking_index += 1
-                expander_key = f"thinking_{message_index}_{thinking_index}"
-                
-                # st.checkbox 自己管理 session_state
-                # 默认展开，用户可以手动折叠，状态会被记住
-                is_expanded = st.checkbox(
-                    "🤔 思考过程", 
-                    value=True,  # 默认展开
-                    key=expander_key
-                )
-                
-                if is_expanded:
-                    # 显示思考内容（灰色背景）
-                    st.markdown(
-                        f"<div style='background-color: #f0f0f0; padding: 10px; border-radius: 5px; margin: 5px 0;'>{part}</div>",
-                        unsafe_allow_html=True
-                    )
-    else:
-        # 没有思考内容，直接渲染
-        st.markdown(content)
-
-
-def render_quick_actions(is_openclaw: bool = False):
-    """渲染快捷指令按钮
-
-    Args:
-        is_openclaw: 是否为 OpenClaw 模式，True 时按钮改为「复制指令」
-    """
-    st.markdown("---")
-    st.markdown("**快捷指令**" if not is_openclaw else "**快捷指令（点击复制到剪贴板）**")
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    # 根据模式使用不同的提示语
-    if is_openclaw:
-        quick_prompts = {
-            "📋 run 任务": "-aop run ",
-            "📋 review 审查": "-aop review ",
-            "📋 hypothesis 假设": "-aop hypothesis create ",
-            "📋 status 状态": "-aop status",
-        }
-    else:
-        quick_prompts = {
-            "🔍 代码审查": "请帮我审查当前项目的代码，找出潜在问题和改进建议。",
-            "💡 创建假设": "请帮我创建一个关于项目优化的假设。",
-            "📊 查看状态": "请总结当前项目的状态和结构。",
-            "🔧 重构建议": "请分析代码并提供重构建议。",
-        }
-
-    for i, (label, prompt) in enumerate(quick_prompts.items()):
-        col = [col1, col2, col3, col4][i]
-        with col:
-            # OpenClaw 模式下修改按钮标签
-            button_label = label.replace("🔍", "📋").replace("💡", "📋").replace("📊", "📋").replace("🔧", "📋") if is_openclaw else label
-
-            if st.button(button_label, key=f"quick_{i}", use_container_width=True):
-                if st.session_state.current_workspace and st.session_state.current_agent:
-                    if is_openclaw:
-                        # OpenClaw 模式：复制到剪贴板
-                        st.session_state.copied_prompt = prompt
-                        st.toast("已复制到剪贴板", icon="✅")
-                    else:
-                        # 正常模式：设置待处理 prompt 并触发 rerun
-                        st.session_state.pending_prompt = prompt
-                        st.rerun()
-                else:
-                    st.warning("请先选择项目和工作区")
-
-    # OpenClaw 模式下显示复制的内容
-    if is_openclaw and st.session_state.get("copied_prompt"):
-        st.caption(f"已复制: {st.session_state.copied_prompt[:50]}...")
-        # 使用 JavaScript 复制到剪贴板
-        st.markdown(f"""
-        <script>
-            navigator.clipboard.writeText(`{st.session_state.copied_prompt}`);
-        </script>
-        """, unsafe_allow_html=True)
-
-
-# ============ 主页面 ============
 
 def page_home():
     """首页 - 项目概览"""
@@ -1162,75 +759,378 @@ def page_home():
 
 
 def page_coach():
-    """敏捷教练页面 - 对话入口"""
+    """敏捷教练页面 - 快捷指令面板"""
     sm = st.session_state.settings_manager
     primary_agent = sm.get_primary_agent()
-    is_openclaw = primary_agent == "openclaw"
 
-    # 如果设置了主 Agent，自动选择
-    if primary_agent and not st.session_state.current_agent:
-        agents = get_available_agents()
-        for agent in agents:
-            if agent.id == primary_agent:
-                st.session_state.current_agent = agent
-                break
+    st.title("🚀 敏捷教练")
 
-    st.title("💬 敏捷教练")
+    # === OpenClaw 状态检测 ===
+    openclaw_running, openclaw_status = check_openclaw_status()
+    if openclaw_running:
+        st.success(f"✅ OpenClaw Gateway: {openclaw_status}")
+    else:
+        st.warning(f"⚠️ OpenClaw Gateway: {openclaw_status}")
 
-    # 顶部：项目选择器 + Agent 切换
-    col1, col2 = st.columns(2)
+    # === 项目状态概览 ===
+    current_workspace = st.session_state.current_workspace
+    project_path = current_workspace.project_path if current_workspace else None
 
-    with col1:
-        render_project_selector()
+    if project_path:
+        # 显示项目信息
+        st.markdown("### 📊 项目状态")
+        col1, col2, col3 = st.columns(3)
 
-    with col2:
-        # 如果设置了主 Agent，隐藏选择器
-        if primary_agent:
-            if st.session_state.current_agent:
-                st.markdown(f"**Agent**: {st.session_state.current_agent.name}")
-                st.caption("（已由全局设置锁定）")
+        # 读取项目记忆
+        from pathlib import Path
+        aop_dir = Path(project_path) / ".aop"
+
+        # 项目名称
+        with col1:
+            if current_workspace:
+                st.metric("项目", current_workspace.name)
+            else:
+                st.metric("项目", Path(project_path).name)
+
+        # 假设数量
+        with col2:
+            hypotheses_file = aop_dir / "hypotheses.json"
+            if hypotheses_file.exists():
+                import json
+                try:
+                    data = json.loads(hypotheses_file.read_text(encoding="utf-8"))
+                    st.metric("假设", len(data.get("hypotheses", [])))
+                except:
+                    st.metric("假设", 0)
+            else:
+                st.metric("假设", 0)
+
+        # 学习记录
+        with col3:
+            learning_file = aop_dir / "learning.json"
+            if learning_file.exists():
+                import json
+                try:
+                    data = json.loads(learning_file.read_text(encoding="utf-8"))
+                    st.metric("学习", len(data.get("learnings", [])))
+                except:
+                    st.metric("学习", 0)
+            else:
+                st.metric("学习", 0)
+
+        st.markdown("---")
+
+    # === 启动 CLI 按钮 ===
+    st.markdown("### 🖥️ 启动 CLI")
+
+    # 检查是否选择了项目
+    if not project_path:
+        st.warning("请先选择一个项目工作区")
+        st.info("前往「工作区」页面选择或创建工作区")
+    else:
+        st.caption(f"📁 当前项目: `{project_path}`")
+
+        # 根据主 Agent 类型显示不同的启动选项
+        if primary_agent == "openclaw":
+            # OpenClaw 模式 - 打开 web 对话页
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                if st.button("🟢 打开 OpenClaw 对话", use_container_width=True, key="launch_openclaw"):
+                    import webbrowser
+                    webbrowser.open("http://127.0.0.1:18789/")
+                    st.toast("已打开 OpenClaw 对话页", icon="✅")
+            with col2:
+                if st.button("🔄 刷新", use_container_width=True, key="refresh_status"):
+                    st.rerun()
+            st.caption("💡 OpenClaw 主 Agent - 直接在 Dashboard 中对话")
+
+        elif primary_agent in ["claude_code", "opencode"]:
+            # CLI 模式 - 启动命令行工具
+            agent_names = {
+                "claude_code": "Claude Code",
+                "opencode": "OpenCode",
+            }
+            agent_name = agent_names.get(primary_agent, primary_agent)
+
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                if st.button(f"🟢 启动 {agent_name}", use_container_width=True, key="launch_primary"):
+                    import subprocess
+                    import tempfile
+                    import os
+                    from pathlib import Path
+
+                    # 构建 AOP 敏捷教练系统提示
+                    def build_aop_coach_prompt(project_path: str) -> str:
+                        """构建 AOP 敏捷教练的完整系统提示"""
+                        from pathlib import Path
+                        import json
+
+                        parts = []
+
+                        # 1. 读取 AOP 自身的敏捷教练人设
+                        aop_project_dir = Path(__file__).parent.parent.parent
+                        aop_soul_file = aop_project_dir / ".aop" / "SOUL.md"
+
+                        if aop_soul_file.exists():
+                            parts.append(aop_soul_file.read_text(encoding="utf-8"))
+
+                        # 2. 读取项目的专属记忆
+                        project_aop_dir = Path(project_path) / ".aop"
+
+                        # 项目人设
+                        project_soul = project_aop_dir / "SOUL.md"
+                        if project_soul.exists():
+                            parts.append("\n\n--- 项目人设 ---\n\n" + project_soul.read_text(encoding="utf-8"))
+
+                        # 项目记忆
+                        project_memory = project_aop_dir / "PROJECT_MEMORY.md"
+                        if project_memory.exists():
+                            parts.append("\n\n--- 项目记忆 ---\n\n" + project_memory.read_text(encoding="utf-8"))
+
+                        # 假设状态
+                        hypotheses_file = project_aop_dir / "hypotheses.json"
+                        if hypotheses_file.exists():
+                            try:
+                                data = json.loads(hypotheses_file.read_text(encoding="utf-8"))
+                                hypotheses = data.get("hypotheses", [])
+                                if hypotheses:
+                                    hypo_text = "\n".join([
+                                        f"- [{h.get('status', 'pending')}] {h.get('statement', '')}"
+                                        for h in hypotheses[:10]
+                                    ])
+                                    parts.append(f"\n\n--- 当前假设 ---\n\n{hypo_text}")
+                            except:
+                                pass
+
+                        # 学习记录
+                        learning_file = project_aop_dir / "learning.json"
+                        if learning_file.exists():
+                            try:
+                                data = json.loads(learning_file.read_text(encoding="utf-8"))
+                                learnings = data.get("learnings", [])
+                                if learnings:
+                                    learn_text = "\n".join([
+                                        f"- {l.get('insight', '')[:100]}"
+                                        for l in learnings[-5:]
+                                    ])
+                                    parts.append(f"\n\n--- 最近学习 ---\n\n{learn_text}")
+                            except:
+                                pass
+
+                        # 添加当前项目信息和交互要求
+                        parts.append(f"""
+
+---
+
+# 当前项目信息
+
+- **路径**: {project_path}
+- **名称**: {Path(project_path).name}
+
+# 首次交互要求
+
+1. 自我介绍为「AOP 敏捷教练」
+2. 汇报当前项目状态（假设数量、学习记录、进度）
+3. 给出下一步建议
+4. **回复语言必须和用户提问语言一致**
+
+记住：你是协调者，帮助用户高效完成开发任务。""")
+
+                        return "\n".join(parts)
+
+                    # 使用新的记忆加载器构建系统提示（全局 + 项目记忆）
+                    from pathlib import Path
+                    import uuid
+                    import shutil
+                    
+                    system_prompt = build_agent_system_prompt(Path(project_path))
+                    
+                    # 生成唯一的 session ID（用于会话隔离）
+                    session_id = str(uuid.uuid4())
+                    
+                    # 将系统提示写入临时文件（避免命令行长度限制和引号转义问题）
+                    prompt_file = os.path.join(tempfile.gettempdir(), "aop_system_prompt_" + session_id + ".txt")
+                    with open(prompt_file, "w", encoding="utf-8") as f:
+                        f.write(system_prompt)
+                    
+                    # 构建启动命令
+                    cmd_name = "claude" if primary_agent == "claude_code" else "opencode"
+                    
+                    # 检测命令是否存在
+                    if not shutil.which(cmd_name):
+                        st.error(cmd_name + " 未安装或不在 PATH 中，请先安装")
+                    else:
+                        if sys.platform == "win32":
+                            # Windows: 使用 PowerShell 读取多行系统提示
+                            ps1_file = os.path.join(tempfile.gettempdir(), "aop_launch_" + session_id + ".ps1")
+                            with open(ps1_file, "w", encoding="utf-8") as f:
+                                f.write('$SystemPrompt = Get-Content -Path "' + prompt_file + '" -Raw\n')
+                                f.write('Set-Location "' + project_path + '"\n')
+                                if primary_agent == "claude_code":
+                                    f.write('claude --system-prompt $SystemPrompt --session-id ' + session_id + '\n')
+                                else:
+                                    f.write('opencode "' + project_path + '" --prompt $SystemPrompt -s ' + session_id + '\n')
+                            
+                            # 使用 PowerShell 启动
+                            project_name = Path(project_path).name
+                            subprocess.Popen(
+                                'powershell -NoExit -ExecutionPolicy Bypass -File "' + ps1_file + '"',
+                                shell=True
+                            )
+                            
+                            # 使用 start 命令打开新终端，/d 指定起始目录
+                            project_name = Path(project_path).name
+                            subprocess.Popen(
+                                'cmd /c start "AOP 敏捷教练 - ' + project_name + '" /d "' + project_path + '" cmd /k "' + bat_file + '"',
+                                shell=True
+                            )
+                        elif sys.platform == "darwin":
+                            # macOS: 使用 Terminal
+                            if primary_agent == "claude_code":
+                                full_cmd = 'claude --system-prompt "$(cat \"' + prompt_file + '\")" --session-id ' + session_id
+                            else:
+                                full_cmd = 'opencode "' + project_path + '" --prompt "$(cat \"' + prompt_file + '\")" -s ' + session_id
+                            apple_script = 'tell application "Terminal" to do script "cd \"' + project_path + '\" && ' + full_cmd + '"'
+                            subprocess.Popen(["osascript", "-e", apple_script])
+                        else:
+                            # Linux: 尝试 gnome-terminal 或 xterm
+                            if primary_agent == "claude_code":
+                                full_cmd = 'claude --system-prompt "$(cat ' + prompt_file + ')" --session-id ' + session_id
+                            else:
+                                full_cmd = 'opencode "' + project_path + '" --prompt "$(cat ' + prompt_file + ')" -s ' + session_id
+                            if shutil.which("gnome-terminal"):
+                                subprocess.Popen(
+                                    ["gnome-terminal", "--working-directory", project_path, "--", "bash", "-c", 
+                                     full_cmd + "; exec bash"]
+                                )
+                            elif shutil.which("xterm"):
+                                subprocess.Popen(["xterm", "-e", "bash", "-c", "cd " + project_path + "; " + full_cmd])
+                            else:
+                                st.warning("未检测到支持的终端，请在命令行手动运行")
+                        
+                        # 保存 session 信息到 session_state
+                        st.session_state["last_session_id"] = session_id
+                        st.session_state["last_project_path"] = project_path
+                        
+                    st.toast(f"已启动 {agent_name}（AOP 敏捷教练模式）", icon="✅")
+
+            with col2:
+                if st.button("🔄 刷新", use_container_width=True, key="refresh_status"):
+                    st.rerun()
+
+            st.caption(f"💡 将以 AOP 敏捷教练身份启动 {agent_name}")
         else:
-            agent = render_agent_selector()
-            if agent:
-                st.session_state.current_agent = agent
+            # 未设置主 Agent - 显示两个 CLI 按钮
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                if st.button("🟢 启动 Claude Code", use_container_width=True, key="launch_claude"):
+                    st.info("请先在设置中选择主 Agent")
+            with col2:
+                if st.button("🟢 启动 OpenCode", use_container_width=True, key="launch_opencode"):
+                    st.info("请先在设置中选择主 Agent")
+            with col3:
+                if st.button("🔄 刷新", use_container_width=True, key="refresh_status"):
+                    st.rerun()
+
+            st.caption("💡 请在设置中选择主 Agent（Claude Code / OpenCode / OpenClaw）")
 
     st.markdown("---")
 
-    # 检查是否就绪
-    workspace_ready = st.session_state.current_workspace is not None
-    agent_ready = st.session_state.current_agent is not None
 
-    if not workspace_ready or not agent_ready:
-        # 未就绪状态
-        if not any([workspace_ready, agent_ready]):
-            render_welcome()
-        render_empty_state()
-    elif is_openclaw:
-        # OpenClaw 模式：显示命令帮助和提示
-        st.success("🟢 OpenClaw 已连接 - 可直接在对话窗口使用 AOP 命令")
+    categories = {
+        "🎯 任务执行": {
+            "desc": "运行开发任务",
+            "commands": [
+                {"label": "实现功能", "cmd": "-aop run 实现以下功能：", "hint": "补充功能描述"},
+                {"label": "修复 Bug", "cmd": "-aop run 修复以下问题：", "hint": "描述 Bug"},
+                {"label": "优化代码", "cmd": "-aop run 优化以下代码：", "hint": "指定优化目标"},
+                {"label": "添加测试", "cmd": "-aop run 为以下模块添加测试：", "hint": "指定模块"},
+            ]
+        },
+        "🔍 代码审查": {
+            "desc": "审查和改进代码",
+            "commands": [
+                {"label": "全面审查", "cmd": "-aop review 全面审查项目代码", "hint": ""},
+                {"label": "安全审查", "cmd": "-aop review 检查安全性问题", "hint": ""},
+                {"label": "性能审查", "cmd": "-aop review 检查性能瓶颈", "hint": ""},
+                {"label": "代码风格", "cmd": "-aop review 检查代码风格和规范", "hint": ""},
+            ]
+        },
+        "💡 假设管理": {
+            "desc": "创建和验证假设",
+            "commands": [
+                {"label": "创建假设", "cmd": '-aop hypothesis create "', "hint": "输入假设陈述"},
+                {"label": "列出假设", "cmd": "-aop hypothesis list", "hint": ""},
+                {"label": "测试假设", "cmd": "-aop hypothesis test ", "hint": "输入假设 ID"},
+            ]
+        },
+        "📊 状态查询": {
+            "desc": "查看项目和 Agent 状态",
+            "commands": [
+                {"label": "项目状态", "cmd": "-aop status", "hint": ""},
+                {"label": "Agent 状态", "cmd": "-aop status --agents", "hint": ""},
+                {"label": "假设状态", "cmd": "-aop status --hypotheses", "hint": ""},
+            ]
+        },
+        "🛠️ 开发工具": {
+            "desc": "常用开发命令",
+            "commands": [
+                {"label": "生成文档", "cmd": "-aop run 生成项目文档", "hint": ""},
+                {"label": "重构代码", "cmd": "-aop run 重构以下代码：", "hint": "指定模块"},
+                {"label": "分析依赖", "cmd": "-aop run 分析项目依赖关系", "hint": ""},
+                {"label": "清理代码", "cmd": "-aop run 清理无用代码和注释", "hint": ""},
+            ]
+        },
+    }
 
-        with st.expander("📖 AOP 命令参考", expanded=True):
-            st.markdown("""
-            **命令格式**：`-aop <command> [args]` 或 `aop <command> [args]`
+    # 当前选中的指令（用于显示在输入框中）
+    if "_selected_cmd" not in st.session_state:
+        st.session_state._selected_cmd = ""
 
-            | 命令 | 说明 | 示例 |
-            |------|------|------|
-            | `run` | 运行任务 | `-aop run 实现登录功能` |
-            | `review` | 代码审查 | `-aop review 检查安全性` |
-            | `hypothesis` | 假设管理 | `-aop hypothesis create "缓存提升50%"` |
-            | `status` | 查看状态 | `-aop status` |
-            | `dashboard` | Dashboard | `-aop dashboard open` |
-            """)
+    # 渲染每个分类
+    for category, data in categories.items():
+        with st.expander(f"{category} - {data['desc']}", expanded=False):
+            cols = st.columns(4)
+            for i, cmd_info in enumerate(data["commands"]):
+                col = cols[i % 4]
+                with col:
+                    key = f"cmd_{category}_{i}"
+                    if st.button(cmd_info["label"], key=key, use_container_width=True):
+                        st.session_state._selected_cmd = cmd_info["cmd"]
+                        st.rerun()
 
+    # 显示选中的指令（可手动复制）
+    if st.session_state._selected_cmd:
         st.markdown("---")
-        st.markdown("💡 **提示**：快捷指令已改为「复制指令」模式，点击按钮可复制指令到剪贴板。")
-    else:
-        # 就绪状态：显示聊天
-        render_chat()
+        st.markdown("**📋 已选指令（可手动复制）：**")
+        col1, col2 = st.columns([4, 1])
+        with col1:
+            st.code(st.session_state._selected_cmd, language="bash")
+        with col2:
+            if st.button("🗑️ 清除", use_container_width=True):
+                st.session_state._selected_cmd = ""
+                st.rerun()
+        if st.button("✅ 已使用，清除", key="clear_after_use"):
+            st.session_state._selected_cmd = ""
+            st.rerun()
 
-    # 快捷指令
-    render_quick_actions(is_openclaw=is_openclaw)
+    # AOP 命令参考
+    with st.expander("📖 AOP 命令参考", expanded=False):
+        st.markdown("""
+        **命令格式**：`-aop <command> [args]` 或 `aop <command> [args]`
 
+        | 命令 | 说明 | 示例 |
+        |------|------|------|
+        | `run` | 运行任务 | `-aop run 实现登录功能` |
+        | `review` | 代码审查 | `-aop review 检查安全性` |
+        | `hypothesis` | 假设管理 | `-aop hypothesis create "缓存提升50%"` |
+        | `status` | 查看状态 | `-aop status` |
+        | `dashboard` | Dashboard | `-aop dashboard open` |
+        | `doctor` | 环境检查 | `-aop doctor` |
+        | `init` | 初始化项目 | `-aop init` |
+        """)
 
 def page_workspaces():
     """工作区管理页面"""
@@ -1646,7 +1546,7 @@ def page_dev_console():
     logger = get_dashboard_logger()
 
     # 工具栏
-    col1, col2, col3 = st.columns([2, 2, 1])
+    col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
 
     with col1:
         level_filter = st.selectbox(
@@ -1659,6 +1559,25 @@ def page_dev_console():
         search = st.text_input("搜索", placeholder="输入关键词...", label_visibility="collapsed")
 
     with col3:
+        # 一键复制按钮
+        if st.button("📋 复制", use_container_width=True, key="copy_logs_btn"):
+            entries_all = logger.get_entries(level=None if level_filter == "ALL" else level_filter, search=search or None)
+            log_text = "\n".join([
+                f"[{e.timestamp.strftime('%H:%M:%S')}] {e.level}: {e.message}"
+                + (f"\n{e.exception}" if e.exception else "")
+                for e in entries_all
+            ])
+            # 使用 JavaScript 复制到剪贴板
+            import streamlit.components.v1 as components
+            components.html(f"""
+                <script>
+                    navigator.clipboard.writeText(`{log_text.replace('`', '\\`').replace('</script>', '</script>')}`);
+                    parent.document.querySelector('[data-testid="stToast"]').innerHTML = '<div style="padding:10px">✅ 已复制 {len(entries_all)} 条日志</div>';
+                </script>
+            """, height=0)
+            st.toast(f"已复制 {len(entries_all)} 条日志", icon="✅")
+
+    with col4:
         if st.button("🗑️ 清空", use_container_width=True):
             logger.clear()
             st.rerun()
@@ -1683,40 +1602,97 @@ def page_dev_console():
 
     st.markdown("---")
 
+    # 导出按钮（一键复制）
+    if entries:
+        log_text = "\n".join([
+            f"[{e.timestamp.strftime('%H:%M:%S')}] {e.level}: {e.message}"
+            + (f"\n{e.exception}" if e.exception else "")
+            for e in entries
+        ])
+        st.download_button(
+            "📋 复制全部日志",
+            log_text,
+            file_name=f"aop_logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+            mime="text/plain",
+            use_container_width=True,
+            key="download_logs_btn",
+        )
+        st.markdown("---")
+
     # 日志列表
     if not entries:
         st.info("暂无日志记录")
         return
 
-    for entry in entries:
-        # 级别颜色
-        level_colors = {
-            "DEBUG": "gray",
-            "INFO": "blue",
-            "WARNING": "orange",
-            "ERROR": "red",
-            "CRITICAL": "darkred",
-        }
-        color = level_colors.get(entry.level, "gray")
+    # 选项：切换显示模式
+    view_mode = st.radio("显示模式", ["详细视图", "文本视图（可复制）"], horizontal=True, label_visibility="collapsed")
 
-        with st.container():
-            col1, col2 = st.columns([1, 4])
-            with col1:
-                st.markdown(
-                    f"<span style='color:{color}; font-weight:bold;'>{entry.level}</span>",
-                    unsafe_allow_html=True,
-                )
-                st.caption(entry.timestamp.strftime("%H:%M:%S"))
-            with col2:
-                st.markdown(f"**{entry.message}**")
-                if entry.exception:
-                    with st.expander("查看堆栈", expanded=False):
-                        st.code(entry.exception, language="python")
+    if view_mode == "文本视图（可复制）":
+        # 文本视图：用 st.code 显示（自带复制按钮）
+        log_text = ""
+        for e in entries:
+            log_text += f"[{e.timestamp.strftime('%H:%M:%S')}] {e.level}: {e.message}"
+            if e.exception:
+                log_text += f"\n{e.exception}"
+            log_text += "\n"
+        st.code(log_text, language="log")
+    else:
+        # 详细视图：保持原有格式
+        for entry in entries:
+            # 级别颜色
+            level_colors = {
+                "DEBUG": "gray",
+                "INFO": "blue",
+                "WARNING": "orange",
+                "ERROR": "red",
+                "CRITICAL": "darkred",
+            }
+            color = level_colors.get(entry.level, "gray")
 
-            st.markdown("---")
+            with st.container():
+                col1, col2 = st.columns([1, 4])
+                with col1:
+                    st.markdown(
+                        f"<span style='color:{color}; font-weight:bold;'>{entry.level}</span>",
+                        unsafe_allow_html=True,
+                    )
+                    st.caption(entry.timestamp.strftime("%H:%M:%S"))
+                with col2:
+                    st.markdown(f"**{entry.message}**")
+                    if entry.exception:
+                        with st.expander("查看堆栈", expanded=False):
+                            st.code(entry.exception, language="python")
+
+                st.markdown("---")
 
 
 # ============ 主程序 ============
+
+
+def cleanup_temp_files():
+    """清理过期的临时文件"""
+    import glob
+    import time
+    temp_dir = tempfile.gettempdir()
+    patterns = ["aop_system_prompt_*.txt", "aop_launch_*.ps1", "aop_launch_*.bat"]
+    current_time = time.time()
+    cleaned = 0
+    for pattern in patterns:
+        for filepath in glob.glob(os.path.join(temp_dir, pattern)):
+            try:
+                # 删除超过 1 小时的临时文件
+                if current_time - os.path.getmtime(filepath) > 3600:
+                    os.remove(filepath)
+                    cleaned += 1
+            except Exception:
+                pass
+    return cleaned
+
+# 在应用启动时清理
+try:
+    cleanup_temp_files()
+except Exception:
+    pass
 
 def main():
     init_session_state()
