@@ -1,4 +1,4 @@
-"""
+﻿"""
 Agent 自动化模块
 
 从模糊需求到交付的全自动 Agent 团队驱动。
@@ -12,6 +12,11 @@ Phase 1-5 改进（基于 Anthropic 多智能体研究）：
 - Phase 3: 动态超时管理
 - Phase 4: LLM-as-Judge 评估器
 - Phase 5: 错误恢复机制
+
+集成模块：
+- CodebaseAnalyzer: 代码库分析
+- TaskScheduler: 智能任务调度
+- KnowledgeBase: 跨项目知识库
 """
 
 from .types import (
@@ -73,6 +78,24 @@ from .error_recovery import (
     ErrorRecoveryManager,
     CheckpointManager,
     RecoveryCompletedException,
+)
+
+# Codebase Analysis
+from .analyzer import (
+    CodebaseInfo,
+    CodebaseAnalyzer,
+)
+
+# Task Scheduling
+from .scheduler import (
+    TaskAssignment,
+    TaskScheduler,
+)
+
+# Knowledge Base
+from .knowledge import (
+    SharedLearning,
+    KnowledgeBase,
 )
 
 # Orchestrator 相关类型重导出（方便使用）
@@ -140,6 +163,15 @@ __all__ = [
     "ErrorRecoveryManager",
     "CheckpointManager",
     "RecoveryCompletedException",
+    # Codebase Analysis
+    "CodebaseInfo",
+    "CodebaseAnalyzer",
+    # Task Scheduling
+    "TaskAssignment",
+    "TaskScheduler",
+    # Knowledge Base
+    "SharedLearning",
+    "KnowledgeBase",
     # Orchestrator 相关
     "OrchestratorClient",
     "OrchestratorConfig",

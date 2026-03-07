@@ -38,6 +38,9 @@ from ..llm import LLMClient, LLMMessage
 from .prompts import ORCHESTRATOR_SYSTEM_PROMPT, build_subagent_task
 from .llm_evaluator import LLMEvaluator, EvaluationResult, CodeArtifact
 from .error_recovery import ErrorRecoveryManager, CheckpointManager, ErrorType
+from .analyzer import CodebaseAnalyzer, CodebaseInfo
+from .scheduler import TaskScheduler, TaskAssignment
+from .knowledge import KnowledgeBase, SharedLearning
 
 
 @dataclass
@@ -81,6 +84,17 @@ class OrchestrationConfig:
     max_retries: int = 3
     use_checkpoints: bool = True
     checkpoint_interval: int = 60  # 秒
+
+    # Codebase Analysis
+    analyze_codebase: bool = True  # 分析代码库上下文
+
+    # Task Scheduling
+    use_task_scheduler: bool = True  # 使用智能任务调度
+    providers: List[str] = field(default_factory=lambda: ["claude", "codex", "gemini", "qwen"])
+
+    # Knowledge Base
+    use_knowledge_base: bool = True  # 启用跨项目知识库
+    knowledge_path: str = "~/.aop/knowledge"
 
 
 class AgentOrchestrator:
@@ -133,6 +147,19 @@ class AgentOrchestrator:
             auto_save_interval=self.config.checkpoint_interval,
         ) if self.config.use_checkpoints else None
         
+        # Codebase Analyzer
+        self.codebase_analyzer = CodebaseAnalyzer() if self.config.analyze_codebase else None
+        
+        # Task Scheduler
+        self.task_scheduler = TaskScheduler(
+            providers=self.config.providers,
+        ) if self.config.use_task_scheduler else None
+        
+        # Knowledge Base
+        self.knowledge_base = KnowledgeBase(
+            storage_path=self.config.knowledge_path,
+        ) if self.config.use_knowledge_base else None
+        
         # Current context
         self.context: SprintContext | None = None
         
@@ -181,6 +208,27 @@ class AgentOrchestrator:
         Returns:
             Sprint execution result
         """
+        # Analyze codebase if enabled
+        codebase_info: CodebaseInfo | None = None
+        if self.codebase_analyzer:
+            self._report("analyze", "Analyzing codebase...")
+            try:
+                codebase_info = self.codebase_analyzer.analyze(".")
+                if project_context is None:
+                    project_context = {}
+                project_context.update({
+                    "language": codebase_info.language,
+                    "framework": codebase_info.framework,
+                    "patterns": codebase_info.patterns,
+                    "entry_points": codebase_info.entry_points,
+                })
+                if self.config.verbose:
+                    self._report("analyze", 
+                        f"Detected: {codebase_info.language}/{codebase_info.framework}, patterns: {codebase_info.patterns}")
+            except Exception as e:
+                if self.config.verbose:
+                    self._report("warning", f"Codebase analysis failed: {e}")
+        
         # Initialize sprint
         self.context = SprintContext(
             sprint_id=self._generate_sprint_id(),
@@ -313,6 +361,41 @@ class AgentOrchestrator:
                     "prompt": task_prompt,
                     "hypothesis": h,
                 })
+        
+        # 使用 TaskScheduler 进行智能调度（如果启用）
+        if self.task_scheduler and tasks:
+            self._report("schedule", f"Scheduling {len(tasks)} tasks...")
+            
+            # 转换为 hypothesis dict 格式
+            h_dicts = []
+            for t in tasks:
+                h = t.get("hypothesis")
+                h_dict = {
+                    "hypothesis_id": t["hypothesis_id"],
+                    "statement": getattr(h, 'statement', '') if h else '',
+                    "type": getattr(h, 'hypothesis_type', 'general').value if hasattr(h, 'hypothesis_type') else 'general',
+                    "priority": getattr(h, 'priority', 'medium'),
+                    "dependencies": getattr(h, 'dependencies', []),
+                    "description": t["prompt"][:500],
+                }
+                h_dicts.append(h_dict)
+            
+            # 调度任务
+            assignments = self.task_scheduler.schedule(h_dicts)
+            
+            # 更新任务的 provider
+            for assignment in assignments:
+                for task in tasks:
+                    if task["task_id"] == assignment.task_id:
+                        task["provider"] = assignment.provider
+                        task["priority"] = assignment.priority
+                        break
+            
+            if self.config.verbose:
+                provider_counts = {}
+                for a in assignments:
+                    provider_counts[a.provider] = provider_counts.get(a.provider, 0) + 1
+                self._report("schedule", f"Tasks distributed: {provider_counts}")
         
         # 并行执行（Anthropic 推荐：并行工具调用可减少 90% 时间）
         results = self._execute_parallel(tasks)
@@ -482,14 +565,80 @@ class AgentOrchestrator:
         }
     
     def _validate_hypotheses(self):
-        """Validate hypotheses"""
+        """
+        Validate hypotheses
+        
+        结合多种验证方式：
+        1. AutoValidator: 规则验证（基于假设是否通过）
+        2. LLMEvaluator: LLM 评估（代码质量评分）
+        3. KnowledgeBase: 保存成功的学习经验
+        """
         if not self.context:
             return
         
         self.context.validation_results = []
+        
+        # 收集执行产物用于 LLM 评估
+        code_artifacts = []
+        if self.llm_evaluator and self.context.execution_results:
+            for result in self.context.execution_results:
+                if result.get("success") and result.get("output"):
+                    code_artifacts.append(CodeArtifact(
+                        filename=f"task_{result.get('task_id', 'unknown')}.py",
+                        content=result.get("output", ""),
+                    ))
+        
         for hypothesis in self.context.hypotheses:
             h_dict = {"statement": getattr(hypothesis, 'statement', '')}
+            
+            # Phase 2: 规则验证
             validation_result = self.validator.validate(h_dict, self.context.execution_results)
+            
+            # Phase 4: LLM 评估（可选）
+            if self.llm_evaluator and code_artifacts:
+                try:
+                    eval_result = self.llm_evaluator.evaluate(
+                        artifacts=code_artifacts,
+                        success_criteria=getattr(hypothesis, 'success_criteria', []),
+                    )
+                    
+                    # 将 LLM 评估结果附加到验证结果
+                    if hasattr(validation_result, '__dict__'):
+                        validation_result.llm_evaluation = {
+                            "overall_score": eval_result.score.overall,
+                            "verdict": eval_result.verdict.value,
+                            "strengths": eval_result.strengths[:3],
+                            "weaknesses": eval_result.weaknesses[:3],
+                        }
+                        
+                        # 检查是否需要人工审查
+                        if eval_result.score.overall < self.config.llm_eval_threshold:
+                            validation_result.needs_human_review = True
+                            if self.config.verbose:
+                                self._report("validation", 
+                                    f"LLM score {eval_result.score.overall:.1f} below threshold, needs human review")
+                except Exception as e:
+                    if self.config.verbose:
+                        self._report("validation_warning", f"LLM evaluation failed: {e}")
+            
+            # 保存到知识库（如果验证通过）
+            if self.knowledge_base and getattr(validation_result, 'passed', False):
+                try:
+                    statement = getattr(hypothesis, 'statement', '')
+                    self.knowledge_base.create_learning(
+                        pattern=statement[:200],
+                        context={
+                            "language": getattr(self.context, 'language', 'unknown'),
+                            "framework": getattr(self.context, 'framework', None),
+                        },
+                        solution=str(h_dict),
+                        tags=[getattr(hypothesis, 'hypothesis_type', 'general')],
+                        project=self.context.sprint_id,
+                    )
+                except Exception as e:
+                    if self.config.verbose:
+                        self._report("knowledge_warning", f"Knowledge save failed: {e}")
+            
             self.context.validation_results.append(validation_result)
     
     def _build_result(self) -> SprintResult:
