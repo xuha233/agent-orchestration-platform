@@ -552,17 +552,128 @@ class AgentOrchestrator:
         return results
     
     def _execute_single_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """执行单个任务（在线程池中运行）"""
-        # TODO: 实际调用 executor（claude-code / opencode / codex）
-        # 目前返回占位结果
-        return {
-            "task_id": task["task_id"],
-            "hypothesis_id": task["hypothesis_id"],
-            "executor": task["executor"],
-            "prompt": task["prompt"],
-            "success": True,
-            "output": "[Execution placeholder - integrate with actual executor]",
-        }
+        """执行单个任务（通过 OpenClaw sessions_spawn 或本地 executor）"""
+        import subprocess
+        import json
+        import tempfile
+        from pathlib import Path
+        
+        task_id = task["task_id"]
+        executor = task.get("executor", "claude")
+        prompt = task["prompt"]
+        timeout = task.get("timeout", self.config.exec_timeout)
+        
+        # 尝试通过 OpenClaw API 调度（如果可用）
+        try:
+            # 检查 OpenClaw Gateway 是否运行
+            import httpx
+            gateway_url = "http://localhost:18789/api/sessions/spawn"
+            
+            # 构建子 Agent 任务
+            spawn_request = {
+                "task": prompt,
+                "runtime": "subagent",
+                "mode": "run",
+                "label": f"aop-task-{task_id}",
+                "runTimeoutSeconds": timeout,
+            }
+            
+            response = httpx.post(
+                gateway_url,
+                json=spawn_request,
+                timeout=timeout + 30,  # 额外 30s 用于通信
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                return {
+                    "task_id": task_id,
+                    "hypothesis_id": task.get("hypothesis_id"),
+                    "executor": "openclaw_subagent",
+                    "prompt": prompt,
+                    "success": True,
+                    "output": result.get("output", ""),
+                    "session_key": result.get("sessionKey", ""),
+                    "run_id": result.get("runId", ""),
+                }
+        except Exception as e:
+            # OpenClaw 不可用，回退到本地执行
+            if self.config.verbose:
+                self._report("executor_fallback", f"OpenClaw unavailable, using local executor: {e}")
+        
+        # 本地执行：使用 subprocess 调用 CLI
+        try:
+            # 根据 executor 选择 CLI 命令
+            cli_map = {
+                "claude": "claude",
+                "claude_code": "claude",
+                "opencode": "opencode",
+                "codex": "codex",
+            }
+            cli_cmd = cli_map.get(executor, "claude")
+            
+            # 将任务写入临时文件（避免命令行长度限制）
+            task_file = tempfile.NamedTemporaryFile(
+                mode="w", 
+                suffix=".txt", 
+                delete=False,
+                encoding="utf-8"
+            )
+            task_file.write(prompt)
+            task_file.close()
+            
+            try:
+                # 构建命令
+                if cli_cmd == "claude":
+                    cmd = [cli_cmd, "--input", task_file.name]
+                elif cli_cmd == "opencode":
+                    cmd = [cli_cmd, "--task-file", task_file.name]
+                else:
+                    cmd = [cli_cmd, "--input", task_file.name]
+                
+                # 执行
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                    cwd=str(self.config.storage_path) if self.config.storage_path else None,
+                )
+                
+                return {
+                    "task_id": task_id,
+                    "hypothesis_id": task.get("hypothesis_id"),
+                    "executor": cli_cmd,
+                    "prompt": prompt,
+                    "success": result.returncode == 0,
+                    "output": result.stdout,
+                    "error": result.stderr if result.returncode != 0 else None,
+                }
+            finally:
+                # 清理临时文件
+                try:
+                    os.unlink(task_file.name)
+                except Exception:
+                    pass
+                    
+        except subprocess.TimeoutExpired:
+            return {
+                "task_id": task_id,
+                "hypothesis_id": task.get("hypothesis_id"),
+                "executor": cli_cmd,
+                "prompt": prompt,
+                "success": False,
+                "error": f"Task timed out after {timeout}s",
+            }
+        except Exception as e:
+            return {
+                "task_id": task_id,
+                "hypothesis_id": task.get("hypothesis_id"),
+                "executor": executor,
+                "prompt": prompt,
+                "success": False,
+                "error": str(e),
+            }
     
     def _validate_hypotheses(self):
         """
