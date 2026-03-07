@@ -28,6 +28,7 @@ _logger = logging.getLogger(__name__)
 
 # Page config
 from aop.memory import build_agent_system_prompt
+from aop.session import get_session_manager
 st.set_page_config(
     page_title="AOP Dashboard",
     page_icon="🤖",
@@ -967,10 +968,34 @@ def page_coach():
                             with open(ps1_file, "w", encoding="utf-8") as f:
                                 f.write('$SystemPrompt = Get-Content -Path "' + prompt_file + '" -Raw\n')
                                 f.write('Set-Location "' + project_path + '"\n')
+                                
+                                # 检查是否有保存的会话 ID
+                                saved_session_id = None
+                                try:
+                                    sm = get_session_manager()
+                                    provider = "claude" if primary_agent == "claude_code" else "opencode"
+                                    session_info = sm.get_latest_session(workspace_id, provider)
+                                    if session_info:
+                                        saved_session_id = session_info.session_id
+                                        f.write('Write-Host "Resuming session: ' + saved_session_id[:8] + '..." -ForegroundColor Green\n')
+                                except Exception:
+                                    pass
+                                
+                                # 启动命令
                                 if primary_agent == "claude_code":
-                                    f.write('claude --system-prompt $SystemPrompt --session-id ' + session_id + '\n')
+                                    if saved_session_id:
+                                        f.write('claude --resume ' + saved_session_id + '\n')
+                                    else:
+                                        f.write('claude --system-prompt $SystemPrompt\n')
                                 else:
-                                    f.write('opencode "' + project_path + '" --prompt $SystemPrompt -s ' + session_id + '\n')
+                                    if saved_session_id:
+                                        f.write('opencode --resume ' + saved_session_id + '\n')
+                                    else:
+                                        f.write('opencode "' + project_path + '" --prompt $SystemPrompt\n')
+                                
+                                # 提示用户记录会话 ID
+                                f.write('\n')
+                                f.write('Write-Host "Session ended. Save the session ID above for next time." -ForegroundColor Yellow\n')
                             
                             # 使用 PowerShell 启动（新窗口）
                             project_name = Path(project_path).name
@@ -980,18 +1005,53 @@ def page_coach():
                             )
                         elif sys.platform == "darwin":
                             # macOS: 使用 Terminal
+                            # 检查是否有保存的会话 ID
+                            saved_session_id = None
+                            try:
+                                sm = get_session_manager()
+                                provider = "claude" if primary_agent == "claude_code" else "opencode"
+                                session_info = sm.get_latest_session(workspace_id, provider)
+                                if session_info:
+                                    saved_session_id = session_info.session_id
+                            except Exception:
+                                pass
+                            
                             if primary_agent == "claude_code":
-                                full_cmd = 'claude --system-prompt "$(cat \"' + prompt_file + '\")" --session-id ' + session_id
+                                if saved_session_id:
+                                    full_cmd = 'claude --resume ' + saved_session_id
+                                else:
+                                    full_cmd = 'claude --system-prompt "$(cat \"' + prompt_file + '\")"'
                             else:
-                                full_cmd = 'opencode "' + project_path + '" --prompt "$(cat \"' + prompt_file + '\")" -s ' + session_id
+                                if saved_session_id:
+                                    full_cmd = 'opencode --resume ' + saved_session_id
+                                else:
+                                    full_cmd = 'opencode "' + project_path + '" --prompt "$(cat \"' + prompt_file + '\")"'
                             apple_script = 'tell application "Terminal" to do script "cd \"' + project_path + '\" && ' + full_cmd + '"'
                             subprocess.Popen(["osascript", "-e", apple_script])
                         else:
                             # Linux: 尝试 gnome-terminal 或 xterm
+                            # 检查是否有保存的会话 ID
+                            saved_session_id = None
+                            try:
+                                sm = get_session_manager()
+                                provider = "claude" if primary_agent == "claude_code" else "opencode"
+                                session_info = sm.get_latest_session(workspace_id, provider)
+                                if session_info:
+                                    saved_session_id = session_info.session_id
+                            except Exception:
+                                pass
+                            
                             if primary_agent == "claude_code":
-                                full_cmd = 'claude --system-prompt "$(cat ' + prompt_file + ')" --session-id ' + session_id
+                                if saved_session_id:
+                                    full_cmd = 'claude --resume ' + saved_session_id
+                                else:
+                                    full_cmd = 'claude --system-prompt "$(cat ' + prompt_file + ')"'
                             else:
-                                full_cmd = 'opencode "' + project_path + '" --prompt "$(cat ' + prompt_file + ')" -s ' + session_id
+                                if saved_session_id:
+                                    full_cmd = 'opencode --resume ' + saved_session_id
+                                else:
+                                    full_cmd = 'opencode "' + project_path + '" --prompt "$(cat ' + prompt_file + ')"'
+                            
                             if shutil.which("gnome-terminal"):
                                 subprocess.Popen(
                                     ["gnome-terminal", "--working-directory", project_path, "--", "bash", "-c", 
@@ -1656,7 +1716,87 @@ def page_dev_console():
                         with st.expander("查看堆栈", expanded=False):
                             st.code(entry.exception, language="python")
 
-                st.markdown("---")
+
+
+    # ========== 会话管理 ==========
+    st.markdown("---")
+    st.subheader("💾 会话管理")
+    
+    # 获取当前项目的会话
+    if workspace_id:
+        try:
+            sm = get_session_manager()
+            sessions = sm.list_sessions(workspace_id)
+            
+            if sessions:
+                st.write(f"**已保存的会话 ({len(sessions)})**")
+                
+                for session in sessions[:5]:  # 显示最近 5 个
+                    with st.expander(f"{'🟢' if session.status == 'active' else '📦'} {session.session_id[:8]}... ({session.provider})"):
+                        st.write(f"**Provider:** {session.provider}")
+                        st.write(f"**创建时间:** {session.created_at[:10]}")
+                        st.write(f"**最后使用:** {session.last_used[:10]}")
+                        st.write(f"**消息数:** {session.message_count}")
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            if st.button("📋 复制 ID", key=f"copy_{session.session_id}"):
+                                st.code(session.session_id, language=None)
+                        with col2:
+                            if st.button("🗑️ 归档", key=f"archive_{session.session_id}"):
+                                sm.archive_session(workspace_id, session.session_id)
+                                st.success("已归档")
+                                st.rerun()
+            else:
+                st.info("暂无保存的会话")
+        except Exception as e:
+            st.error(f"加载会话失败: {e}")
+    
+    # 手动添加会话 ID
+    st.write("**手动添加会话 ID**")
+    st.caption("从 CLI 输出中复制会话 ID 粘贴到这里")
+    
+    new_session_id = st.text_input(
+        "会话 ID",
+        placeholder="81d7db4b-95f7-4983-9574-f9992dcb8a1d",
+        key="manual_session_id_input"
+    )
+    
+    provider_choice = st.selectbox(
+        "Provider",
+        ["claude", "opencode"],
+        key="manual_provider_choice"
+    )
+    
+    if st.button("💾 保存会话", key="save_manual_session"):
+        if new_session_id and workspace_id:
+            try:
+                sm = get_session_manager()
+                from aop.session import SessionInfo
+                from datetime import datetime
+                
+                now = datetime.now().isoformat()
+                session = SessionInfo(
+                    session_id=new_session_id,
+                    provider=provider_choice,
+                    project_id=workspace_id,
+                    workspace=project_path,
+                    created_at=now,
+                    last_used=now,
+                    message_count=0,
+                    status="active"
+                )
+                
+                sessions = sm.load_sessions(workspace_id)
+                sessions[new_session_id] = session
+                sm.save_sessions(workspace_id, sessions)
+                
+                st.success(f"会话已保存: {new_session_id[:8]}...")
+                st.rerun()
+            except Exception as e:
+                st.error(f"保存失败: {e}")
+        else:
+            st.warning("请输入会话 ID")
 
 
 # ============ 主程序 ============
