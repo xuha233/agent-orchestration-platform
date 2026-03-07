@@ -968,7 +968,7 @@ def page_coach():
                             ps1_file = os.path.join(tempfile.gettempdir(), "aop_launch_" + session_id + ".ps1")
                             # 输出捕获文件
                             capture_file = os.path.join(tempfile.gettempdir(), "aop_session_output.txt")
-                            save_session_script = os.path.join(os.path.dirname(__file__), "session", "save_session.py")
+                            save_session_script = os.path.join(os.path.dirname(os.path.dirname(__file__)), "session", "save_session.py")
                             
                             # 将系统提示词写入项目的 CLAUDE.md（Claude Code 会自动加载）
                             claude_md_path = os.path.join(project_path, ".claude", "CLAUDE.md")
@@ -1355,12 +1355,30 @@ def page_workspaces():
                         col_save, col_close = st.columns(2)
                         with col_save:
                             if st.button("💾 保存", key=f"save_session_{ws.id}", use_container_width=True):
+                                # 提取纯会话 ID（处理用户输入 claude --resume xxx 的情况）
+                                import re
+                                claude_id = claude_session.strip()
+                                opencode_id = opencode_session.strip()
+                                
+                                # 从 claude --resume xxx 格式中提取 ID
+                                claude_match = re.search(r'([a-f0-9-]{36})', claude_id)
+                                if claude_match:
+                                    claude_id = claude_match.group(1)
+                                
+                                # 从 opencode -s xxx 或 ses_xxx 格式中提取 ID
+                                opencode_match = re.search(r'(ses_[a-zA-Z0-9]+)', opencode_id)
+                                if opencode_match:
+                                    opencode_id = opencode_match.group(1)
+                                
                                 # 更新 workspace metadata
-                                ws.metadata["claude_session_id"] = claude_session
-                                ws.metadata["opencode_session_id"] = opencode_session
+                                ws.metadata["claude_session_id"] = claude_id
+                                ws.metadata["opencode_session_id"] = opencode_id
                                 # 保存到文件
                                 wm.update_workspace(ws)
-                                st.success("会话 ID 已保存")
+                                # 更新 session_state 中的 current_workspace
+                                if st.session_state.current_workspace and st.session_state.current_workspace.id == ws.id:
+                                    st.session_state.current_workspace = ws
+                                st.success(f"会话 ID 已保存: {claude_id[:8] if claude_id else 'N/A'}...")
                                 st.session_state[f"show_session_dialog_{ws.id}"] = False
                                 st.rerun()
                         with col_close:
