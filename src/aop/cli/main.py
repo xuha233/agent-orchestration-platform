@@ -708,7 +708,11 @@ def run_command(
         if result.provider_results:
             console.print("\n[bold]Provider Results:[/bold]")
             for provider, details in sorted(result.provider_results.items()):
-                success = details.get("success", False)
+                # Handle both dict and TaskResult object
+                if hasattr(details, 'success'):
+                    success = details.success
+                else:
+                    success = details.get("success", False)
                 status = "[green]Success[/green]" if success else "[red]Failed[/red]"
                 console.print(f"  {provider}: {status}")
     

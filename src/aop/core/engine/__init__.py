@@ -44,30 +44,81 @@ class ExecutionEngine:
         task = TaskInput(task_id=task_id, prompt=prompt, repo_root=repo_root, target_paths=["."], timeout_seconds=self.default_timeout)
         results = {}
         errors = []
+        run_refs = {}
         
-        with ThreadPoolExecutor(max_workers=len(self.providers)) as executor:
-            futures = {}
-            for pid in self.providers:
+        # 启动所有 provider
+        for pid in self.providers:
+            adapter = self._registry.get(pid)
+            if adapter:
+                presence = adapter.detect()
+                if presence.detected:
+                    try:
+                        ref = adapter.run(task)
+                        run_refs[pid] = ref
+                    except Exception as e:
+                        errors.append(f"{pid}: {str(e)}")
+                else:
+                    errors.append(f"{pid}: not available")
+        
+        # 等待所有任务完成
+        import time as time_module
+        timeout = self.default_timeout
+        poll_interval = 1.0
+        elapsed = 0.0
+        
+        while elapsed < timeout and run_refs:
+            for pid, ref in list(run_refs.items()):
                 adapter = self._registry.get(pid)
                 if adapter:
-                    presence = adapter.detect()
-                    if presence.detected:
-                        futures[executor.submit(adapter.run, task)] = pid
-                    else:
-                        errors.append(f"{pid}: not available")
+                    try:
+                        status = adapter.poll(ref)
+                        if status.completed:
+                            # 创建 TaskResult
+                            success = status.attempt_state == "SUCCEEDED"
+                            results[pid] = TaskResult(
+                                task_id=task_id,
+                                provider=pid,
+                                success=success,
+                                error=status.message if not success else None,
+                            )
+                            del run_refs[pid]
+                    except Exception as e:
+                        errors.append(f"{pid}: poll error - {str(e)}")
+                        results[pid] = TaskResult(task_id=task_id, provider=pid, success=False, error=str(e))
+                        del run_refs[pid]
             
-            for future in as_completed(futures):
-                pid = futures[future]
-                try:
-                    results[pid] = future.result()
-                except Exception as e:
-                    errors.append(f"{pid}: {str(e)}")
-                    results[pid] = TaskResult(task_id=task_id, provider=pid, success=False, error=str(e))
+            if run_refs:
+                time_module.sleep(poll_interval)
+                elapsed += poll_interval
+        
+        # 超时处理
+        for pid in run_refs:
+            errors.append(f"{pid}: timeout")
+            results[pid] = TaskResult(task_id=task_id, provider=pid, success=False, error="timeout")
         
         success_count = sum(1 for r in results.values() if r.success)
         state = TaskState.COMPLETED if success_count == len(results) else TaskState.FAILED
         return ExecutionResult(task_id=task_id, success=state == TaskState.COMPLETED, terminal_state=state,
                                provider_results=results, duration_seconds=time.time() - start, errors=errors)
+    
+    def run(self, prompt, repo_root=".", target_paths=None, task_id=None, 
+            include_token_usage=False, synthesize=False, synthesis_provider=None):
+        """
+        Alias for execute() for CLI compatibility.
+        
+        Args:
+            prompt: The task prompt
+            repo_root: Repository root path
+            target_paths: Target paths to analyze
+            task_id: Optional task ID
+            include_token_usage: Whether to include token usage
+            synthesize: Whether to run synthesis
+            synthesis_provider: Provider to use for synthesis
+            
+        Returns:
+            ExecutionResult
+        """
+        return self.execute(prompt=prompt, repo_root=repo_root)
 
 
 __all__ = [
