@@ -1,15 +1,16 @@
-"""Claude Code implementation of PrimaryAgent.
+"""Claude Code implementation of PrimaryAgent with streaming support.
 
 Uses the `claude` CLI to interact with Claude Code.
 """
 
 from __future__ import annotations
 
+import asyncio
 import platform
 import subprocess
 import shutil
 from pathlib import Path
-from typing import Optional
+from typing import Optional, AsyncIterator, Callable
 
 from .base import AgentContext, PrimaryAgent
 from .memory_extractor import extract_and_save_memory
@@ -189,6 +190,89 @@ class ClaudeCodeAgent(PrimaryAgent):
             pass
 
         return output
+
+    async def chat_stream(
+        self,
+        message: str,
+        context: AgentContext,
+        on_token: Optional[Callable[[str], None]] = None,
+    ) -> AsyncIterator[str]:
+        """Chat with Claude Code and yield tokens as they arrive.
+
+        Uses subprocess with real-time stdout reading for streaming.
+
+        Args:
+            message: The user message to send
+            context: Execution context with workspace and session info
+            on_token: Optional callback for each token
+
+        Yields:
+            Individual tokens/chunks as they are generated
+        """
+        # 加载项目上下文
+        context_str = _load_context_files(context.workspace_path)
+        if context_str:
+            message = f"【项目上下文】\n{context_str}\n\n【用户消息】\n{message}"
+
+        # Build command
+        binary = self._binary_path or _find_binary("claude") or "claude"
+        cmd = [binary, "-p", message, "--dangerously-skip-permissions"]
+
+        # Add resume flag if we have a session
+        if self._session_id:
+            cmd.extend(["--resume", self._session_id])
+        elif context.session_id:
+            cmd.extend(["--resume", context.session_id])
+
+        # Use asyncio subprocess for streaming
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(context.workspace_path),
+        )
+
+        full_response = []
+        
+        try:
+            # Read stdout in real-time
+            while True:
+                chunk = await process.stdout.read(1024)
+                if not chunk:
+                    break
+                
+                text = chunk.decode('utf-8', errors='replace')
+                full_response.append(text)
+                
+                if on_token:
+                    on_token(text)
+                
+                yield text
+
+            # Wait for process to complete
+            returncode = await process.wait()
+            
+            if returncode != 0:
+                stderr = await process.stderr.read()
+                error_msg = stderr.decode('utf-8', errors='replace').strip()
+                raise RuntimeError(f"Claude Code error: {error_msg or returncode}")
+
+        except asyncio.CancelledError:
+            process.kill()
+            raise
+
+        # Update session ID
+        self._update_session_id(context.workspace_path)
+
+        # Extract memory
+        try:
+            complete_response = ''.join(full_response)
+            original_message = message
+            if "【用户消息】" in message:
+                original_message = message.split("【用户消息】\n")[-1]
+            extract_and_save_memory(original_message, complete_response, context.workspace_path)
+        except Exception:
+            pass
 
     def _update_session_id(self, workspace_path: Path) -> None:
         """Update session ID from the Claude projects directory.

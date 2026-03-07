@@ -1,4 +1,4 @@
-﻿"""PrimaryAgent abstract base class for AOP.
+"""PrimaryAgent abstract base class for AOP.
 
 Defines the interface for primary AI agents that can be used as the main
 agent in the AOP system. Supports session management and streaming chat.
@@ -9,7 +9,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, Optional, Callable
 
 
 @dataclass
@@ -79,6 +79,34 @@ class PrimaryAgent(ABC):
             Complete response text
         """
         pass
+
+    async def chat_stream(
+        self,
+        message: str,
+        context: AgentContext,
+        on_token: Optional[Callable[[str], None]] = None,
+    ) -> AsyncIterator[str]:
+        """Chat with the agent and yield tokens as they arrive.
+
+        This is the streaming version of chat(). It yields individual
+        tokens as they are generated, allowing for real-time display.
+
+        Args:
+            message: The user message to send
+            context: Execution context with workspace and session info
+            on_token: Optional callback for each token (for non-async contexts)
+
+        Yields:
+            Individual tokens as they are generated
+
+        Note:
+            Default implementation falls back to chat() and yields the
+            complete response. Subclasses should override for true streaming.
+        """
+        response = await self.chat(message, context, stream=False)
+        if on_token:
+            on_token(response)
+        yield response
 
     @abstractmethod
     def get_session_id(self) -> Optional[str]:

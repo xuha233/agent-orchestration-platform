@@ -122,6 +122,11 @@ def init_session_state():
         st.session_state.workspace_messages = {}  # {workspace_id: [messages]}
     if "workspace_sessions" not in st.session_state:
         st.session_state.workspace_sessions = {}  # {workspace_id: session_id}
+    # 流式输出支持
+    if "token_queue" not in st.session_state:
+        st.session_state.token_queue = None
+    if "streaming_content" not in st.session_state:
+        st.session_state.streaming_content = ""
 
 
 def get_current_workspace_id() -> Optional[str]:
@@ -574,29 +579,71 @@ def execute_agent_task(agent, workspace, prompt, session_id, workspace_id, cance
         result_buffer["completed"] = True
 
 
+def execute_agent_task_streaming(
+    agent, workspace, prompt, session_id, workspace_id, 
+    token_queue: TokenQueue, result_buffer, error_buffer
+):
+    """流式执行 Agent 任务，实时输出 token
+    
+    Args:
+        token_queue: TokenQueue 用于跨线程传递流式输出
+    """
+    try:
+        if session_id:
+            agent.resume_session(session_id)
+
+        context = AgentContext(
+            workspace_path=Path(workspace.project_path),
+            session_id=session_id,
+        )
+
+        _logger.info(f"流式执行: agent={agent.id}, workspace={workspace.project_path}")
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            async def run_stream():
+                full_response = []
+                async for token in agent.chat_stream(prompt, context):
+                    token_queue.put(token)
+                    full_response.append(token)
+                return ''.join(full_response)
+            
+            response = loop.run_until_complete(run_stream())
+            result_buffer["result"] = response
+            token_queue.done()
+            
+            if agent.get_session_id():
+                save_session_id_for_workspace(workspace_id, agent.get_session_id())
+            
+            _logger.info(f"流式执行完成: {len(response)} 字符")
+            
+        finally:
+            loop.close()
+
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        _logger.error(f"流式执行错误: {str(e)}\n{error_trace}")
+        token_queue.set_error(str(e))
+        error_buffer["error"] = str(e)
+    finally:
+        result_buffer["completed"] = True
+
+
 def render_chat():
     """渲染聊天界面"""
     workspace_id = get_current_workspace_id()
 
     # === 检查后台执行状态 ===
     if st.session_state.execution_running:
-        # 计算执行时间
+        token_queue = st.session_state.token_queue
         elapsed = time.time() - st.session_state.execution_start_time if st.session_state.execution_start_time else 0
 
         # 显示执行状态
         status_placeholder = st.empty()
-        status_placeholder.info(f"🤔 思考中... ({elapsed:.1f}s)")
-
-        # 取消按钮 - 使用 type="primary" 让按钮更醒目
-        col1, col2 = st.columns([1, 4])
-        with col1:
-            if st.button("⏹️ 立即取消", key="cancel_execution", type="primary"):
-                # 设置取消信号（线程安全）
-                st.session_state.cancel_event.set()
-                st.warning("已发送取消请求（注意：正在进行的 AI 调用可能需要等待完成）")
-                st.session_state.execution_running = False
-                st.rerun()
-
+        
         # 获取当前工作区的消息
         messages = get_messages_for_workspace(workspace_id)
 
@@ -605,44 +652,106 @@ def render_chat():
             with st.chat_message(msg["role"]):
                 render_message_content(msg["content"])
 
+        # === 流式输出显示 ===
+        content_placeholder = st.empty()
+        thinking_placeholder = st.empty()
+        
+        if token_queue and not token_queue.is_done():
+            # 实时读取 token 并显示
+            streaming_content = st.session_state.streaming_content
+            
+            while True:
+                token = token_queue.get(timeout=0.05)
+                if token is None:
+                    break
+                
+                streaming_content += token
+                st.session_state.streaming_content = streaming_content
+                
+                # 解析思考标签
+                parts = parse_thinking_tags(streaming_content)
+                
+                # 显示普通内容
+                if parts['normal']:
+                    content_placeholder.markdown(parts['normal'])
+                
+                # 显示思考部分（折叠）
+                if parts['thinking']:
+                    with thinking_placeholder.container():
+                        with st.expander("🤔 思考过程", expanded=False):
+                            st.markdown(parts['thinking'])
+            
+            # 检查是否完成
+            if token_queue.is_done():
+                st.session_state.execution_running = False
+                final_content = st.session_state.streaming_content
+                
+                # 检查错误
+                error = token_queue.get_error()
+                if error:
+                    messages.append({
+                        "role": "assistant",
+                        "content": f"❌ 错误: {error}"
+                    })
+                elif final_content:
+                    messages.append({
+                        "role": "assistant",
+                        "content": final_content
+                    })
+                
+                save_messages_for_workspace(workspace_id, messages)
+                
+                # 清理状态
+                st.session_state.streaming_content = ""
+                st.session_state.token_queue = None
+                st.session_state.execution_thread = None
+                st.session_state.execution_result_buffer = {}
+                st.session_state.execution_error_buffer = {}
+                st.session_state.execution_start_time = None
+                st.session_state.cancel_event.clear()
+                
+                st.rerun()
+            else:
+                # 继续等待
+                status_placeholder.info(f"🤔 思考中... ({elapsed:.1f}s)")
+                time.sleep(0.1)
+                st.rerun()
+        
         # 检查线程是否完成
         thread = st.session_state.execution_thread
         result_buffer = st.session_state.execution_result_buffer
-        error_buffer = st.session_state.execution_error_buffer
-
+        
         if thread and not thread.is_alive():
-            # 线程已完成，从缓冲区获取结果
             st.session_state.execution_running = False
-
-            # 从缓冲区获取结果
             result = result_buffer.get("result") if result_buffer else None
-            error = error_buffer.get("error") if error_buffer else None
-
+            
             if result:
-                # 添加助手响应到工作区消息
-                messages.append({
-                    "role": "assistant",
-                    "content": result
-                })
+                messages.append({"role": "assistant", "content": result})
                 save_messages_for_workspace(workspace_id, messages)
-            elif error:
-                messages.append({
-                    "role": "assistant",
-                    "content": f"❌ 错误: {error}"
-                })
-                save_messages_for_workspace(workspace_id, messages)
-
-            # 清理执行状态
+            
+            # 清理状态
+            st.session_state.streaming_content = ""
+            st.session_state.token_queue = None
             st.session_state.execution_thread = None
             st.session_state.execution_result_buffer = {}
             st.session_state.execution_error_buffer = {}
             st.session_state.execution_start_time = None
             st.session_state.cancel_event.clear()
-
+            
             st.rerun()
-
-        # 线程还在运行，使用 time.sleep 等待后 rerun
-        time.sleep(0.3)
+        
+        # 取消按钮
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            if st.button("⏹️ 立即取消", key="cancel_execution", type="primary"):
+                st.session_state.cancel_event.set()
+                st.session_state.execution_running = False
+                st.warning("已发送取消请求")
+                st.rerun()
+        
+        # 继续等待
+        status_placeholder.info(f"🤔 思考中... ({elapsed:.1f}s)")
+        time.sleep(0.1)
         st.rerun()
         return
 
@@ -707,12 +816,15 @@ def render_chat():
         save_messages_for_workspace(workspace_id, messages)
         _logger.info(f"用户输入: {prompt[:100]}...")
 
-        # 启动后台执行
+        # 启动流式执行
         agent = st.session_state.current_agent
         workspace = st.session_state.current_workspace
         session_id = get_session_id_for_workspace(workspace_id)
 
-        # 创建结果缓冲区和取消事件
+        # 创建 token 队列和结果缓冲区
+        token_queue = TokenQueue()
+        st.session_state.token_queue = token_queue
+        st.session_state.streaming_content = ""
         st.session_state.execution_running = True
         st.session_state.execution_start_time = time.time()
         st.session_state.execution_result_buffer = {}
@@ -720,9 +832,9 @@ def render_chat():
         st.session_state.cancel_event.clear()
 
         thread = threading.Thread(
-            target=execute_agent_task,
+            target=execute_agent_task_streaming,
             args=(agent, workspace, prompt, session_id, workspace_id,
-                  st.session_state.cancel_event,
+                  token_queue,
                   st.session_state.execution_result_buffer,
                   st.session_state.execution_error_buffer),
             daemon=False,
