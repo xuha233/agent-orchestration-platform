@@ -972,17 +972,10 @@ def page_coach():
                                 else:
                                     f.write('opencode "' + project_path + '" --prompt $SystemPrompt -s ' + session_id + '\n')
                             
-                            # 使用 PowerShell 启动
+                            # 使用 PowerShell 启动（新窗口）
                             project_name = Path(project_path).name
                             subprocess.Popen(
-                                'powershell -NoExit -ExecutionPolicy Bypass -File "' + ps1_file + '"',
-                                shell=True
-                            )
-                            
-                            # 使用 start 命令打开新终端，/d 指定起始目录
-                            project_name = Path(project_path).name
-                            subprocess.Popen(
-                                'cmd /c start "AOP 敏捷教练 - ' + project_name + '" /d "' + project_path + '" cmd /k "' + bat_file + '"',
+                                'start "AOP 敏捷教练 - ' + project_name + '" powershell -NoExit -ExecutionPolicy Bypass -File "' + ps1_file + '"',
                                 shell=True
                             )
                         elif sys.platform == "darwin":
