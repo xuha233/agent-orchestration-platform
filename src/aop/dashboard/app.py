@@ -776,6 +776,7 @@ def page_coach():
     # === 项目状态概览 ===
     current_workspace = st.session_state.current_workspace
     project_path = current_workspace.project_path if current_workspace else None
+    workspace_id = current_workspace.id if current_workspace else None
 
     if project_path:
         # 显示项目信息
@@ -1007,7 +1008,7 @@ def page_coach():
                                 f.write('# Auto-capture session ID\n')
                                 f.write('if (Test-Path $OutputFile) {\n')
                                 f.write('    $Output = Get-Content $OutputFile -Raw\n')
-                                f.write('    $Pattern = "claude\s+--resume\s+([a-f0-9-]{36})"\n')
+                                f.write('    $Pattern = "claude\\s+--resume\\s+([a-f0-9-]{36})"\n')
                                 f.write('    if ($Output -match $Pattern) {\n')
                                 f.write('        $SessionId = $matches[1]\n')
                                 f.write('        Write-Host "Session captured: $SessionId" -ForegroundColor Cyan\n')
