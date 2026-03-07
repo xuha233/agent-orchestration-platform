@@ -1,4 +1,4 @@
-﻿# WORKFLOW.md - 工作流程
+# WORKFLOW.md - 工作流程
 
 ## 假设驱动开发 (HDD)
 
@@ -55,27 +55,38 @@
 - 报告问题
 - 验证修复
 
-## 工作流示例
+## 并行工作流示例
 
-### 新功能开发
-1. Orchestrator: 生成假设 \"如果添加 X 功能，那么用户效率提升 Y%\"
-2. Developer: 实现功能代码
-3. Tester: 编写测试用例
-4. Reviewer: 代码审查
-5. Orchestrator: 验证假设，提取学习
+### 新功能开发（使用 Claude Code Team 功能）
+
+```
+1. [Orchestrator] TeamCreate(team_name="feature-team", members=["developer", "reviewer", "tester"])
+2. [Orchestrator] Task(agent="developer", prompt="实现功能代码...")
+3. [Orchestrator] 监控进度，等待 developer 完成
+4. [Orchestrator] Task(agent="reviewer", prompt="审查代码...")
+5. [Orchestrator] 根据审查结果决定下一步
+6. [Orchestrator] Task(agent="tester", prompt="编写测试...")
+7. [Orchestrator] 验证假设，提取学习
+```
 
 ### Bug 修复
-1. Orchestrator: 分析问题，生成假设
-2. Developer: 定位并修复
-3. Tester: 验证修复
-4. Orchestrator: 更新记忆，防止复发
+
+```
+1. [Orchestrator] 分析问题，生成假设
+2. [Orchestrator] Task(agent="developer", prompt="定位并修复 bug...")
+3. [Orchestrator] Task(agent="tester", prompt="验证修复...")
+4. [Orchestrator] 更新记忆，防止复发
+```
 
 ### 代码重构
-1. Orchestrator: 识别重构目标
-2. Developer: 实施重构
-3. Reviewer: 检查质量
-4. Tester: 确保功能不变
-5. Orchestrator: 记录改进效果
+
+```
+1. [Orchestrator] 识别重构目标
+2. [Orchestrator] Task(agent="developer", prompt="实施重构...")
+3. [Orchestrator] Task(agent="reviewer", prompt="检查质量...")
+4. [Orchestrator] Task(agent="tester", prompt="确保功能不变...")
+5. [Orchestrator] 记录改进效果
+```
 
 ## 假设格式
 
@@ -86,12 +97,13 @@
 状态: pending/testing/validated/refuted
 ```
 
-## 会议节奏
+## 故障处理
 
-- **每日站会:** 检查进度，识别阻塞
-- **迭代规划:** 确定目标，分配任务
-- **迭代回顾:** 总结经验，优化流程
+如果子 Agent 不响应：
+1. **发送明确的开始信号**：`SendMessage(to="developer", content="请开始执行任务，第一步是...")`
+2. **检查 prompt 格式**：确保包含"立即开始执行"
+3. **直接接管**：如果仍然无响应，Orchestrator 直接执行
 
 ---
 
-*工作流程是活的，根据项目需要持续优化。*
+*工作流程是活的，根据项目需要持续优化。利用 Claude Code Team 功能实现高效并行调度。*

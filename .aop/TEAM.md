@@ -1,4 +1,4 @@
-﻿# TEAM.md - Agent 团队
+# TEAM.md - Agent 团队
 
 ## 团队结构
 
@@ -90,12 +90,37 @@
 3. **保持同步** - 定期同步进度和状态
 4. **持续学习** - 每个迭代提取经验
 
-## 当前后台 Agent
+## Claude Code Team 功能
 
-- **Claude Code** - Anthropic 的 Claude CLI
-- **OpenCode** - 开源 Code Agent
-- **OpenClaw** - OpenClaw 主 Agent（特殊模式）
+### 启动团队的步骤
+
+1. **创建团队**：
+   ```
+   TeamCreate(team_name="项目团队", members=["developer", "reviewer", "tester"])
+   ```
+
+2. **分配任务**：
+   ```
+   Task(agent="developer", prompt="...", mode="acceptEdits")
+   ```
+
+3. **监控进度**：
+   ```
+   SendMessage(to="developer", content="报告进度")
+   ```
+
+4. **获取输出**：
+   ```
+   TaskOutput(task_id="developer@task-name")
+   ```
+
+### 故障排除
+
+如果 Agent 启动后不执行任务：
+1. 检查 prompt 是否包含"立即开始执行"
+2. 发送明确的开始信号
+3. 如果仍然无响应，Orchestrator 直接接管
 
 ---
 
-*团队是弹性的，根据项目需要调整。*
+*团队是弹性的，根据项目需要调整。利用 Claude Code Team 功能实现高效并行调度。*
