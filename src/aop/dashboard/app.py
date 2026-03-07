@@ -19,6 +19,7 @@ from aop.primary import get_registry, AgentContext, PrimaryAgent
 from aop.primary.workspace import WorkspaceManager, Workspace, SettingsManager
 from aop.primary.listener import start_listener, submit_command
 from aop.dashboard.logger import get_dashboard_logger, setup_dashboard_logging
+from aop.dashboard.streaming import TokenQueue, parse_thinking_tags
 
 import logging
 _logger = logging.getLogger(__name__)
