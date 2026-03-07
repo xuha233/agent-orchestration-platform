@@ -645,7 +645,7 @@ def render_chat():
         # 显示已有的历史消息
         for msg in messages:
             with st.chat_message(msg["role"]):
-                render_message_content(msg["content"])
+                render_message_content(msg["content"], message_index=messages.index(msg))
 
         # === 使用 st.status 显示流式输出 ===
         with st.status("🤔 思考中...", expanded=True) as status:
@@ -772,7 +772,7 @@ def render_chat():
     # === 显示历史消息 ===
     for msg in messages:
         with st.chat_message(msg["role"]):
-            render_message_content(msg["content"])
+            render_message_content(msg["content"], message_index=messages.index(msg))
 
     # === 聊天输入 ===
     if prompt := st.chat_input("输入你的问题..."):
@@ -819,13 +819,15 @@ def render_chat():
         st.rerun()
 
 
-def render_message_content(content: str):
+def render_message_content(content: str, message_index: int = 0):
     """渲染消息内容，支持思考部分的折叠显示
 
     Args:
         content: 消息内容，可能包含 <thinking>...</thinking> 标签
+        message_index: 消息索引，用于保存折叠状态
     """
     import re
+    import hashlib
 
     # 匹配 <thinking>...</thinking> 标签
     thinking_pattern = r'<thinking>(.*?)</thinking>'
@@ -833,15 +835,36 @@ def render_message_content(content: str):
 
     if len(parts) > 1:
         # 有思考内容，交替渲染
+        thinking_index = 0
         for i, part in enumerate(parts):
             if i % 2 == 0:
                 # 普通内容
                 if part.strip():
                     st.markdown(part)
             else:
-                # 思考内容 - 使用折叠卡片
-                with st.expander("🤔 思考过程", expanded=False):
-                    st.markdown(part)
+                # 思考内容 - 使用 checkbox 控制折叠（状态持久化）
+                thinking_index += 1
+                # 使用消息索引和思考索引生成唯一 key
+                content_hash = hashlib.md5(part.encode()).hexdigest()[:8]
+                expander_key = f"thinking_expander_{message_index}_{thinking_index}_{content_hash}"
+                
+                # 初始化状态（默认展开）
+                if expander_key not in st.session_state:
+                    st.session_state[expander_key] = True
+                
+                # 使用 checkbox 控制
+                is_expanded = st.checkbox(
+                    "🤔 思考过程", 
+                    value=st.session_state[expander_key],
+                    key=expander_key
+                )
+                
+                if is_expanded:
+                    # 显示思考内容（灰色背景）
+                    st.markdown(
+                        f"<div style='background-color: #f0f0f0; padding: 10px; border-radius: 5px; margin: 5px 0;'>{part}</div>",
+                        unsafe_allow_html=True
+                    )
     else:
         # 没有思考内容，直接渲染
         st.markdown(content)
