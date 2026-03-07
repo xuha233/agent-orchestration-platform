@@ -650,7 +650,7 @@ def render_chat():
         # === 使用 st.status 显示流式输出 ===
         with st.status("🤔 思考中...", expanded=True) as status:
             content_placeholder = st.empty()
-            thinking_expander = st.expander("💭 思考过程", expanded=False)
+            thinking_info = st.empty()  # 只显示思考摘要，不刷新完整内容
             
             streaming_content = st.session_state.get("streaming_content", "")
             
@@ -674,10 +674,10 @@ def render_chat():
                         if parts['normal']:
                             content_placeholder.markdown(parts['normal'])
                         
-                        # 更新思考部分
-                        if parts['thinking']:
-                            with thinking_expander:
-                                st.markdown(parts['thinking'])
+                        # 只在思考长度变化时更新摘要（减少刷新）
+                        thinking_len = len(parts['thinking']) if parts['thinking'] else 0
+                        if thinking_len > 0:
+                            thinking_info.caption(f"💭 思考中... ({thinking_len} 字符)")
                     else:
                         # 没有 token，检查是否完成
                         if token_queue.is_done():
