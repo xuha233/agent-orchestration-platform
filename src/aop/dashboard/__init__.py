@@ -52,9 +52,7 @@ def run_dashboard(port: int = 8501, host: str = "localhost"):
             for i in range(10):
                 time.sleep(1)
                 if _is_port_in_use(port):
-                    print(f"Dashboard started! Opening browser...")
-                    webbrowser.open(f"http://{host}:{port}")
-                    print(f"Dashboard is running at http://{host}:{port}")
+                    print(f"Dashboard started at http://{host}:{port}")
                     print("Close the Dashboard window to stop the server.")
                     return
             
@@ -66,7 +64,6 @@ def run_dashboard(port: int = 8501, host: str = "localhost"):
             cmd = f'nohup "{sys.executable}" -m streamlit run "{app_path}" --server.port {port} --server.headless true --browser.gatherUsageStats false &'
             subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             print(f"Dashboard started at http://{host}:{port}")
-            webbrowser.open(f"http://{host}:{port}")
         
     except FileNotFoundError:
         print("Error: streamlit not found. Please install it:")
