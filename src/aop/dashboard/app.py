@@ -965,9 +965,17 @@ def page_coach():
                         if sys.platform == "win32":
                             # Windows: 使用 PowerShell 读取多行系统提示
                             ps1_file = os.path.join(tempfile.gettempdir(), "aop_launch_" + session_id + ".ps1")
+                            # 输出捕获文件
+                            capture_file = os.path.join(tempfile.gettempdir(), "aop_session_output.txt")
+                            save_session_script = os.path.join(os.path.dirname(__file__), "session", "save_session.py")
+                            
                             with open(ps1_file, "w", encoding="utf-8") as f:
                                 f.write('$SystemPrompt = Get-Content -Path "' + prompt_file + '" -Raw\n')
                                 f.write('Set-Location "' + project_path + '"\n')
+                                f.write('$OutputFile = "' + capture_file + '"\n')
+                                f.write('$ProjectId = "' + workspace_id + '"\n')
+                                f.write('$Workspace = "' + project_path.replace('\\', '/') + '"\n')
+                                f.write('\n')
                                 
                                 # 检查是否有保存的会话 ID
                                 saved_session_id = None
@@ -981,21 +989,32 @@ def page_coach():
                                 except Exception:
                                     pass
                                 
-                                # 启动命令
+                                # 启动命令（捕获输出）
+                                provider = "claude" if primary_agent == "claude_code" else "opencode"
                                 if primary_agent == "claude_code":
                                     if saved_session_id:
-                                        f.write('claude --resume ' + saved_session_id + '\n')
+                                        f.write('claude --resume ' + saved_session_id + ' 2>&1 | Tee-Object -FilePath $OutputFile\n')
                                     else:
-                                        f.write('claude --system-prompt $SystemPrompt\n')
+                                        f.write('claude --system-prompt $SystemPrompt 2>&1 | Tee-Object -FilePath $OutputFile\n')
                                 else:
                                     if saved_session_id:
-                                        f.write('opencode --resume ' + saved_session_id + '\n')
+                                        f.write('opencode --resume ' + saved_session_id + ' 2>&1 | Tee-Object -FilePath $OutputFile\n')
                                     else:
-                                        f.write('opencode "' + project_path + '" --prompt $SystemPrompt\n')
+                                        f.write('opencode --prompt $SystemPrompt 2>&1 | Tee-Object -FilePath $OutputFile\n')
                                 
-                                # 提示用户记录会话 ID
+                                # 自动捕获会话 ID
                                 f.write('\n')
-                                f.write('Write-Host "Session ended. Save the session ID above for next time." -ForegroundColor Yellow\n')
+                                f.write('# Auto-capture session ID\n')
+                                f.write('if (Test-Path $OutputFile) {\n')
+                                f.write('    $Output = Get-Content $OutputFile -Raw\n')
+                                f.write('    $Pattern = "claude\s+--resume\s+([a-f0-9-]{36})"\n')
+                                f.write('    if ($Output -match $Pattern) {\n')
+                                f.write('        $SessionId = $matches[1]\n')
+                                f.write('        Write-Host "Session captured: $SessionId" -ForegroundColor Cyan\n')
+                                f.write('        python "' + save_session_script.replace('\\', '/') + '" $SessionId $ProjectId $Workspace ' + provider + '\n')
+                                f.write('        Write-Host "Session saved to AOP" -ForegroundColor Green\n')
+                                f.write('    }\n')
+                                f.write('}\n')
                             
                             # 使用 PowerShell 启动（新窗口）
                             project_name = Path(project_path).name
