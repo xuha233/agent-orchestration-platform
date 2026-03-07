@@ -970,6 +970,17 @@ def page_coach():
                             capture_file = os.path.join(tempfile.gettempdir(), "aop_session_output.txt")
                             save_session_script = os.path.join(os.path.dirname(__file__), "session", "save_session.py")
                             
+                            # 将系统提示词写入项目的 CLAUDE.md（Claude Code 会自动加载）
+                            claude_md_path = os.path.join(project_path, ".claude", "CLAUDE.md")
+                            os.makedirs(os.path.dirname(claude_md_path), exist_ok=True)
+                            
+                            # 读取系统提示词并写入 CLAUDE.md
+                            with open(prompt_file, 'r', encoding='utf-8') as pf:
+                                system_prompt_content = pf.read()
+                            
+                            with open(claude_md_path, 'w', encoding='utf-8') as cf:
+                                cf.write(system_prompt_content)
+                            
                             with open(ps1_file, "w", encoding="utf-8") as f:
                                 f.write('Set-Location "' + project_path + '"\n')
                                 f.write('$ProjectId = "' + workspace_id + '"\n')
@@ -991,19 +1002,17 @@ def page_coach():
                                 except Exception:
                                     pass
                                 
-                                # 启动命令（交互模式，不使用管道）
+                                # 启动命令（CLAUDE.md 会自动加载）
                                 if primary_agent == "claude_code":
                                     if saved_session_id:
                                         f.write('claude --resume ' + saved_session_id + '\n')
                                     else:
-                                        f.write('$SystemPrompt = Get-Content -Path "' + prompt_file + '" -Raw\n')
-                                        f.write('claude --system-prompt $SystemPrompt\n')
+                                        f.write('claude\n')
                                 else:
                                     if saved_session_id:
                                         f.write('opencode --resume ' + saved_session_id + '\n')
                                     else:
-                                        f.write('$SystemPrompt = Get-Content -Path "' + prompt_file + '" -Raw\n')
-                                        f.write('opencode --prompt $SystemPrompt\n')
+                                        f.write('opencode\n')
                                 
                                 # 会话结束后提示用户保存
                                 f.write('\n')
