@@ -36,6 +36,8 @@ from .preflight import PreFlightValidator, PreFlightStatus
 from .executor import ExecutorType, ExecutorInfo, discover_all
 from ..llm import LLMClient, LLMMessage
 from .prompts import ORCHESTRATOR_SYSTEM_PROMPT, build_subagent_task
+from .llm_evaluator import LLMEvaluator, EvaluationResult, CodeArtifact
+from .error_recovery import ErrorRecoveryManager, CheckpointManager, ErrorType
 
 
 @dataclass
@@ -66,6 +68,16 @@ class OrchestrationConfig:
     # Debug
     dry_run: bool = False
     verbose: bool = False
+
+    # Phase 4: LLM Evaluation
+    use_llm_evaluator: bool = True
+    llm_eval_threshold: float = 6.0  # 低于此分数需要人工审查
+
+    # Phase 5: Error Recovery
+    use_error_recovery: bool = True
+    max_retries: int = 3
+    use_checkpoints: bool = True
+    checkpoint_interval: int = 60  # 秒
 
 
 class AgentOrchestrator:
@@ -104,6 +116,19 @@ class AgentOrchestrator:
         # Persistence
         storage_path = self.config.storage_path or Path(".aop")
         self.persistence = SprintPersistence(str(storage_path / "sprints"))
+        
+        # Phase 4: LLM Evaluator
+        self.llm_evaluator = LLMEvaluator(llm_client) if self.config.use_llm_evaluator else None
+        
+        # Phase 5: Error Recovery
+        self.error_recovery = ErrorRecoveryManager(
+            max_retries=self.config.max_retries,
+        ) if self.config.use_error_recovery else None
+        
+        self.checkpoint_manager = CheckpointManager(
+            checkpoint_dir=str(storage_path / "checkpoints"),
+            auto_save_interval=self.config.checkpoint_interval,
+        ) if self.config.use_checkpoints else None
         
         # Current context
         self.context: SprintContext | None = None
@@ -503,6 +528,14 @@ def orchestrate(
     config = OrchestrationConfig(executor=executor, **kwargs)
     orchestrator = AgentOrchestrator(llm_client=llm_client, config=config)
     return orchestrator.orchestrate(requirement)
+
+
+
+
+
+
+
+
 
 
 
