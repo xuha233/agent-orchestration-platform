@@ -1333,7 +1333,7 @@ def page_workspaces():
                         claude_session = st.text_input(
                             "claude_session",
                             value=ws.metadata.get("claude_session_id", ""),
-                            placeholder="81d7db4b-95f7-4983-9574-f9992dcb8a1d",
+                            placeholder="xxxx-xxxx-xxxx-xxxx",
                             label_visibility="collapsed",
                             key=f"claude_session_input_{ws.id}"
                         )
@@ -1343,7 +1343,7 @@ def page_workspaces():
                         opencode_session = st.text_input(
                             "opencode_session",
                             value=ws.metadata.get("opencode_session_id", ""),
-                            placeholder="ses_33825655bffeluCIP1zZLYxjxe",
+                            placeholder="ses_xxxx",
                             label_visibility="collapsed",
                             key=f"opencode_session_input_{ws.id}"
                         )
@@ -1838,7 +1838,7 @@ def page_dev_console():
     
     new_session_id = st.text_input(
         "会话 ID",
-        placeholder="81d7db4b-95f7-4983-9574-f9992dcb8a1d",
+        placeholder="xxxx-xxxx-xxxx-xxxx",
         key="manual_session_id_input"
     )
     
