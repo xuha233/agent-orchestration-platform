@@ -95,11 +95,13 @@ class OpenCodeAgent(PrimaryAgent):
 
         binary = self._binary_path or _find_binary("opencode") or "opencode"
         cmd = [binary, "run", message]
-
+        
+        # Session 隔离策略
         if self._session_id:
             cmd.extend(["-s", self._session_id])
         elif context.session_id:
             cmd.extend(["-s", context.session_id])
+        # OpenCode 没有 --no-session-persistence，不传 session 就会创建新的
 
         try:
             result = subprocess.run(
@@ -144,11 +146,13 @@ class OpenCodeAgent(PrimaryAgent):
 
         binary = self._binary_path or _find_binary("opencode") or "opencode"
         cmd = [binary, "run", message]
-
+        
+        # Session 隔离策略
         if self._session_id:
             cmd.extend(["-s", self._session_id])
         elif context.session_id:
             cmd.extend(["-s", context.session_id])
+        # OpenCode 没有 --no-session-persistence，不传 session 就会创建新的
 
         process = subprocess.Popen(
             cmd,

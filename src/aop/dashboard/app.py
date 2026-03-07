@@ -639,9 +639,6 @@ def render_chat():
         token_queue = st.session_state.token_queue
         elapsed = time.time() - st.session_state.execution_start_time if st.session_state.execution_start_time else 0
 
-        # 显示执行状态
-        status_placeholder = st.empty()
-        
         # 获取当前工作区的消息
         messages = get_messages_for_workspace(workspace_id)
 
@@ -650,107 +647,82 @@ def render_chat():
             with st.chat_message(msg["role"]):
                 render_message_content(msg["content"])
 
-        # === 流式输出显示 ===
-        content_placeholder = st.empty()
-        thinking_placeholder = st.empty()
-        
-        if token_queue and not token_queue.is_done():
-            # 实时读取 token 并显示
-            streaming_content = st.session_state.streaming_content
+        # === 使用 st.status 显示流式输出 ===
+        with st.status("🤔 思考中...", expanded=True) as status:
+            content_placeholder = st.empty()
+            thinking_expander = st.expander("💭 思考过程", expanded=False)
             
-            while True:
-                token = token_queue.get(timeout=0.05)
-                if token is None:
-                    break
-                
-                streaming_content += token
-                st.session_state.streaming_content = streaming_content
-                
-                # 解析思考标签
-                parts = parse_thinking_tags(streaming_content)
-                
-                # 显示普通内容
-                if parts['normal']:
-                    content_placeholder.markdown(parts['normal'])
-                
-                # 显示思考部分（折叠）
-                if parts['thinking']:
-                    with thinking_placeholder.container():
-                        with st.expander("🤔 思考过程", expanded=False):
-                            st.markdown(parts['thinking'])
+            streaming_content = st.session_state.get("streaming_content", "")
             
-            # 检查是否完成
-            if token_queue.is_done():
-                st.session_state.execution_running = False
-                final_content = st.session_state.streaming_content
+            if token_queue and not token_queue.is_done():
+                # 持续读取 token，减少 rerun
+                read_count = 0
+                max_reads_per_cycle = 100  # 每次最多读取 100 个 token
                 
-                # 检查错误
-                error = token_queue.get_error()
-                if error:
-                    messages.append({
-                        "role": "assistant",
-                        "content": f"❌ 错误: {error}"
-                    })
-                elif final_content:
-                    messages.append({
-                        "role": "assistant",
-                        "content": final_content
-                    })
+                while read_count < max_reads_per_cycle:
+                    token = token_queue.get(timeout=0.02)
+                    
+                    if token:
+                        streaming_content += token
+                        st.session_state.streaming_content = streaming_content
+                        read_count += 1
+                        
+                        # 解析思考标签
+                        parts = parse_thinking_tags(streaming_content)
+                        
+                        # 更新普通内容
+                        if parts['normal']:
+                            content_placeholder.markdown(parts['normal'])
+                        
+                        # 更新思考部分
+                        if parts['thinking']:
+                            with thinking_expander:
+                                st.markdown(parts['thinking'])
+                    else:
+                        # 没有 token，检查是否完成
+                        if token_queue.is_done():
+                            break
+                        time.sleep(0.02)
+                    
+                    # 更新状态
+                    elapsed = time.time() - st.session_state.execution_start_time
+                    status.update(label=f"🤔 思考中... ({elapsed:.1f}s)")
                 
-                save_messages_for_workspace(workspace_id, messages)
-                
-                # 清理状态
-                st.session_state.streaming_content = ""
-                st.session_state.token_queue = None
-                st.session_state.execution_thread = None
-                st.session_state.execution_result_buffer = {}
-                st.session_state.execution_error_buffer = {}
-                st.session_state.execution_start_time = None
-                st.session_state.cancel_event.clear()
-                
-                st.rerun()
+                # 检查是否真正完成
+                if token_queue.is_done():
+                    status.update(label="✅ 完成", state="complete")
+                    
+                    # 保存最终消息
+                    final_content = streaming_content
+                    error = token_queue.get_error()
+                    
+                    if error:
+                        messages.append({"role": "assistant", "content": f"❌ 错误: {error}"})
+                    elif final_content:
+                        messages.append({"role": "assistant", "content": final_content})
+                    
+                    save_messages_for_workspace(workspace_id, messages)
+                    
+                    # 清理状态
+                    st.session_state.streaming_content = ""
+                    st.session_state.token_queue = None
+                    st.session_state.execution_running = False
+                    st.session_state.execution_thread = None
+                    st.session_state.execution_start_time = None
+                    
+                    time.sleep(0.3)
+                    st.rerun()
+                else:
+                    # 继续下一轮读取
+                    time.sleep(0.05)
+                    st.rerun()
+            
             else:
-                # 继续等待
-                status_placeholder.info(f"🤔 思考中... ({elapsed:.1f}s)")
-                time.sleep(0.1)
+                # 没有 token_queue，等待初始化
+                status.update(label=f"🤔 初始化中... ({elapsed:.1f}s)")
+                time.sleep(0.2)
                 st.rerun()
         
-        # 检查线程是否完成
-        thread = st.session_state.execution_thread
-        result_buffer = st.session_state.execution_result_buffer
-        
-        if thread and not thread.is_alive():
-            st.session_state.execution_running = False
-            result = result_buffer.get("result") if result_buffer else None
-            
-            if result:
-                messages.append({"role": "assistant", "content": result})
-                save_messages_for_workspace(workspace_id, messages)
-            
-            # 清理状态
-            st.session_state.streaming_content = ""
-            st.session_state.token_queue = None
-            st.session_state.execution_thread = None
-            st.session_state.execution_result_buffer = {}
-            st.session_state.execution_error_buffer = {}
-            st.session_state.execution_start_time = None
-            st.session_state.cancel_event.clear()
-            
-            st.rerun()
-        
-        # 取消按钮
-        col1, col2 = st.columns([1, 4])
-        with col1:
-            if st.button("⏹️ 立即取消", key="cancel_execution", type="primary"):
-                st.session_state.cancel_event.set()
-                st.session_state.execution_running = False
-                st.warning("已发送取消请求")
-                st.rerun()
-        
-        # 继续等待
-        status_placeholder.info(f"🤔 思考中... ({elapsed:.1f}s)")
-        time.sleep(0.1)
-        st.rerun()
         return
 
     # 获取当前工作区的消息

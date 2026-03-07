@@ -104,11 +104,31 @@ class ClaudeCodeAgent(PrimaryAgent):
 
         binary = self._binary_path or _find_binary("claude") or "claude"
         cmd = [binary, "-p", message, "--dangerously-skip-permissions"]
-
+        
+        # Session 隔离策略：
+        # 1. 如果有 session_id（工作区专属），使用 --session-id 确保独立
+        # 2. 否则使用 --no-session-persistence 禁用持久化（每次新对话）
         if self._session_id:
-            cmd.extend(["--resume", self._session_id])
+            # 使用 UUID 格式的 session-id
+            import uuid
+            try:
+                # 验证是否为有效 UUID
+                uuid.UUID(self._session_id)
+                cmd.extend(["--session-id", self._session_id])
+            except ValueError:
+                # 如果不是 UUID，使用 --no-session-persistence
+                cmd.append("--no-session-persistence")
         elif context.session_id:
-            cmd.extend(["--resume", context.session_id])
+            # 使用上下文中的 session
+            import uuid
+            try:
+                uuid.UUID(context.session_id)
+                cmd.extend(["--session-id", context.session_id])
+            except ValueError:
+                cmd.append("--no-session-persistence")
+        else:
+            # 新对话，禁用持久化避免跨工作区污染
+            cmd.append("--no-session-persistence")
 
         try:
             result = subprocess.run(
@@ -160,11 +180,31 @@ class ClaudeCodeAgent(PrimaryAgent):
 
         binary = self._binary_path or _find_binary("claude") or "claude"
         cmd = [binary, "-p", message, "--dangerously-skip-permissions"]
-
+        
+        # Session 隔离策略：
+        # 1. 如果有 session_id（工作区专属），使用 --session-id 确保独立
+        # 2. 否则使用 --no-session-persistence 禁用持久化（每次新对话）
         if self._session_id:
-            cmd.extend(["--resume", self._session_id])
+            # 使用 UUID 格式的 session-id
+            import uuid
+            try:
+                # 验证是否为有效 UUID
+                uuid.UUID(self._session_id)
+                cmd.extend(["--session-id", self._session_id])
+            except ValueError:
+                # 如果不是 UUID，使用 --no-session-persistence
+                cmd.append("--no-session-persistence")
         elif context.session_id:
-            cmd.extend(["--resume", context.session_id])
+            # 使用上下文中的 session
+            import uuid
+            try:
+                uuid.UUID(context.session_id)
+                cmd.extend(["--session-id", context.session_id])
+            except ValueError:
+                cmd.append("--no-session-persistence")
+        else:
+            # 新对话，禁用持久化避免跨工作区污染
+            cmd.append("--no-session-persistence")
 
         # 使用 Popen 启动进程
         process = subprocess.Popen(
