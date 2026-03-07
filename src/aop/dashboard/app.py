@@ -827,7 +827,6 @@ def render_message_content(content: str, message_index: int = 0):
         message_index: 消息索引，用于保存折叠状态
     """
     import re
-    import hashlib
 
     # 匹配 <thinking>...</thinking> 标签
     thinking_pattern = r'<thinking>(.*?)</thinking>'
@@ -842,20 +841,15 @@ def render_message_content(content: str, message_index: int = 0):
                 if part.strip():
                     st.markdown(part)
             else:
-                # 思考内容 - 使用 checkbox 控制折叠（状态持久化）
+                # 思考内容 - 使用固定 key
                 thinking_index += 1
-                # 使用消息索引和思考索引生成唯一 key
-                content_hash = hashlib.md5(part.encode()).hexdigest()[:8]
-                expander_key = f"thinking_expander_{message_index}_{thinking_index}_{content_hash}"
+                expander_key = f"thinking_{message_index}_{thinking_index}"
                 
-                # 初始化状态（默认展开）
-                if expander_key not in st.session_state:
-                    st.session_state[expander_key] = True
-                
-                # 使用 checkbox 控制
+                # st.checkbox 自己管理 session_state
+                # 默认展开，用户可以手动折叠，状态会被记住
                 is_expanded = st.checkbox(
                     "🤔 思考过程", 
-                    value=st.session_state[expander_key],
+                    value=True,  # 默认展开
                     key=expander_key
                 )
                 
