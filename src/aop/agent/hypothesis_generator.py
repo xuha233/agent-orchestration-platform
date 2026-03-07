@@ -26,6 +26,8 @@ HYPOTHESIS_GENERATION_SYSTEM_PROMPT = """你是一个技术架构专家，负责
 输出要求：
 - 返回 JSON 格式，包含 hypotheses 数组
 - 每个假设包含以下字段：
+
+  基本字段：
   - statement: 假设陈述（字符串）
   - type: 假设类型（technical/architectural/performance/security/usability/business）
   - validation_method: 验证方法（字符串）
@@ -35,6 +37,13 @@ HYPOTHESIS_GENERATION_SYSTEM_PROMPT = """你是一个技术架构专家，负责
   - dependencies: 依赖项（字符串数组）
   - risk_level: 风险等级（low/medium/high）
 
+  任务委托字段（Anthropic 推荐，用于 subagent 执行）：
+  - objective: 明确目标（字符串，描述这个假设要解决的具体问题）
+  - output_format: 输出格式（字符串，描述期望的输出结构，如"代码文件列表 + 修改说明"）
+  - tools_guidance: 工具指导（字符串，建议使用的工具和方法，如"使用 grep 搜索关键词，使用 ast 分析代码结构"）
+  - boundaries: 任务边界（字符串，明确不要做什么，如"不要修改测试文件"）
+  - effort_budget: 预估工具调用次数（整数，简单任务 3-10，中等任务 10-15，复杂任务 15-25）
+
 假设类型说明：
 - technical: 技术实现相关假设
 - architectural: 架构设计相关假设
@@ -43,7 +52,12 @@ HYPOTHESIS_GENERATION_SYSTEM_PROMPT = """你是一个技术架构专家，负责
 - usability: 可用性相关假设
 - business: 业务相关假设
 
-请根据需求生成 3-7 个最具价值的假设，按优先级排序。"""
+复杂度指导：
+- 简单任务（单文件修改）：effort_budget = 3-10
+- 中等任务（多文件修改）：effort_budget = 10-15
+- 复杂任务（架构级别）：effort_budget = 15-25
+
+请根据需求生成 3-7 个最具价值的假设，按优先级排序。每个假设都应包含完整的任务委托字段，以便 subagent 能够独立执行。"""
 
 
 @runtime_checkable
@@ -363,3 +377,4 @@ class HypothesisGenerator:
                 h.estimated_effort = effort_map.get(h.hypothesis_type, "3-5天")
 
         return hypotheses
+

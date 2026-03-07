@@ -10,6 +10,7 @@ Supports multiple AI coding tools:
 from __future__ import annotations
 
 import hashlib
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -29,8 +30,10 @@ from .hypothesis_generator import HypothesisGenerator
 from .validator import AutoValidator
 from .learning_extractor import LearningExtractor
 from .persistence import SprintPersistence
+from .preflight import PreFlightValidator, PreFlightStatus
 from .executor import ExecutorType, ExecutorInfo, discover_all
 from ..llm import LLMClient, LLMMessage
+from .prompts import ORCHESTRATOR_SYSTEM_PROMPT, build_subagent_task
 
 
 @dataclass
@@ -245,7 +248,12 @@ class AgentOrchestrator:
     
     # Private methods...
     def _execute_tasks(self, project_context: Dict[str, Any] | None) -> List[Dict[str, Any]]:
-        """Execute tasks using configured executor"""
+        """
+        Execute tasks using configured executor
+        
+        基于 Anthropic 多 Agent 系统研究，并行执行可减少 90% 时间。
+        使用 ThreadPoolExecutor 实现并行任务执行。
+        """
         if not self.context or not self.context.hypotheses:
             return []
         
@@ -264,23 +272,167 @@ class AgentOrchestrator:
             self._report("warning", f"Executor {self.config.executor.value} not available: {executor_info.error}")
         
         # Generate tasks from hypotheses
-        results = []
+        tasks = []
         for i, h in enumerate(self.context.hypotheses):
             if hasattr(h, 'statement'):
-                task_prompt = f"Task: {h.statement}\n\n"
-                if hasattr(h, 'validation_method'):
-                    task_prompt += f"Validation: {h.validation_method}\n"
-                
-                result = {
+                task_prompt = self._build_task_prompt(h, i)
+                tasks.append({
                     "task_id": f"task_{i}",
                     "hypothesis_id": f"h{i}",
                     "executor": self.config.executor.value,
                     "prompt": task_prompt,
-                    "success": True,  # Placeholder
-                }
-                results.append(result)
+                    "hypothesis": h,
+                })
+        
+        # 并行执行（Anthropic 推荐：并行工具调用可减少 90% 时间）
+        results = self._execute_parallel(tasks)
         
         return results
+    
+
+    def _preflight_check(self, task: Dict[str, Any]) -> "PreFlightResult":
+        """
+        执行任务前预检（Anthropic 推荐：避免重复执行）
+        
+        检查项：
+        1. 代码是否已存在
+        2. 任务是否已完成
+        3. 环境是否就绪
+        """
+        validator = PreFlightValidator(self.config.storage_path or Path("."))
+        
+        # 构建预检任务
+        preflight_task = {
+            "objective": task.get("prompt", ""),
+            "success_criteria": [],
+        }
+        
+        # 从 hypothesis 提取成功标准
+        hypothesis = task.get("hypothesis")
+        if hypothesis:
+            criteria = getattr(hypothesis, 'success_criteria', [])
+            if criteria:
+                preflight_task["success_criteria"] = list(criteria) if isinstance(criteria, (list, tuple)) else [str(criteria)]
+        
+        return validator.validate(preflight_task, hypothesis)
+    def _build_task_prompt(self, hypothesis: Any, index: int) -> str:
+        """
+        构建任务 prompt（Anthropic 推荐格式）
+        
+        包含：目标、输出格式、工具指导、边界
+        """
+        prompt_parts = []
+        
+        # 核心陈述
+        statement = getattr(hypothesis, 'statement', 'Unknown task')
+        prompt_parts.append(f"Task: {statement}\n\n")
+        
+        # 目标（Anthropic 推荐）
+        objective = getattr(hypothesis, 'objective', '')
+        if objective:
+            prompt_parts.append(f"Objective: {objective}\n")
+        
+        # 输出格式（Anthropic 推荐）
+        output_format = getattr(hypothesis, 'output_format', '')
+        if output_format:
+            prompt_parts.append(f"Output Format: {output_format}\n")
+        
+        # 工具指导（Anthropic 推荐）
+        tools_guidance = getattr(hypothesis, 'tools_guidance', '')
+        if tools_guidance:
+            prompt_parts.append(f"Tools Guidance: {tools_guidance}\n")
+        
+        # 边界（Anthropic 推荐）
+        boundaries = getattr(hypothesis, 'boundaries', '')
+        if boundaries:
+            prompt_parts.append(f"Boundaries: {boundaries}\n")
+        
+        # 验证方法
+        validation_method = getattr(hypothesis, 'validation_method', '')
+        if validation_method:
+            prompt_parts.append(f"Validation: {validation_method}\n")
+        
+        # 成功标准
+        success_criteria = getattr(hypothesis, 'success_criteria', [])
+        if success_criteria:
+            prompt_parts.append(f"Success Criteria:\n")
+            for criterion in success_criteria:
+                prompt_parts.append(f"  - {criterion}\n")
+        
+        # 预估调用次数（Anthropic 推荐）
+        effort_budget = getattr(hypothesis, 'effort_budget', 10)
+        prompt_parts.append(f"\nEffort Budget: ~{effort_budget} tool calls")
+        
+        return ''.join(prompt_parts)
+    
+    def _execute_parallel(self, tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        并行执行任务
+        
+        基于 Anthropic 研究：
+        - 并行工具调用可减少 90% 时间
+        - 使用 ThreadPoolExecutor 限制并发数
+        """
+        if not tasks:
+            return []
+        
+        results = []
+        max_workers = min(self.config.exec_max_parallel, len(tasks))
+        
+        # Dry run 模式：直接返回占位结果
+        if self.config.dry_run:
+            for task in tasks:
+                results.append({
+                    "task_id": task["task_id"],
+                    "hypothesis_id": task["hypothesis_id"],
+                    "executor": task["executor"],
+                    "prompt": task["prompt"],
+                    "success": True,
+                    "output": "[Dry run - no actual execution]",
+                })
+            return results
+        
+        # 并行执行
+        self._report("execute", f"Executing {len(tasks)} tasks in parallel (max {max_workers} workers)")
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # 提交所有任务
+            future_to_task = {
+                executor.submit(self._execute_single_task, task): task
+                for task in tasks
+            }
+            
+            # 收集结果
+            for future in as_completed(future_to_task):
+                task = future_to_task[future]
+                try:
+                    result = future.result(timeout=self.config.exec_timeout)
+                    results.append(result)
+                    self._report("task_complete", f"Task {task['task_id']} completed")
+                except Exception as e:
+                    results.append({
+                        "task_id": task["task_id"],
+                        "hypothesis_id": task["hypothesis_id"],
+                        "executor": task["executor"],
+                        "success": False,
+                        "error": str(e),
+                    })
+                    self._report("task_error", f"Task {task['task_id']} failed: {e}")
+        
+        return results
+    
+    def _execute_single_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """执行单个任务（在线程池中运行）"""
+        # TODO: 实际调用 executor（claude-code / opencode / codex）
+        # 目前返回占位结果
+        return {
+            "task_id": task["task_id"],
+            "hypothesis_id": task["hypothesis_id"],
+            "executor": task["executor"],
+            "prompt": task["prompt"],
+            "success": True,
+            "output": "[Execution placeholder - integrate with actual executor]",
+        }
     
     def _validate_hypotheses(self):
         """Validate hypotheses"""
@@ -349,3 +501,8 @@ def orchestrate(
     config = OrchestrationConfig(executor=executor, **kwargs)
     orchestrator = AgentOrchestrator(llm_client=llm_client, config=config)
     return orchestrator.orchestrate(requirement)
+
+
+
+
+

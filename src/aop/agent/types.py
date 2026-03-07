@@ -66,7 +66,16 @@ class ClarifiedRequirement:
 
 @dataclass
 class GeneratedHypothesis:
-    """生成的假设"""
+    """
+    生成的假设
+    
+    基于 Anthropic 多 Agent 系统研究，任务描述应包含：
+    - 明确目标 (objective)
+    - 输出格式 (output_format)
+    - 工具指导 (tools_guidance)
+    - 任务边界 (boundaries)
+    - 资源限制 (effort_budget)
+    """
     statement: str
     hypothesis_type: HypothesisType = HypothesisType.TECHNICAL
     validation_method: str = ""
@@ -75,6 +84,16 @@ class GeneratedHypothesis:
     estimated_effort: str = ""
     dependencies: List[str] = field(default_factory=list)
     risk_level: str = "medium"
+    
+    # Anthropic 推荐字段（用于 subagent 委托）
+    objective: str = ""                    # 明确目标：这个假设要解决什么问题
+    output_format: str = ""                # 输出格式：期望的输出结构
+    tools_guidance: str = ""               # 工具指导：建议使用的工具和方法
+    boundaries: str = ""                   # 任务边界：不要做什么
+    effort_budget: int = 10                # 预估工具调用次数（默认 10 次）
+    
+    # ID 字段（用于追踪）
+    id: str = ""                           # 假设唯一标识
 
 
 @dataclass
