@@ -987,20 +987,19 @@ def page_coach():
                                 f.write('$Workspace = "' + project_path.replace('\\', '/') + '"\n')
                                 f.write('\n')
                                 
-                                # 检查是否有保存的会话 ID
+                                # 从 workspace metadata 读取会话 ID
                                 saved_session_id = None
-                                try:
-                                    sm = get_session_manager()
-                                    provider = "claude" if primary_agent == "claude_code" else "opencode"
-                                    session_info = sm.get_latest_session(workspace_id, provider)
-                                    if session_info:
-                                        saved_session_id = session_info.session_id
-                                        f.write('Write-Host "========================================" -ForegroundColor Cyan\n')
-                                        f.write('Write-Host "  Resuming session: ' + saved_session_id[:8] + '..." -ForegroundColor Green\n')
-                                        f.write('Write-Host "========================================" -ForegroundColor Cyan\n')
-                                        f.write('\n')
-                                except Exception:
-                                    pass
+                                if current_workspace and current_workspace.metadata:
+                                    if primary_agent == "claude_code":
+                                        saved_session_id = current_workspace.metadata.get("claude_session_id")
+                                    else:
+                                        saved_session_id = current_workspace.metadata.get("opencode_session_id")
+                                
+                                if saved_session_id:
+                                    f.write('Write-Host "========================================" -ForegroundColor Cyan\n')
+                                    f.write('Write-Host "  Resuming session: ' + saved_session_id[:8] + '..." -ForegroundColor Green\n')
+                                    f.write('Write-Host "========================================" -ForegroundColor Cyan\n')
+                                    f.write('\n')
                                 
                                 # 启动命令（CLAUDE.md 会自动加载）
                                 if primary_agent == "claude_code":
@@ -1271,7 +1270,7 @@ def page_workspaces():
     else:
         for ws in workspaces:
             with st.container():
-                col1, col2, col3, col4 = st.columns([3, 2, 1, 1])
+                col1, col2, col3, col4, col5 = st.columns([3, 2, 1, 1, 1])
 
                 with col1:
                     st.markdown(f"**{ws.name}**")
@@ -1297,6 +1296,10 @@ def page_workspaces():
                         st.rerun()
 
                 with col4:
+                    if st.button("💾", key=f"session_{ws.id}", help="会话管理"):
+                        st.session_state[f"show_session_dialog_{ws.id}"] = True
+
+                with col5:
                     if st.button("🗑️", key=f"delete_{ws.id}", help="删除工作区"):
                         # 显示确认对话框
                         st.session_state[f"confirm_delete_{ws.id}"] = True
@@ -1318,6 +1321,52 @@ def page_workspaces():
                         if st.button("取消", key=f"cancel_del_{ws.id}"):
                             st.session_state[f"confirm_delete_{ws.id}"] = False
                             st.rerun()
+
+                # 会话管理对话框
+                if st.session_state.get(f"show_session_dialog_{ws.id}", False):
+                    with st.container(border=True):
+                        st.markdown(f"**💾 会话管理 - {ws.name}**")
+                        st.markdown("---")
+                        
+                        # Claude Code 会话
+                        st.markdown("**Claude Code 会话 ID**")
+                        claude_session = st.text_input(
+                            "claude_session",
+                            value=ws.metadata.get("claude_session_id", ""),
+                            placeholder="81d7db4b-95f7-4983-9574-f9992dcb8a1d",
+                            label_visibility="collapsed",
+                            key=f"claude_session_input_{ws.id}"
+                        )
+                        
+                        # OpenCode 会话
+                        st.markdown("**OpenCode 会话 ID**")
+                        opencode_session = st.text_input(
+                            "opencode_session",
+                            value=ws.metadata.get("opencode_session_id", ""),
+                            placeholder="ses_33825655bffeluCIP1zZLYxjxe",
+                            label_visibility="collapsed",
+                            key=f"opencode_session_input_{ws.id}"
+                        )
+                        
+                        st.markdown("---")
+                        st.caption("💡 查看会话 ID：在 CLI 窗口输入 `/q` 回车即可显示")
+                        
+                        # 保存按钮
+                        col_save, col_close = st.columns(2)
+                        with col_save:
+                            if st.button("💾 保存", key=f"save_session_{ws.id}", use_container_width=True):
+                                # 更新 workspace metadata
+                                ws.metadata["claude_session_id"] = claude_session
+                                ws.metadata["opencode_session_id"] = opencode_session
+                                # 保存到文件
+                                wm.update_workspace(ws)
+                                st.success("会话 ID 已保存")
+                                st.session_state[f"show_session_dialog_{ws.id}"] = False
+                                st.rerun()
+                        with col_close:
+                            if st.button("关闭", key=f"close_session_{ws.id}", use_container_width=True):
+                                st.session_state[f"show_session_dialog_{ws.id}"] = False
+                                st.rerun()
 
                 st.markdown("---")
 
@@ -1591,7 +1640,7 @@ def page_memory():
 
         for memory in memories:
             with st.container():
-                col1, col2, col3, col4 = st.columns([3, 2, 1, 1])
+                col1, col2, col3, col4, col5 = st.columns([3, 2, 1, 1, 1])
 
                 with col1:
                     # 名称和类型标签
