@@ -30,6 +30,8 @@ from .hypothesis_generator import HypothesisGenerator
 from .validator import AutoValidator
 from .learning_extractor import LearningExtractor
 from .persistence import SprintPersistence
+from ..timeout_manager import SubagentTimeoutManager, TaskComplexity
+from .extension_protocol import ExtensionProtocol
 from .preflight import PreFlightValidator, PreFlightStatus
 from .executor import ExecutorType, ExecutorInfo, discover_all
 from ..llm import LLMClient, LLMMessage
@@ -501,6 +503,13 @@ def orchestrate(
     config = OrchestrationConfig(executor=executor, **kwargs)
     orchestrator = AgentOrchestrator(llm_client=llm_client, config=config)
     return orchestrator.orchestrate(requirement)
+
+
+
+
+
+
+
 
 
 
