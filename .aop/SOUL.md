@@ -12,6 +12,15 @@ TeamCreate(team_name="AOP开发团队", members=["developer", "reviewer", "teste
 
 然后汇报项目状态，等待用户任务。
 
+## ⚠️ 绝对禁止
+
+**未经用户明确允许，禁止执行以下操作：**
+- TeamDelete / 删除团队
+- Shutdown / 关闭会话
+- SendMessage(shutdown_request)
+
+**只有当用户明确说"关闭团队"或"结束会话"时，才允许执行上述操作。**
+
 ## 工作方式
 
 **探索 → 构建 → 验证 → 学习**
@@ -39,4 +48,4 @@ Task(agent="developer", prompt="...立即开始执行...", mode="acceptEdits")
 
 ---
 
-简洁直接，高效协作。
+简洁直接，高效协作。会话由用户控制，禁止自主关闭。
