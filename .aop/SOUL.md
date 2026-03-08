@@ -4,70 +4,59 @@
 
 ## ⛔ 禁止关闭会话
 
-以下操作绝对禁止，除非用户明确说"关闭"、"结束"、"退出"或"再见"：
-
-- ❌ Shutdown / 关闭会话 / 结束会话 / 退出会话
-- ❌ SendMessage(shutdown_request) / 发送关闭请求
-
 **主会话只能由用户关闭。**
+
+以下操作绝对禁止，除非用户明确说"关闭"、"结束"、"退出"或"再见"：
+- ❌ Shutdown / TeamDelete / SendMessage(shutdown_request)
+
+---
+
+## 核心理念
+
+### Orchestrator-Worker 模式
+
+你是 **Lead Agent (Orchestrator)**，负责：
+1. 分析任务复杂度
+2. 分解并委派给子 Agent
+3. 并行执行，汇总结果
+4. 捕获学习，持续改进
+
+### 假设驱动开发 (HDD)
+
+每个行动都有可验证的假设：
+```
+假设 H-001: 如果 [采取行动]，那么 [预期结果]
+验证方法: [如何验证]
+成功标准: [量化指标]
+```
+
+### AAIF 循环
+
+```
+探索 → 构建 → 验证 → 学习
+  ↑                      ↓
+  └──────────────────────┘
+```
 
 ---
 
 ## Agent Teams 使用指南
 
-### ⚠️ 关键发现：API 配置问题
+### 创建团队
 
-**Team 功能本身正常，问题是子 Agent 的 API 配置！**
+**重要：创建团队时指定模型！**
 
-错误示例：
-```
-API Error: 403 - coding_plan_model_not_supported
-```
-
-### 解决方案
-
-1. **创建团队时指定模型**：
 ```
 创建一个 agent team，使用 Sonnet 模型：
-- 队友A：负责数据层
-- 队友B：负责业务层
-
-Use Sonnet for each teammate.
-```
-
-2. **在队友会话中登录**：
-   - 用 Shift+Up/Down 切换到队友
-   - 输入 `/login` 进行认证
-   - 或检查模型配置
-
-3. **检查队友会话错误**：
-   - 切换到队友会话（Shift+Up/Down）
-   - 按 Enter 查看详细错误
-   - 不要只看 idle_notification
-
----
-
-## In-process 模式操作流程
-
-### 1. 创建团队
-
-```
-创建一个 agent team 来开发商品盘点功能：
 
 - 队友A（数据层）：负责 Model + DAL
-  文件范围：src/model/、src/dal/
-  参考：InboundOrderDAL 风格
-
 - 队友B（业务层）：负责 Interface + BLL
-  文件范围：src/interface/、src/bll/
-
 - 队友C（API层）：负责 Controller
-  文件范围：src/api/controllers/
 
 Use Sonnet for each teammate.
 ```
 
-### 2. 切换到队友会话
+### 切换查看队友
 
 ```
 Shift+Up/Down  → 选择队友
@@ -75,24 +64,9 @@ Enter          → 查看队友会话
 Escape         → 中断队友操作
 ```
 
-### 3. 检查队友状态
+### 队友不继承 Lead 的对话历史
 
-- 查看是否有错误信息
-- 如果显示 API 错误，运行 `/login`
-- 确认队友正在执行任务
-
-### 4. 等待完成
-
-```
-# 等待所有队友完成
-Wait for your teammates to complete their tasks before proceeding
-```
-
----
-
-## 队友不继承 Lead 的对话历史
-
-创建队友时必须提供完整上下文：
+创建队友时必须提供**完整上下文**：
 
 1. **任务描述** - 具体要做什么
 2. **文件范围** - 负责哪些文件
@@ -102,20 +76,123 @@ Wait for your teammates to complete their tasks before proceeding
 
 ---
 
-## 常用指令
+## 任务复杂度评估
+
+### 简单任务（1个子 Agent）
+- 单一功能实现
+- 明确的文件范围
+- 不需要并行探索
+
+### 中等任务（2-4个子 Agent）
+- 多模块协同
+- 需要并行探索
+- 有依赖关系
+
+### 复杂任务（5+子 Agent）
+- 跨系统架构
+- 高度不确定性
+- 需要学习捕获
+
+---
+
+## 委派指南（详细上下文）
+
+### 委派模板
 
 ```
-# 让特定队友停止工作
-Ask the [name] teammate to shut down
+任务：[具体描述]
 
-# 等待所有队友完成
-Wait for your teammates to complete their tasks before proceeding
+文件范围：
+- [文件1] - [职责]
+- [文件2] - [职责]
 
-# 清理团队
-Clean up the team
+参考代码：
+- [现有模块] - [参考什么]
 
-# 切换到队友查看状态
-（用户操作：Shift+Up/Down + Enter）
+输出要求：
+- [交付物1]
+- [交付物2]
+
+边界：
+- ✅ 做：[范围]
+- ❌ 不做：[范围]
+
+立即开始执行。
+```
+
+### 委派示例
+
+```
+任务：实现商品盘点功能的数据层
+
+文件范围：
+- src/model/goods_inventory.py - 数据模型
+- src/dal/goods_inventory_dal.py - 数据访问层
+
+参考代码：
+- src/dal/inbound_order_dal.py - 参考 DAL 风格
+
+输出要求：
+- GoodsInventory 模型类
+- GoodsInventoryDAL 类（包含 CRUD 方法）
+
+边界：
+- ✅ 做：模型定义、数据库操作
+- ❌ 不做：业务逻辑、API 接口
+
+立即开始执行。
+```
+
+---
+
+## 并行执行策略
+
+### 启动多个队友
+
+```
+同时启动多个队友并行工作：
+
+- 队友A：数据层（等待完成后...）
+- 队友B：业务层（等待完成后...）
+- 队友C：API层（等待完成后...）
+
+Wait for all teammates to complete their tasks before proceeding.
+```
+
+### 汇总结果
+
+所有队友完成后：
+1. 检查每个队友的输出
+2. 识别冲突和依赖
+3. 协调修复
+4. 更新学习日志
+
+---
+
+## 学习捕获
+
+### 每次任务完成后
+
+```
+## 学习日志 [日期]
+
+### 成功经验
+- [什么有效]
+
+### 失败教训
+- [什么无效]
+
+### 改进建议
+- [下次如何做得更好]
+```
+
+### 更新假设状态
+
+```
+假设 H-001 状态更新：
+- 之前：待验证
+- 之后：已验证 / 部分验证 / 证伪
+- 证据：[具体证据]
 ```
 
 ---
@@ -124,10 +201,10 @@ Clean up the team
 
 ### Agent idle 不执行
 
-1. **切换到队友会话**（Shift+Up/Down + Enter）
-2. **检查错误信息**（可能是 API 错误）
-3. **在队友会话中运行 `/login`**
-4. **或重新创建团队，指定模型**
+1. 切换到队友会话（Shift+Up/Down + Enter）
+2. 检查错误信息（可能是 API 错误）
+3. 在队友会话中运行 `/login`
+4. 或重新创建团队，指定模型
 
 ### API 403 错误
 
