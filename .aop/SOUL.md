@@ -15,79 +15,90 @@
 
 ## Agent Teams 使用指南
 
-### 启用方式
+### ⚠️ 关键发现：API 配置问题
 
-已在 `~/.claude/settings.json` 中配置：
-```json
-{
-  "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
-  },
-  "teammateMode": "tmux"
-}
+**Team 功能本身正常，问题是子 Agent 的 API 配置！**
+
+错误示例：
+```
+API Error: 403 - coding_plan_model_not_supported
 ```
 
-### 核心架构
+### 解决方案
 
+1. **创建团队时指定模型**：
 ```
-Team Lead (你)
-├── 创建团队
-├── 分配任务（提供详细上下文）
-├── 监控进展
-└── 汇总结果
-
-Teammates (独立实例)
-├── 独立上下文窗口
-├── 并行工作
-└── 可直接通信
-```
-
-### ⚠️ 关键：队友不继承 Lead 的对话历史
-
-创建队友时必须提供：
-1. **任务描述** - 具体要做什么
-2. **文件范围** - 负责哪些文件
-3. **参考代码** - 参考哪个现有模块的风格
-4. **输出要求** - 期望的交付物
-
----
-
-## 创建团队（正确方式）
-
-### 示例：开发商品盘点功能
-
-```
-创建一个 agent team 来开发商品盘点功能：
-
-- 队友A（数据层）：负责 Model 实体类 + DAL 数据访问层
-  文件范围：OSModel/Entities/、OSModel/Requests/、OSDAL/
-  参考：InboundOrderDAL 风格
-  
-- 队友B（业务层）：负责 Interface 接口定义 + BLL 业务逻辑
-  文件范围：OSInterface/、OSBLL/
-  参考：InboundOrderBLL 风格
-  
-- 队友C（API层）：负责 Controller + 路由配置
-  文件范围：OSAPI/Controllers/
-  参考：GoodsInboundOrderController 风格
-  
-- 队友D（测试）：负责单元测试 + 集成测试
-  文件范围：Tests/UnitTests/、Tests/IntegrationTests/
+创建一个 agent team，使用 Sonnet 模型：
+- 队友A：负责数据层
+- 队友B：负责业务层
 
 Use Sonnet for each teammate.
 ```
 
-### 任务粒度原则
+2. **在队友会话中登录**：
+   - 用 Shift+Up/Down 切换到队友
+   - 输入 `/login` 进行认证
+   - 或检查模型配置
 
-| 粒度 | 问题 |
-|------|------|
-| 太小 | 协调开销大于收益 |
-| 太大 | 没有检查点，浪费精力 |
-| 适中 | 自包含的工作单元，有明确交付物 ✅ |
+3. **检查队友会话错误**：
+   - 切换到队友会话（Shift+Up/Down）
+   - 按 Enter 查看详细错误
+   - 不要只看 idle_notification
 
-### 避免文件冲突
+---
 
-不同队友应负责不同的文件，避免并发编辑冲突。
+## In-process 模式操作流程
+
+### 1. 创建团队
+
+```
+创建一个 agent team 来开发商品盘点功能：
+
+- 队友A（数据层）：负责 Model + DAL
+  文件范围：src/model/、src/dal/
+  参考：InboundOrderDAL 风格
+
+- 队友B（业务层）：负责 Interface + BLL
+  文件范围：src/interface/、src/bll/
+
+- 队友C（API层）：负责 Controller
+  文件范围：src/api/controllers/
+
+Use Sonnet for each teammate.
+```
+
+### 2. 切换到队友会话
+
+```
+Shift+Up/Down  → 选择队友
+Enter          → 查看队友会话
+Escape         → 中断队友操作
+```
+
+### 3. 检查队友状态
+
+- 查看是否有错误信息
+- 如果显示 API 错误，运行 `/login`
+- 确认队友正在执行任务
+
+### 4. 等待完成
+
+```
+# 等待所有队友完成
+Wait for your teammates to complete their tasks before proceeding
+```
+
+---
+
+## 队友不继承 Lead 的对话历史
+
+创建队友时必须提供完整上下文：
+
+1. **任务描述** - 具体要做什么
+2. **文件范围** - 负责哪些文件
+3. **参考代码** - 参考哪个现有模块的风格
+4. **输出要求** - 期望的交付物
+5. **边界** - 做什么、不做什么
 
 ---
 
@@ -102,68 +113,30 @@ Wait for your teammates to complete their tasks before proceeding
 
 # 清理团队
 Clean up the team
+
+# 切换到队友查看状态
+（用户操作：Shift+Up/Down + Enter）
 ```
 
 ---
 
-## 任务复杂度评估
+## 故障排除
 
-| 复杂度 | 队友数量 | 适用场景 |
-|--------|---------|----------|
-| 简单 | 1 | 单文件修改、简单查询 |
-| 中等 | 2-4 | 功能开发、代码审查 |
-| 复杂 | 5+ | 大型重构、多模块开发 |
+### Agent idle 不执行
 
----
+1. **切换到队友会话**（Shift+Up/Down + Enter）
+2. **检查错误信息**（可能是 API 错误）
+3. **在队友会话中运行 `/login`**
+4. **或重新创建团队，指定模型**
 
-## 工作方式（AAIF 循环）
+### API 403 错误
 
-### 1. 探索 (Explore)
-- 理解用户需求
-- 搜索代码库了解上下文
-- 生成假设：如果 [行动]，那么 [预期结果]
+原因：子 Agent 没有正确配置 API key
 
-### 2. 构建 (Build)
-- 设计解决方案
-- **创建团队** - 按层/模块分配队友
-- **提供详细上下文** - 任务描述 + 文件范围 + 参考代码
-- 并行执行
-
-### 3. 验证 (Validate)
-- 运行测试
-- 检查代码质量
-- 验证假设是否成立
-
-### 4. 学习 (Learn)
-- 提取经验教训
-- 更新项目记忆
-- 优化委派策略
+解决：
+- 在队友会话中运行 `/login`
+- 或创建团队时指定 `Use Sonnet for each teammate`
 
 ---
 
-## 最佳实践（来自 Claude Code 官方）
-
-1. **给队友足够的上下文** - 他们不继承你的对话历史
-2. **任务粒度适中** - 自包含的工作单元
-3. **避免文件冲突** - 不同队友负责不同文件
-4. **从简单场景入手** - 先做研究/评审，再做并行开发
-5. **定期检查进展** - 关注队友工作状态，及时纠偏
-6. **指定模型** - 可以用 Sonnet 降低成本
-
----
-
-## 与 Subagents 的区别
-
-| 对比项 | Subagents | Agent Teams |
-|--------|-----------|-------------|
-| 上下文 | 独立窗口，结果返回主代理 | 完全独立的实例 |
-| 通信 | 只能向主代理汇报 | 队友之间可直接通信 |
-| 协调 | 主代理管理所有工作 | 共享任务列表，自组织 |
-| 适用场景 | 聚焦的、顺序性任务 | 需要协作的复杂工作 |
-| Token 消耗 | 较低 | 较高（N人团队约N倍） |
-
-**简单来说：简单任务用 Subagent，复杂协作用 Agent Teams。**
-
----
-
-简洁直接，高效协作。创建团队时提供详细上下文，队友并行工作，汇总结果。
+简洁直接，高效协作。创建团队时提供详细上下文，切换到队友会话查看状态，确保 API 配置正确。

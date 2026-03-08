@@ -1,53 +1,71 @@
 # TEAM.md - Agent 团队角色
 
-## 核心架构
+## ⚠️ 关键发现：API 配置问题
 
-**Agent Teams = 多个独立 Claude Code 实例并行工作**
+**Team 功能本身正常，问题是子 Agent 的 API 配置！**
+
+### 问题表现
 
 ```
-Team Lead (你)
-├── 创建团队（自然语言描述）
-├── 分配任务（提供详细上下文）
-├── 监控进展（Shift+Up/Down 切换队友）
-└── 汇总结果
-
-Teammates (独立实例)
-├── 每人有独立的上下文窗口
-├── 并行工作
-├── 可通过 Mailbox 直接通信
-└── 可从 Shared Task List 自主认领任务
+Agent 启动 → 发送 idle_notification → 用户以为卡住了
+                    ↓
+          实际：Agent 遇到 API 403 错误
+                    ↓
+          解决：切换到队友会话查看错误
 ```
+
+### 解决方案
+
+1. **创建团队时指定模型**：
+```
+Use Sonnet for each teammate.
+```
+
+2. **切换到队友会话检查**：
+   - Shift+Up/Down 选择队友
+   - Enter 查看会话
+   - 检查是否有 API 错误
+   - 如果有，运行 `/login`
 
 ---
 
-## 两种显示模式
+## In-process 模式操作
 
-| 模式 | 说明 | 适用平台 |
-|------|------|---------|
-| In-process（默认） | 所有队友在主终端内运行，Shift+Up/Down 切换 | 所有平台 |
-| Split panes | 每个队友在 tmux/iTerm2 中有独立面板 | macOS/Linux |
+### Windows 限制
 
-配置 Split panes 模式：
-```json
-{
-  "teammateMode": "tmux"
-}
-```
+- **不支持 Split panes 模式**（需要 tmux/iTerm2）
+- **只能用 In-process 模式**
+- **需要用键盘切换队友**
 
----
-
-## 快捷键操作
+### 快捷键
 
 | 快捷键 | 功能 |
 |--------|------|
 | Shift+Up/Down | 选择队友 |
 | Enter | 查看队友会话 |
-| Escape | 中断队友当前操作 |
+| Escape | 中断队友操作 |
 | Ctrl+T | 切换任务列表 |
 
 ---
 
-## 团队角色（按分工）
+## 核心架构
+
+```
+Team Lead (你)
+├── 创建团队（自然语言）
+├── 分配任务（详细上下文）
+├── 切换到队友会话检查状态
+└── 汇总结果
+
+Teammates (独立实例)
+├── 每人有独立的上下文窗口
+├── 可能有独立的 API 配置
+└── 需要切换到会话查看执行状态
+```
+
+---
+
+## 团队角色
 
 ### Developer（开发者）
 
@@ -56,9 +74,11 @@ Teammates (独立实例)
 **创建示例**:
 ```
 队友A（数据层）：负责 Model 实体类 + DAL 数据访问层
-- 文件范围：OSModel/Entities/、OSDAL/
+- 文件范围：src/model/、src/dal/
 - 参考：InboundOrderDAL 风格
-- 交付物：实体类、DAL 类、单元测试
+- 交付物：实体类、DAL 类
+
+Use Sonnet for this teammate.
 ```
 
 ---
@@ -73,6 +93,8 @@ Teammates (独立实例)
 - 审查维度：安全性、性能、可维护性
 - 输出：问题列表 + 改进建议
 - 不要修改代码，只审查
+
+Use Sonnet for this teammate.
 ```
 
 ---
@@ -84,93 +106,99 @@ Teammates (独立实例)
 **创建示例**:
 ```
 队友C（测试）：负责编写和运行测试
-- 文件范围：Tests/
+- 文件范围：tests/
 - 测试类型：单元测试、集成测试
 - 输出：测试文件、测试报告
+
+Use Sonnet for this teammate.
 ```
 
 ---
 
-### Researcher（研究者）
+## 创建团队完整流程
 
-**职责**: 信息搜索、技术调研、文档编写
-
-**创建示例**:
-```
-队友D（调研）：负责技术方案调研
-- 调研方向：缓存方案、ORM 框架、部署方式
-- 输出：调研报告、对比表格
-- 不要实现代码
-```
-
----
-
-## ⚠️ 关键：队友不继承 Lead 的对话历史
-
-创建队友时必须提供完整的上下文：
-
-### 必须包含的信息
-
-1. **任务描述** - 具体要做什么
-2. **文件范围** - 负责哪些文件
-3. **参考代码** - 参考哪个现有模块的风格
-4. **输出要求** - 期望的交付物
-5. **边界** - 做什么、不做什么
-
-### 示例
+### 步骤 1：用自然语言创建团队
 
 ```
 创建一个 agent team 来开发商品盘点功能：
 
-- 队友A（数据层）：负责 OSModel 实体类 + OSDAL 数据访问层
-  文件范围：OSModel/Entities/、OSModel/Requests/、OSDAL/
-  参考：现有的 InboundOrderDAL 风格
-  交付物：实体类、DAL 类
-  边界：只做数据层，不涉及业务逻辑
-  
-- 队友B（业务层）：负责 OSInterface 接口定义 + OSBLL 业务逻辑
-  文件范围：OSInterface/、OSBLL/
-  参考：现有的 InboundOrderBLL 风格
-  交付物：接口定义、BLL 类
-  边界：只做业务层，调用队友A提供的接口
+- 队友A（数据层）：负责 Model + DAL
+  文件范围：src/model/、src/dal/
+  参考：InboundOrderDAL 风格
+
+- 队友B（业务层）：负责 Interface + BLL
+  文件范围：src/interface/、src/bll/
+
+- 队友C（API层）：负责 Controller
+  文件范围：src/api/controllers/
 
 Use Sonnet for each teammate.
 ```
 
+### 步骤 2：切换到队友会话检查
+
+```
+Shift+Up/Down  → 选择队友 A
+Enter          → 查看会话
+（检查是否有错误，是否在执行任务）
+Escape         → 返回主会话
+
+Shift+Up/Down  → 选择队友 B
+...
+```
+
+### 步骤 3：处理 API 错误
+
+如果看到 API 403 错误：
+1. 在队友会话中输入 `/login`
+2. 按照提示完成认证
+3. 重新执行任务
+
+### 步骤 4：等待完成
+
+```
+Wait for your teammates to complete their tasks before proceeding
+```
+
 ---
 
-## 任务分配原则
+## 故障排除
 
-### 按层分配 > 按文件分配
+### Agent 一直 idle
 
-分层架构天然适合每个队友负责一层：
-- 避免文件冲突
-- 边界清晰
-- 依赖关系明确
+1. **切换到队友会话**（Shift+Up/Down + Enter）
+2. **查看错误信息**
+3. **如果是 API 错误，运行 `/login`**
+4. **如果模型不支持，重新创建团队并指定模型**
 
-### 任务粒度适中
+### API 403: coding_plan_model_not_supported
 
-| 粒度 | 问题 |
-|------|------|
-| 太小 | 协调开销大于收益 |
-| 太大 | 没有检查点，浪费精力 |
-| 适中 | 自包含的工作单元，有明确交付物 ✅ |
+原因：子 Agent 使用的模型不支持 Coding Plan
 
-### 避免文件冲突
+解决：
+```
+# 创建团队时指定模型
+Use Sonnet for each teammate.
 
-不同队友应负责不同的文件，避免并发编辑冲突。
+# 或在队友会话中运行
+/model claude-sonnet-4-20250514
+```
+
+### 子 Agent 没有继承主会话认证
+
+解决：
+- 在队友会话中运行 `/login`
+- 或使用 OAuth token 方式认证
 
 ---
 
-## 最佳场景
+## 最佳实践
 
-| 场景 | 队友数量 | 示例 |
-|------|---------|------|
-| 研究与评审 | 3-4 | PR Review 时，分别关注安全性、性能、测试覆盖 |
-| 新功能开发 | 4-5 | 前端、后端、测试、文档分别由不同队友负责 |
-| 并行调试 | 3 | 不同队友测试不同的 Bug 假设，竞争验证 |
-| 跨层协调 | 4-5 | API 变更同时影响 UI、数据库、测试套件 |
-| 发版前验证 | 3 | 单元测试、集成测试、数据库验证并行 |
+1. **创建团队时指定模型**：`Use Sonnet for each teammate`
+2. **切换到队友会话检查状态**：不要只看 idle_notification
+3. **提供详细上下文**：队友不继承你的对话历史
+4. **按层分配 > 按文件分配**：避免冲突
+5. **任务粒度适中**：自包含的工作单元
 
 ---
 
@@ -178,45 +206,12 @@ Use Sonnet for each teammate.
 
 | 对比项 | Subagents | Agent Teams |
 |--------|-----------|-------------|
-| 上下文 | 独立窗口，结果返回主代理 | 完全独立的实例 |
+| 上下文 | 独立窗口 | 完全独立的实例 |
 | 通信 | 只能向主代理汇报 | 队友之间可直接通信 |
-| 协调 | 主代理管理所有工作 | 共享任务列表，自组织 |
-| 适用场景 | 聚焦的、顺序性任务 | 需要协作的复杂工作 |
-| Token 消耗 | 较低 | 较高（N人团队约N倍） |
+| 需要切换 | 不需要 | 需要（Shift+Up/Down） |
+| API 配置 | 继承主会话 | 可能需要单独配置 |
+| 适用场景 | 简单、顺序性任务 | 复杂、协作任务 |
 
 **选择指南**：
-- 简单的、顺序性任务 → 用 Subagent
-- 复杂的、可并行的、需要协作的任务 → 用 Agent Teams
-
----
-
-## 数据存储
-
-团队数据本地存储：
-- 团队信息：`~/.claude/teams/{team-name}/`
-- 任务列表：`~/.claude/tasks/{team-name}/`
-
----
-
-## 注意事项
-
-1. **成本考虑**：每个队友是完整的 Claude 实例，5人团队约消耗 5倍 Token
-2. **不支持会话恢复**：`/resume` 不会恢复 in-process 模式的队友
-3. **任务状态可能滞后**：队友有时可能忘记标记任务完成
-4. **每次会话仅一个团队**：不能同时管理多个团队
-5. **不支持嵌套团队**：队友不能再创建自己的团队
-
----
-
-## 常用指令
-
-```
-# 让特定队友停止工作
-Ask the [name] teammate to shut down
-
-# 等待所有队友完成
-Wait for your teammates to complete their tasks before proceeding
-
-# 清理团队
-Clean up the team
-```
+- 简单任务 → 用 Subagent
+- 复杂协作 → 用 Agent Teams（记得切换到队友会话检查）
