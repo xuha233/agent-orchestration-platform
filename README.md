@@ -356,6 +356,29 @@ aop doctor
 
 **Ask the user:** "Do you want to use third-party model APIs (DeepSeek, Gemini, OpenRouter, etc.) with Claude Code?"
 
+If **YES**:
+
+1. **Read the agent guide:**
+   - File: `docs/CCR_AGENT_GUIDE.md`
+   - This file contains complete instructions for guiding users through CCR installation
+
+2. **Plugin location:**
+   - `plugins/claude-code-router.zip` - Source code package
+
+3. **Follow the guide to:**
+   - Install CCR: `npm install -g @musistudio/claude-code-router`
+   - Ask user for: Provider, BaseURL, API Key, Models
+   - Create `~/.claude-code-router/config.json`
+   - Verify with `ccr code`
+
+If **NO**, skip this step.
+
+
+
+### Claude Code Router (Optional)
+
+**Ask the user:** "Do you want to use third-party model APIs (DeepSeek, Gemini, OpenRouter, etc.) with Claude Code?"
+
 If **YES**, install Claude Code Router:
 
 1. **Read the installation guide:**
