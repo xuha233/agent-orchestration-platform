@@ -1,4 +1,4 @@
-"""
+﻿"""
 AOP Dashboard - 对话式界面
 
 Run with: streamlit run app.py
@@ -29,6 +29,7 @@ _logger = logging.getLogger(__name__)
 # Page config
 from aop.memory import build_agent_system_prompt
 from aop.session import get_session_manager
+from aop.utils.claude_config import get_claude_full_cmd, get_claude_cmd_prefix
 st.set_page_config(
     page_title="AOP Dashboard",
     page_icon="🤖",
@@ -1004,9 +1005,9 @@ def page_coach():
                                 # 启动命令（CLAUDE.md 会自动加载）
                                 if primary_agent == "claude_code":
                                     if saved_session_id:
-                                        f.write('ccr code --resume ' + saved_session_id + '\n')
+                                        f.write(' '.join(get_claude_cmd_prefix()) + ' --resume ' + saved_session_id + '\n')
                                     else:
-                                        f.write('claude\n')
+                                        f.write(' '.join(get_claude_cmd_prefix()) + '\n')
                                 else:
                                     if saved_session_id:
                                         f.write('opencode --resume ' + saved_session_id + '\n')
@@ -1048,9 +1049,9 @@ def page_coach():
                             
                             if primary_agent == "claude_code":
                                 if saved_session_id:
-                                    full_cmd = 'ccr code --resume ' + saved_session_id
+                                    full_cmd = get_claude_full_cmd() + ' --resume ' + saved_session_id
                                 else:
-                                    full_cmd = 'ccr code --system-prompt "$(cat \"' + prompt_file + '\")"'
+                                    full_cmd = get_claude_full_cmd() + ' --system-prompt "$(cat \"' + prompt_file + '\")"'
                             else:
                                 if saved_session_id:
                                     full_cmd = 'opencode --resume ' + saved_session_id
@@ -1073,9 +1074,9 @@ def page_coach():
                             
                             if primary_agent == "claude_code":
                                 if saved_session_id:
-                                    full_cmd = 'ccr code --resume ' + saved_session_id
+                                    full_cmd = get_claude_full_cmd() + ' --resume ' + saved_session_id
                                 else:
-                                    full_cmd = 'ccr code --system-prompt "$(cat ' + prompt_file + ')"'
+                                    full_cmd = get_claude_full_cmd() + ' --system-prompt "$(cat ' + prompt_file + ')"'
                             else:
                                 if saved_session_id:
                                     full_cmd = 'opencode --resume ' + saved_session_id
@@ -1945,3 +1946,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+

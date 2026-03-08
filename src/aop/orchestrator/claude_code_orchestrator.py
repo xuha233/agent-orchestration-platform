@@ -1,4 +1,4 @@
-"""
+﻿"""
 Claude Code CLI 作为中枢 Agent
 
 通过 Claude Code CLI 实现决策和执行：
@@ -26,6 +26,7 @@ from .types import (
     OrchestratorMode,
     OrchestratorCapability,
 )
+from aop.utils.claude_config import get_claude_binary, get_claude_subcmd
 
 
 # Windows 上常见的 npm 全局安装路径
@@ -87,7 +88,10 @@ def _find_binary(binary_name: str) -> Optional[str]:
 class ClaudeCodeOrchestrator(OrchestratorClient):
     """Claude Code CLI 中枢适配器"""
 
-    BINARY_NAME = "ccr"
+    @property
+    def BINARY_NAME(self) -> str:
+        """获取 Claude Code 二进制名称（动态配置）"""
+        return get_claude_binary()
 
     def __init__(self, config: Optional[OrchestratorConfig] = None):
         self.config = config or OrchestratorConfig()
@@ -145,14 +149,18 @@ class ClaudeCodeOrchestrator(OrchestratorClient):
         """
         使用 Claude Code CLI 进行决策
 
-        通过 `ccr code --print` 执行，不修改文件系统
+        通过配置的命令执行，不修改文件系统
         """
         prompt = self._build_prompt_from_messages(messages, system)
 
-        binary = self._binary_path or self.BINARY_NAME
-        cmd = [binary, "code", "--print",
-            "--output-format", "json",
-        ]
+        binary = self._binary_path or get_claude_binary()
+        subcmd = get_claude_subcmd()
+        
+        # 构建命令
+        if subcmd:
+            cmd = [binary, subcmd, "--print", "--output-format", "json"]
+        else:
+            cmd = [binary, "--print", "--output-format", "json"]
 
         # 添加配置参数
         if kwargs.get("max_tokens"):
@@ -186,9 +194,14 @@ class ClaudeCodeOrchestrator(OrchestratorClient):
 
         允许 Claude Code 修改文件系统
         """
-        binary = self._binary_path or self.BINARY_NAME
-        cmd = [binary, "code", "--output-format", "json",
-        ]
+        binary = self._binary_path or get_claude_binary()
+        subcmd = get_claude_subcmd()
+        
+        # 构建命令
+        if subcmd:
+            cmd = [binary, subcmd, "--output-format", "json"]
+        else:
+            cmd = [binary, "--output-format", "json"]
 
         # 添加权限配置
         if kwargs.get("permission_mode"):
@@ -307,8 +320,14 @@ class ClaudeCodeOrchestrator(OrchestratorClient):
 
         try:
             # 使用 --print 运行一个简单的 prompt 来验证
+            subcmd = get_claude_subcmd()
+            if subcmd:
+                cmd = [self._binary_path, subcmd, "--print", "Say 'ok'"]
+            else:
+                cmd = [self._binary_path, "--print", "Say 'ok'"]
+            
             result = subprocess.run(
-                [self._binary_path, "code", "--print", "Say 'ok'"],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=30,
