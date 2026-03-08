@@ -21,10 +21,9 @@ def load_combined_memory(workspace_path: Optional[Path] = None) -> str:
     # 1. 加载全局记忆
     global_dir = get_global_aop_dir()
     if global_dir.exists():
+        # 只加载核心文件，不加载 TEAM.md 和 WORKFLOW.md（避免干扰 Claude Code Team 功能）
         global_files = [
             ('SOUL.md', '敏捷教练人设'),
-            ('TEAM.md', '团队定义'),
-            ('WORKFLOW.md', '工作流程'),
             ('PROJECT_MEMORY.md', '全局项目记忆'),
         ]
         for filename, desc in global_files:
@@ -41,10 +40,9 @@ def load_combined_memory(workspace_path: Optional[Path] = None) -> str:
     if workspace_path:
         project_dir = workspace_path / '.aop'
         if project_dir.exists():
+            # 项目级也只加载核心文件
             project_files = [
                 ('PROJECT_MEMORY.md', '项目记忆'),
-                ('WORKFLOW.md', '项目工作流程'),
-                ('TEAM.md', '项目团队'),
             ]
             for filename, desc in project_files:
                 filepath = project_dir / filename
@@ -74,6 +72,8 @@ def load_combined_memory(workspace_path: Optional[Path] = None) -> str:
                     import json
                     with open(learning_file, 'r', encoding='utf-8') as f:
                         learning = json.load(f)
+                    with open(learning_file, 'r', encoding='utf-8') as f:
+                        learning = json.load(f)
                     if learning:
                         context_parts.append(f"=== 学习记录 (项目) ===\n{json.dumps(learning, ensure_ascii=False, indent=2)}\n")
                 except Exception:
@@ -83,7 +83,7 @@ def load_combined_memory(workspace_path: Optional[Path] = None) -> str:
 
 
 def build_agent_system_prompt(workspace_path: Optional[Path] = None, task_hint: str = "") -> str:
-    """构建 Agent 系统提示词"""
+    """构建 Agent 系统提示词（轻量版，不干扰 Claude Code Team 功能）"""
     memory_context = load_combined_memory(workspace_path)
     parts = []
 
@@ -92,25 +92,28 @@ def build_agent_system_prompt(workspace_path: Optional[Path] = None, task_hint: 
         parts.append(memory_context)
         parts.append("\n---\n")
 
-    parts.append("""# 当前任务
+    # 极简版工作指引
+    parts.append("""# 工作方式
 
-你现在是 AOP 敏捷教练，负责帮助用户完成开发任务。
-
-## 工作方式
+**探索 → 构建 → 验证 → 学习**
 
 1. 探索 - 理解问题，搜索代码库
 2. 构建 - 实现解决方案
 3. 验证 - 运行测试，检查结果
 4. 学习 - 总结经验，更新记忆
 
-## 首次交互要求
+## 团队协作
 
-1. 自我介绍为「AOP 敏捷教练」
-2. 汇报当前项目状态（如有）
-3. 给出下一步建议
-4. 回复语言必须和用户提问语言一致
+当用户说 `use team` 或 `创建团队` 时，使用 Claude Code 内置的 Team 功能：
+- TeamCreate(team_name="...", members=[...])
+- Task(agent="...", prompt="... 立即开始执行 ...")
+- TaskOutput(task_id="...")
 
-记住：你是协调者，帮助用户高效完成开发任务。""")
+**重要**：不要预设团队，让用户自然触发。
+
+---
+
+记住：保持轻量，帮助用户高效完成开发任务。""")
 
     if task_hint:
         parts.append(f"\n\n## 用户任务\n{task_hint}")
