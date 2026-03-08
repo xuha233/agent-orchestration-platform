@@ -2,7 +2,7 @@
 Claude Code CLI 作为中枢 Agent
 
 通过 Claude Code CLI 实现决策和执行：
-- complete(): 使用 claude --print 进行决策
+- complete(): 使用 ccr code --print 进行决策
 - execute(): 使用 claude 进行代码修改
 - dispatch(): 使用 claude 调度其他 Agent
 """
@@ -87,7 +87,7 @@ def _find_binary(binary_name: str) -> Optional[str]:
 class ClaudeCodeOrchestrator(OrchestratorClient):
     """Claude Code CLI 中枢适配器"""
 
-    BINARY_NAME = "claude"
+    BINARY_NAME = "ccr"
 
     def __init__(self, config: Optional[OrchestratorConfig] = None):
         self.config = config or OrchestratorConfig()
@@ -145,14 +145,12 @@ class ClaudeCodeOrchestrator(OrchestratorClient):
         """
         使用 Claude Code CLI 进行决策
 
-        通过 `claude --print` 执行，不修改文件系统
+        通过 `ccr code --print` 执行，不修改文件系统
         """
         prompt = self._build_prompt_from_messages(messages, system)
 
         binary = self._binary_path or self.BINARY_NAME
-        cmd = [
-            binary,
-            "--print",
+        cmd = [binary, "code", "--print",
             "--output-format", "json",
         ]
 
@@ -189,9 +187,7 @@ class ClaudeCodeOrchestrator(OrchestratorClient):
         允许 Claude Code 修改文件系统
         """
         binary = self._binary_path or self.BINARY_NAME
-        cmd = [
-            binary,
-            "--output-format", "json",
+        cmd = [binary, "code", "--output-format", "json",
         ]
 
         # 添加权限配置
@@ -312,7 +308,7 @@ class ClaudeCodeOrchestrator(OrchestratorClient):
         try:
             # 使用 --print 运行一个简单的 prompt 来验证
             result = subprocess.run(
-                [self._binary_path, "--print", "Say 'ok'"],
+                [self._binary_path, "code", "--print", "Say 'ok'"],
                 capture_output=True,
                 text=True,
                 timeout=30,

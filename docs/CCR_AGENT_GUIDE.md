@@ -1,4 +1,4 @@
-﻿# Claude Code Router 安装指南（Agent 参考）
+# Claude Code Router 安装指南（Agent 参考）
 
 > 本文档用于指导 Agent 帮助用户安装和配置 Claude Code Router，以便 Claude Code 能使用第三方模型 API。
 
@@ -19,31 +19,69 @@
 
 ## 安装流程
 
-### 步骤 1：确认前置条件
+### 步骤 1：询问用户偏好
 
 **询问用户：**
 
 ```
-是否已安装 Claude Code？请运行以下命令确认：
+请问您想使用哪种 Claude Code 模式？
 
-claude --version
+1. 【原生 Claude Code】使用 Anthropic 官方 API
+   - 需要配置 Claude API Key
+   - 命令：claude
 
-如果未安装，请先运行：
+2. 【Claude Code Router】使用第三方模型 API（DeepSeek、Gemini、OpenRouter 等）
+   - 性价比更高
+   - 需要安装 CCR 并配置第三方 API
+   - 命令：ccr code
 
-npm install -g @anthropic-ai/claude-code
+请选择（1 或 2）：
 ```
 
-### 步骤 2：安装 Claude Code Router
+### 步骤 2A：如果用户选择【原生 Claude Code】
+
+跳过 CCR 安装，但需要更新 AOP 配置：
+
+```bash
+# AOP 默认使用 ccr code 命令
+# 如果选择原生 Claude，需要修改命令前缀
+
+# 方法 1：设置环境变量（推荐）
+export AOP_CLAUDE_CMD="claude"
+
+# 方法 2：在 AOP 项目中全局替换
+# 将所有 `ccr code` 替换为 `claude`
+```
+
+**验证 Claude Code 已安装：**
+
+```bash
+claude --version
+```
+
+**配置 Claude API Key：**
+
+```bash
+claude auth login
+```
+
+### 步骤 2B：如果用户选择【Claude Code Router】
+
+继续以下步骤安装 CCR。
+
+---
+
+### 步骤 3：安装 Claude Code Router
 
 ```bash
 npm install -g @musistudio/claude-code-router
 ```
 
-### 步骤 3：询问配置信息
+### 步骤 4：询问配置信息
 
 逐一询问用户以下信息：
 
-#### 3.1 模型提供商名称
+#### 4.1 模型提供商名称
 
 ```
 请问您想使用哪个模型提供商？
@@ -59,7 +97,7 @@ npm install -g @musistudio/claude-code-router
 或输入自定义提供商名称：
 ```
 
-#### 3.2 API Base URL
+#### 4.2 API Base URL
 
 根据用户选择的提供商，提供默认 URL 或询问自定义 URL：
 
@@ -76,7 +114,7 @@ API 端点地址：
 请输入 API 地址（或按 Enter 使用默认值）：
 ```
 
-#### 3.3 API Key
+#### 4.3 API Key
 
 ```
 请提供您的 API Key（格式通常为 sk-xxx）：
@@ -84,7 +122,7 @@ API 端点地址：
 ⚠️ 注意：这个信息会被安全存储在本地配置文件 ~/.claude-code-router/config.json 中
 ```
 
-#### 3.4 可用模型列表
+#### 4.4 可用模型列表
 
 ```
 请提供您想使用的模型名称列表（逗号分隔）：
@@ -97,7 +135,7 @@ API 端点地址：
 请输入模型列表：
 ```
 
-#### 3.5 默认模型
+#### 4.5 默认模型
 
 ```
 请指定默认使用的模型（格式：provider_name,model_name）：
@@ -109,7 +147,7 @@ API 端点地址：
 
 ---
 
-## 步骤 4：创建配置文件
+### 步骤 5：创建配置文件
 
 根据用户提供的信息，创建 `~/.claude-code-router/config.json` 文件。
 
@@ -211,7 +249,7 @@ API 端点地址：
 
 ---
 
-## 步骤 5：验证安装
+### 步骤 6：验证安装
 
 ```bash
 # 启动 Claude Code Router
@@ -372,18 +410,24 @@ echo 'eval "$(ccr activate)"' >> ~/.zshrc
 
 ## 总结：Agent 引导流程
 
-1. **询问是否需要使用第三方 API**
-   - 如果 **否** → 跳过此步骤
-   - 如果 **是** → 继续
+### 选择模式
 
-2. **确认 Claude Code 已安装** → `claude --version`
+1. **询问用户选择模式**
+   - 【1】原生 Claude Code（使用 `claude` 命令）
+   - 【2】Claude Code Router（使用 `ccr code` 命令）
 
-3. **安装 CCR** → `npm install -g @musistudio/claude-code-router`
+### 如果选择【1】原生 Claude Code
 
-4. **询问配置信息**：提供商、BaseURL、API Key、模型列表、默认模型
+1. 确认已安装：`claude --version`
+2. 配置认证：`claude auth login`
+3. **更新 AOP 命令前缀**：
+   - 方法 1：设置环境变量 `AOP_CLAUDE_CMD="claude"`
+   - 方法 2：在 AOP 项目中全局替换 `ccr code` → `claude`
 
-5. **创建配置文件** → `~/.claude-code-router/config.json`
+### 如果选择【2】Claude Code Router
 
-6. **验证安装** → `ccr code` 或 `ccr ui`
-
-7. **可选：环境变量激活** → `eval "$(ccr activate)"`
+1. 安装 CCR：`npm install -g @musistudio/claude-code-router`
+2. 询问配置：提供商、BaseURL、API Key、模型列表、默认模型
+3. 创建配置：`~/.claude-code-router/config.json`
+4. 验证安装：`ccr code` 或 `ccr ui`
+5. 可选激活：`eval "$(ccr activate)"`

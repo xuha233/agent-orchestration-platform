@@ -1004,7 +1004,7 @@ def page_coach():
                                 # 启动命令（CLAUDE.md 会自动加载）
                                 if primary_agent == "claude_code":
                                     if saved_session_id:
-                                        f.write('claude --resume ' + saved_session_id + '\n')
+                                        f.write('ccr code --resume ' + saved_session_id + '\n')
                                     else:
                                         f.write('claude\n')
                                 else:
@@ -1048,9 +1048,9 @@ def page_coach():
                             
                             if primary_agent == "claude_code":
                                 if saved_session_id:
-                                    full_cmd = 'claude --resume ' + saved_session_id
+                                    full_cmd = 'ccr code --resume ' + saved_session_id
                                 else:
-                                    full_cmd = 'claude --system-prompt "$(cat \"' + prompt_file + '\")"'
+                                    full_cmd = 'ccr code --system-prompt "$(cat \"' + prompt_file + '\")"'
                             else:
                                 if saved_session_id:
                                     full_cmd = 'opencode --resume ' + saved_session_id
@@ -1073,9 +1073,9 @@ def page_coach():
                             
                             if primary_agent == "claude_code":
                                 if saved_session_id:
-                                    full_cmd = 'claude --resume ' + saved_session_id
+                                    full_cmd = 'ccr code --resume ' + saved_session_id
                                 else:
-                                    full_cmd = 'claude --system-prompt "$(cat ' + prompt_file + ')"'
+                                    full_cmd = 'ccr code --system-prompt "$(cat ' + prompt_file + ')"'
                             else:
                                 if saved_session_id:
                                     full_cmd = 'opencode --resume ' + saved_session_id
@@ -1355,12 +1355,12 @@ def page_workspaces():
                         col_save, col_close = st.columns(2)
                         with col_save:
                             if st.button("💾 保存", key=f"save_session_{ws.id}", use_container_width=True):
-                                # 提取纯会话 ID（处理用户输入 claude --resume xxx 的情况）
+                                # 提取纯会话 ID（处理用户输入 ccr code --resume xxx 的情况）
                                 import re
                                 claude_id = claude_session.strip()
                                 opencode_id = opencode_session.strip()
                                 
-                                # 从 claude --resume xxx 格式中提取 ID
+                                # 从 ccr code --resume xxx 格式中提取 ID
                                 claude_match = re.search(r'([a-f0-9-]{36})', claude_id)
                                 if claude_match:
                                     claude_id = claude_match.group(1)

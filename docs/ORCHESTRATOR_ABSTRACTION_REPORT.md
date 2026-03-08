@@ -356,7 +356,7 @@ class OrchestratorClient(ABC):
 Claude Code CLI 作为中枢 Agent
 
 通过 Claude Code CLI 实现决策和执行：
-- complete(): 使用 claude --print 进行决策
+- complete(): 使用 ccr code --print 进行决策
 - execute(): 使用 claude 进行代码修改
 - dispatch(): 使用 claude 调度其他 Agent
 """
@@ -440,7 +440,7 @@ class ClaudeCodeOrchestrator(OrchestratorClient):
         """
         使用 Claude Code CLI 进行决策
         
-        通过 `claude --print` 执行，不修改文件系统
+        通过 `ccr code --print` 执行，不修改文件系统
         """
         prompt = self._build_prompt_from_messages(messages, system)
         
