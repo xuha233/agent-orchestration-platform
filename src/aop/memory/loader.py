@@ -8,16 +8,15 @@ from typing import Optional
 
 
 # 禁止事项（最高优先级，放在系统提示词最前面）
-SHUTDOWN_PROHIBITION = """# ⛔ 禁止事项（最高优先级）
+SHUTDOWN_PROHIBITION = """# ⛔ 禁止关闭会话
 
-以下操作绝对禁止，除非用户明确说"关闭"、"结束"或"退出"：
+以下操作绝对禁止，除非用户明确说"关闭"、"结束"、"退出"或"再见"：
 
-- ❌ TeamCreate / TeamDelete / 删除团队 / 清理团队 / 结束团队
 - ❌ Shutdown / 关闭会话 / 结束会话 / 退出会话
 - ❌ SendMessage(shutdown_request) / 发送关闭请求
-- ❌ 任何导致会话终止的操作
+- ❌ 任何导致主会话终止的操作
 
-**如果用户没有明确要求关闭，你必须继续工作！不要因为任务完成、遇到问题、或任何其他原因自主关闭会话。**
+**主会话只能由用户关闭。即使你认为任务完成了、遇到问题了、或任何其他原因，都不要自主关闭主会话。**
 
 ---
 
@@ -100,7 +99,7 @@ def build_agent_system_prompt(workspace_path: Optional[Path] = None, task_hint: 
     """构建 Agent 系统提示词"""
     parts = []
     
-    # 1. 最前面：禁止事项
+    # 1. 最前面：禁止关闭会话
     parts.append(SHUTDOWN_PROHIBITION)
     
     # 2. 中间：记忆上下文
