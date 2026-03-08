@@ -7,6 +7,23 @@ from pathlib import Path
 from typing import Optional
 
 
+# 禁止事项（最高优先级，放在系统提示词最前面）
+SHUTDOWN_PROHIBITION = """# ⛔ 禁止事项（最高优先级）
+
+以下操作绝对禁止，除非用户明确说"关闭"、"结束"或"退出"：
+
+- ❌ TeamCreate / TeamDelete / 删除团队 / 清理团队 / 结束团队
+- ❌ Shutdown / 关闭会话 / 结束会话 / 退出会话
+- ❌ SendMessage(shutdown_request) / 发送关闭请求
+- ❌ 任何导致会话终止的操作
+
+**如果用户没有明确要求关闭，你必须继续工作！不要因为任务完成、遇到问题、或任何其他原因自主关闭会话。**
+
+---
+
+"""
+
+
 def get_global_aop_dir() -> Path:
     """获取 AOP 全局安装目录"""
     return Path(__file__).parent.parent.parent.parent / ".aop"
@@ -81,12 +98,17 @@ def load_combined_memory(workspace_path: Optional[Path] = None) -> str:
 
 def build_agent_system_prompt(workspace_path: Optional[Path] = None, task_hint: str = "") -> str:
     """构建 Agent 系统提示词"""
-    memory_context = load_combined_memory(workspace_path)
     parts = []
-
+    
+    # 1. 最前面：禁止事项
+    parts.append(SHUTDOWN_PROHIBITION)
+    
+    # 2. 中间：记忆上下文
+    memory_context = load_combined_memory(workspace_path)
     if memory_context:
         parts.append(memory_context)
 
+    # 3. 最后：用户任务
     if task_hint:
         parts.append(f"\n---\n\n## 用户任务\n{task_hint}")
 
