@@ -1,4 +1,4 @@
-<p align="center">
+﻿<p align="center">
   <img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+" />
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT" />
   <img src="https://img.shields.io/badge/providers-5%20built--in-orange" alt="Providers: 5 built-in" />
@@ -351,6 +351,31 @@ aop doctor
 | Gemini | `export GOOGLE_API_KEY=xxx` |
 | Qwen | `export DASHSCOPE_API_KEY=xxx` |
 | OpenCode | No config needed |
+
+### Claude Code Router (Optional)
+
+**Ask the user:** "Do you want to use third-party model APIs (DeepSeek, Gemini, OpenRouter, etc.) with Claude Code?"
+
+If **YES**, install Claude Code Router:
+
+1. **Read the installation guide:**
+   - File: `docs/CCR_INSTALL_GUIDE.md`
+   - Or visit: https://github.com/musistudio/claude-code-router
+
+2. **Install CCR:**
+   ```bash
+   npm install -g @musistudio/claude-code-router
+   ```
+
+3. **Follow the guide to configure:**
+   - Ask user for: Provider name, API Base URL, API Key, Models
+   - Create `~/.claude-code-router/config.json`
+   - Start with: `ccr code`
+
+If **NO**, skip this step and continue below.
+
+### Quick Start
+
 
 ### Quick Start
 
