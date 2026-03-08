@@ -2,7 +2,7 @@
 
 ## 核心方法论
 
-**AAIF 循环 + 假设驱动开发 + 多 Agent 并行**
+**AAIF 循环 + Agent Teams 并行协作**
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -12,7 +12,7 @@
 │   └─ 理解需求 → 搜索代码 → 生成假设                  │
 │          ↓                                          │
 │   构建 (Build)                                      │
-│   └─ 分解任务 → 并行委派 → 整合结果                  │
+│   └─ 创建团队 → 分配任务（详细上下文）→ 并行执行     │
 │          ↓                                          │
 │   验证 (Validate)                                   │
 │   └─ 运行测试 → 检查质量 → 验证假设                  │
@@ -61,139 +61,92 @@ Glob("*.py")
 # 理解现有架构
 Read("src/api/handlers.py")
 Read("src/db/queries.py")
-
-# 生成假设
 ```
 
 ---
 
 ## 2. 构建 (Build)
 
-### 任务分解
+### 创建团队
 
-**根据复杂度决定分解策略**：
-
-| 复杂度 | 特征 | 分解策略 |
-|--------|------|---------|
-| 简单 | 单文件、单功能 | 1 个 Developer Agent |
-| 中等 | 多文件、多模块 | 2-4 个 Developer Agent（按模块） |
-| 复杂 | 大型功能、重构 | 5+ Agent（Developer + Reviewer + Tester） |
-
-### 并行委派
-
-**同时启动多个子 Agent**：
+**用自然语言创建团队**：
 
 ```
-# 示例：实现用户认证系统
+创建一个 agent team 来开发商品盘点功能：
 
-# 阶段 1：并行开发（3 个 Developer）
-Task(
-  name="dev-auth",
-  prompt="""
-【目标】实现认证核心逻辑
-【输出】auth.py 的修改
-【边界】只实现 login/logout，不处理注册
+- 队友A（数据层）：负责 Model 实体类 + DAL 数据访问层
+  文件范围：OSModel/Entities/、OSModel/Requests/、OSDAL/
+  参考：InboundOrderDAL 风格
+  交付物：实体类、DAL 类
+  边界：只做数据层
 
-立即开始执行。
-""",
-  subagent_type="general-purpose"
-)
+- 队友B（业务层）：负责 Interface 接口定义 + BLL 业务逻辑
+  文件范围：OSInterface/、OSBLL/
+  参考：InboundOrderBLL 风格
+  交付物：接口定义、BLL 类
+  边界：调用队友A的接口
 
-Task(
-  name="dev-api",
-  prompt="""
-【目标】实现认证 API 路由
-【输出】routes/auth.py 的修改
-【边界】只定义路由，调用 dev-auth 的接口
+- 队友C（API层）：负责 Controller + 路由配置
+  文件范围：OSAPI/Controllers/
+  参考：GoodsInboundOrderController 风格
+  交付物：Controller 类
+  边界：只做路由和参数验证
 
-立即开始执行。
-""",
-  subagent_type="general-purpose"
-)
+- 队友D（测试）：负责单元测试 + 集成测试
+  文件范围：Tests/UnitTests/、Tests/IntegrationTests/
+  交付物：测试文件
 
-Task(
-  name="dev-middleware",
-  prompt="""
-【目标】实现认证中间件
-【输出】middleware/auth.py 的修改
-【边界】只做 token 验证
-
-立即开始执行。
-""",
-  subagent_type="general-purpose"
-)
+Use Sonnet for each teammate.
 ```
 
-### 结果整合
+### ⚠️ 关键：提供详细上下文
 
-**Lead Agent 收集所有子 Agent 输出**：
+**队友不继承你的对话历史！**
 
-```
-# 等待所有 Developer 完成
-# 整合结果：
-# - dev-auth: auth.py 已修改
-# - dev-api: routes/auth.py 已修改
-# - dev-middleware: middleware/auth.py 已修改
+每个队友的描述必须包含：
+1. **角色定位** - 数据层/业务层/API层/测试
+2. **文件范围** - 负责哪些文件
+3. **参考代码** - 参考哪个现有模块的风格
+4. **交付物** - 期望输出什么
+5. **边界** - 做什么、不做什么
 
-# 检查是否有冲突
-# 决定是否需要调整
-```
+### 任务粒度原则
+
+| 粒度 | 问题 |
+|------|------|
+| 太小 | 协调开销大于收益 |
+| 太大 | 没有检查点，浪费精力 |
+| 适中 | 自包含的工作单元，有明确交付物 ✅ |
 
 ---
 
 ## 3. 验证 (Validate)
 
-### 测试验证
+### 监控进展
 
 ```
-# 启动 Tester Agent
-Task(
-  name="tester",
-  prompt="""
-【目标】验证用户认证功能
-【输出】测试结果报告
-【工具】Bash(pytest)
+# 切换到不同队友查看进展
+Shift+Up/Down
 
-测试用例：
-1. 登录成功返回 token
-2. 登录失败返回 401
-3. token 过期返回 401
+# 或发送消息询问
+Ask teammate A about their progress
+```
 
-立即开始执行。
-""",
-  subagent_type="general-purpose"
-)
+### 运行测试
+
+```
+# 让测试队友运行测试
+Ask the tester teammate to run all tests
 ```
 
 ### 代码审查
 
 ```
-# 启动 Reviewer Agent
-Task(
-  name="reviewer",
-  prompt="""
-【目标】审查认证模块代码质量
-【输出】问题列表 + 改进建议
-【工具】Read/Grep
-
-审查维度：
-1. 安全性：是否有 SQL 注入、XSS 风险
-2. 性能：是否有 N+1 查询
-3. 可维护性：代码结构是否清晰
-
-立即开始执行。
-""",
-  subagent_type="general-purpose"
-)
-```
-
-### 假设验证
-
-```
-# 更新假设状态
-假设: 如果添加 Redis 缓存，那么 API 响应时间降低 50%
-状态: validated  # 测试数据支持假设
-证据: 响应时间从 200ms 降到 85ms
+# 创建审查队友
+创建一个 agent team 来审查代码：
+- 队友A（安全审查）：检查 SQL 注入、XSS 等
+- 队友B（性能审查）：检查 N+1 查询、内存泄漏
+- 队友C（代码质量）：检查命名、结构、注释
 ```
 
 ---
@@ -204,9 +157,9 @@ Task(
 
 ```
 # 记录学到的东西
-1. Redis 缓存对读密集型 API 效果显著
-2. 需要注意缓存失效策略
-3. 并行 Agent 开发模式适合独立模块
+1. 按层分配队友比按文件分配更有效
+2. 提供参考代码风格可以减少返工
+3. 明确边界可以避免文件冲突
 ```
 
 ### 更新记忆
@@ -218,101 +171,138 @@ Task(
 - 记录可复用的解决方案
 ```
 
-### 优化策略
-
-```
-# 下次类似任务
-- 可以复用相同的分解策略
-- 可以复用相同的测试用例模板
-- 避免重复踩坑
-```
-
 ---
 
 ## 工作流示例
 
-### 示例 1：新功能开发
+### 示例 1：新功能开发（4-5 个队友）
 
 ```
 # 1. 探索
 假设: 如果添加搜索功能，用户能更快找到内容
 优先级: P1
 
-# 2. 构建（分解为 3 个并行任务）
-Task(name="dev-search-api", prompt="实现搜索 API...")
-Task(name="dev-search-ui", prompt="实现搜索界面...")
-Task(name="dev-search-index", prompt="实现索引构建...")
+# 2. 构建（创建团队）
+创建一个 agent team 来开发搜索功能：
 
-# 3. 验证
-Task(name="reviewer", prompt="审查搜索模块...")
-Task(name="tester", prompt="测试搜索功能...")
+- 队友A（数据层）：负责索引构建、查询优化
+  文件范围：src/search/indexer.py、src/search/querier.py
+  参考：现有的数据库查询风格
+
+- 队友B（业务层）：负责搜索逻辑、结果排序
+  文件范围：src/services/search_service.py
+  参考：现有的 service 风格
+
+- 队友C（API层）：负责搜索 API 端点
+  文件范围：src/api/search_routes.py
+  参考：现有的路由风格
+
+- 队友D（测试）：负责测试用例
+  文件范围：tests/test_search.py
+
+Use Sonnet for each teammate.
+
+# 3. 验证（创建审查团队）
+创建一个 agent team 来审查搜索功能：
+- 队友A：检查性能（索引大小、查询延迟）
+- 队友B：检查边界情况（空搜索、特殊字符）
 
 # 4. 学习
 # 记录：全文搜索用 Elasticsearch 效果好
 ```
 
-### 示例 2：Bug 修复
+### 示例 2：跨模块重构（3-4 个队友）
 
 ```
 # 1. 探索
-假设: 如果修复 X，bug Y 会消失
-优先级: P0
-
-# 2. 构建
-Task(name="developer", prompt="修复 bug...")
-
-# 3. 验证
-Task(name="tester", prompt="验证修复...")
-
-# 4. 学习
-# 记录：bug 的根因和预防方法
-```
-
-### 示例 3：代码重构
-
-```
-# 1. 探索
-假设: 如果重构 X 模块，可维护性提升 50%
+假设: 如果统一错误码，API 响应更一致
 优先级: P2
 
-# 2. 构建（按子模块分解）
-Task(name="dev-refactor-core", prompt="重构核心...")
-Task(name="dev-refactor-utils", prompt="重构工具...")
-Task(name="dev-refactor-tests", prompt="更新测试...")
+# 2. 构建（按模块分组）
+创建一个 agent team 来统一错误码：
+
+- 队友A：负责 商品管理 + 分类 模块
+  文件：goods_controller.py、category_controller.py
+  
+- 队友B：负责 采购 + 入库 + 库存 模块
+  文件：purchase_controller.py、inbound_controller.py
+  
+- 队友C：负责 销售 + 团购 模块
+  文件：sales_controller.py、wholesale_controller.py
+
+- 队友D：负责更新文档
+  文件：docs/error_codes.md
 
 # 3. 验证
-Task(name="reviewer", prompt="检查重构质量...")
-Task(name="tester", prompt="确保功能不变...")
+# 运行所有测试确保没有破坏功能
 
 # 4. 学习
-# 记录：重构的最佳实践
+# 记录：按模块分组避免文件冲突
+```
+
+### 示例 3：复杂 Bug 调查（3 个队友）
+
+```
+# 1. 探索
+假设: 库存扣减不准确可能是并发问题
+优先级: P0
+
+# 2. 构建（竞争性假设）
+创建一个 agent team 来调查库存问题：
+
+- 队友A（入口追踪）：从 Controller → BLL → DAL 追踪流程
+  重点：请求处理流程、事务边界
+  
+- 队友B（数据验证）：检查数据库一致性
+  重点：库存余额 vs 流水合计
+  
+- 队友C（并发分析）：检查锁机制、MQ 幂等性
+  重点：并发控制、异步处理
+
+# 3. 验证
+# 队友之间竞争验证，找出真正的根因
+
+# 4. 学习
+# 记录：多队友竞争验证比单 Agent 更快定位 Bug
+```
+
+### 示例 4：发版前质量验证（3 个队友）
+
+```
+# 创建一个 agent team 来进行发版前检查：
+
+- 队友A（单元测试）：运行所有单元测试，修复失败用例
+- 队友B（集成测试）：运行所有集成测试，验证端到端流程
+- 队友C（数据库验证）：检查关键表的数据完整性
+
+# 等待所有队友完成
+Wait for your teammates to complete their tasks before proceeding.
 ```
 
 ---
 
-## 最佳实践（来自 Anthropic）
+## 最佳实践（来自 Claude Code 官方）
 
-1. **教会 Lead Agent 如何委派**
-   - 详细描述：目标、输出格式、工具、边界
-
-2. **根据复杂度调整努力**
-   - 简单任务少投入，复杂任务多投入
-
-3. **并行化提速**
-   - 同时启动子 Agent
-   - 减少等待时间
-
-4. **先宽后窄**
-   - 先探索整体，再深入细节
-
-5. **让 Agent 自我改进**
-   - 记录失败模式
-   - 优化 prompt 和工具
+1. **给队友足够的上下文** - 他们不继承你的对话历史
+2. **任务粒度适中** - 自包含的工作单元，有明确交付物
+3. **避免文件冲突** - 不同队友负责不同文件
+4. **从简单场景入手** - 先做研究/评审，再做并行开发
+5. **定期检查进展** - Shift+Up/Down 查看队友状态
+6. **指定模型** - 用 Sonnet 降低成本
+7. **按层分配 > 按文件分配** - 分层架构天然适合多队友
+8. **复杂模块才用 Teams** - 简单 CRUD 用单 Agent 即可
 
 ---
 
-## ⛔ 禁止使用 TeamCreate
+## 常用指令
 
-TeamCreate → `in-process` 后端 → Agent idle
+```
+# 让特定队友停止工作
+Ask the [name] teammate to shut down
 
-使用原生 Task → 独立后端 → 正常执行 ✅
+# 等待所有队友完成
+Wait for your teammates to complete their tasks before proceeding
+
+# 清理团队
+Clean up the team
+```
