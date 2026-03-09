@@ -840,9 +840,10 @@ def page_coach():
             import shutil
             from pathlib import Path
             
-            # 项目名称作为 session 标识
+            # 项目名称作为 session 标识（处理边缘情况）
             project_name_safe = Path(project_path).name
-            session_name = "aop_" + "".join(c if c.isalnum() else "_" for c in project_name_safe).lower()
+            sanitized = "".join(c if c.isalnum() else "_" for c in project_name_safe).strip("_")
+            session_name = f"aop_{sanitized}" if sanitized else "aop_default"
             
             col1, col2, col3 = st.columns([2, 2, 1])
             
@@ -852,23 +853,36 @@ def page_coach():
                         st.error("openclaw 未安装或不在 PATH 中")
                     else:
                         # 初始化消息（加载 AOP 敏捷教练身份）
-                        init_message = f"你好，我是 AOP 敏捷教练。当前项目: {project_name_safe}，路径: {project_path}。请读取项目记忆并汇报状态。"
+                        # 安全处理：移除可能导致问题的字符
+                        safe_project_name = project_name_safe.replace('"', '').replace("'", "")
+                        safe_project_path = project_path.replace('"', '').replace("'", "")
+                        init_message = f"你好，我是 AOP 敏捷教练。当前项目: {safe_project_name}，路径: {safe_project_path}。请读取项目记忆并汇报状态。"
                         
                         if sys.platform == "win32":
-                            cmd = f'openclaw tui --session {session_name} --message "{init_message}"'
+                            # Windows: 转义引号
+                            safe_title = project_name_safe.replace('"', '""')
+                            safe_msg = init_message.replace('"', '""')
+                            cmd = f'openclaw tui --session {session_name} --message "{safe_msg}"'
                             subprocess.Popen(
-                                f'start "AOP 敏捷教练 - {project_name_safe}" cmd /k "{cmd}"',
+                                f'start "AOP 敏捷教练 - {safe_title}" cmd /k "{cmd}"',
                                 shell=True
                             )
                         elif sys.platform == "darwin":
-                            apple_script = f'tell application "Terminal" to do script "openclaw tui --session {session_name} --message \\"{init_message}\\"'
+                            # macOS: AppleScript 转义
+                            safe_msg = init_message.replace('\\', '\\\\').replace('"', '\\"')
+                            apple_script = f'tell application "Terminal" to do script "openclaw tui --session {session_name} --message \\"{safe_msg}\\""'
                             subprocess.Popen(["osascript", "-e", apple_script])
                         else:
-                            if shutil.which("gnome-terminal"):
+                            # Linux: 尝试多种终端
+                            safe_msg = init_message.replace('"', '\\"')
+                            terminal = shutil.which("gnome-terminal") or shutil.which("konsole") or shutil.which("xterm")
+                            if terminal:
                                 subprocess.Popen([
-                                    "gnome-terminal", "--", "bash", "-c",
-                                    f'openclaw tui --session {session_name} --message "{init_message}"; exec bash'
+                                    terminal, "--", "bash", "-c",
+                                    f'openclaw tui --session {session_name} --message "{safe_msg}"; exec bash'
                                 ])
+                            else:
+                                st.warning("未找到支持的终端模拟器 (gnome-terminal/konsole/xterm)")
                         st.toast(f"已启动 TUI (session: {session_name})", icon="✅")
             
             with col2:
@@ -882,11 +896,6 @@ def page_coach():
                     st.rerun()
             
             st.caption(f"💡 Session: `{session_name}` | 项目: `{project_path}`")
-                if st.button("🔄", use_container_width=True, key="refresh_status"):
-                    st.rerun()
-            
-            agent_status = "✅ 已创建" if check_agent_exists(agent_name) else "⏳ 待创建"
-            st.caption(f"💡 Agent: `{agent_name}` ({agent_status}) | 项目: `{project_path}`")
 
         elif primary_agent in ["claude_code", "opencode"]:
             # CLI 模式 - 启动命令行工具
