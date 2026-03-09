@@ -8,6 +8,7 @@ Classes:
     PrimaryAgent: Abstract base class for primary agents
     ClaudeCodeAgent: Claude Code CLI implementation
     OpenCodeAgent: OpenCode CLI implementation
+    OpenClawAgent: OpenClaw AI Assistant implementation
     AgentRegistry: Central registry for managing agents
     Workspace: Project workspace configuration
     WorkspaceManager: Workspace management
@@ -22,6 +23,7 @@ Functions:
 from .base import AgentContext, PrimaryAgent
 from .claude_code import ClaudeCodeAgent
 from .opencode import OpenCodeAgent
+from .openclaw import OpenClawAgent
 from .registry import AgentRegistry, get_registry, reset_registry
 from .workspace import Workspace, WorkspaceManager
 from .listener import CommandListener, get_listener, start_listener, stop_listener, submit_command
@@ -31,6 +33,7 @@ __all__ = [
     "PrimaryAgent",
     "ClaudeCodeAgent",
     "OpenCodeAgent",
+    "OpenClawAgent",
     "AgentRegistry",
     "get_registry",
     "reset_registry",

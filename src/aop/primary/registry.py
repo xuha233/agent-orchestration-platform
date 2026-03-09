@@ -146,9 +146,11 @@ def get_registry() -> AgentRegistry:
         # Register default agents
         from .claude_code import ClaudeCodeAgent
         from .opencode import OpenCodeAgent
+        from .openclaw import OpenClawAgent
 
         _global_registry.register(ClaudeCodeAgent())
         _global_registry.register(OpenCodeAgent())
+        _global_registry.register(OpenClawAgent())
 
     return _global_registry
 
