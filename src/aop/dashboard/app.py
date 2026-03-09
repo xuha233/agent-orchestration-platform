@@ -835,17 +835,45 @@ def page_coach():
 
         # 根据主 Agent 类型显示不同的启动选项
         if primary_agent == "openclaw":
-            # OpenClaw 模式 - 打开 web 对话页
-            col1, col2 = st.columns([3, 1])
+            # OpenClaw 模式 - 启动 TUI 界面
+            import subprocess
+            import shutil
+            from pathlib import Path
+            
+            # 项目名称作为 agent 名称
+            project_name_safe = Path(project_path).name
+            agent_name = "aop_" + "".join(c if c.isalnum() else "_" for c in project_name_safe).lower()
+            
+            col1, col2, col3 = st.columns([2, 2, 1])
+            
             with col1:
-                if st.button("🟢 打开 OpenClaw 对话", use_container_width=True, key="launch_openclaw"):
+                if st.button("🖥️ 启动 OpenClaw TUI", use_container_width=True, key="launch_openclaw_tui"):
+                    if not shutil.which("openclaw"):
+                        st.error("openclaw 未安装或不在 PATH 中")
+                    else:
+                        # 启动 TUI（每个项目使用独立 agent）
+                        if sys.platform == "win32":
+                            cmd = f'start "AOP 敏捷教练 - {project_name_safe}" cmd /k "openclaw tui --agent {agent_name}"'
+                            subprocess.Popen(cmd, shell=True)
+                        elif sys.platform == "darwin":
+                            apple_script = f'tell application "Terminal" to do script "openclaw tui --agent {agent_name}"'
+                            subprocess.Popen(["osascript", "-e", apple_script])
+                        else:
+                            if shutil.which("gnome-terminal"):
+                                subprocess.Popen(["gnome-terminal", "--", "bash", "-c", f"openclaw tui --agent {agent_name}; exec bash"])
+                        st.toast(f"已启动 TUI (agent: {agent_name})", icon="✅")
+            
+            with col2:
+                if st.button("🌐 打开 Web 对话", use_container_width=True, key="launch_openclaw_web"):
                     import webbrowser
                     webbrowser.open("http://127.0.0.1:18789/")
-                    st.toast("已打开 OpenClaw 对话页", icon="✅")
-            with col2:
-                if st.button("🔄 刷新", use_container_width=True, key="refresh_status"):
+                    st.toast("已打开 Web 对话", icon="✅")
+            
+            with col3:
+                if st.button("🔄", use_container_width=True, key="refresh_status"):
                     st.rerun()
-            st.caption("💡 OpenClaw 主 Agent - 直接在 Dashboard 中对话")
+            
+            st.caption(f"💡 Agent: `{agent_name}` | 项目: `{project_path}`")
 
         elif primary_agent in ["claude_code", "opencode"]:
             # CLI 模式 - 启动命令行工具
