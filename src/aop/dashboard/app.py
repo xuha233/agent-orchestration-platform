@@ -853,14 +853,14 @@ def page_coach():
                     else:
                         # 启动 TUI（每个项目使用独立 agent）
                         if sys.platform == "win32":
-                            cmd = f'start "AOP 敏捷教练 - {project_name_safe}" cmd /k "openclaw tui --agent {agent_name}"'
+                            cmd = f'start "AOP 敏捷教练 - {project_name_safe}" cmd /k "openclaw tui --session {agent_name}"'
                             subprocess.Popen(cmd, shell=True)
                         elif sys.platform == "darwin":
-                            apple_script = f'tell application "Terminal" to do script "openclaw tui --agent {agent_name}"'
+                            apple_script = f'tell application "Terminal" to do script "openclaw tui --session {agent_name}"'
                             subprocess.Popen(["osascript", "-e", apple_script])
                         else:
                             if shutil.which("gnome-terminal"):
-                                subprocess.Popen(["gnome-terminal", "--", "bash", "-c", f"openclaw tui --agent {agent_name}; exec bash"])
+                                subprocess.Popen(["gnome-terminal", "--", "bash", "-c", f"openclaw tui --session {agent_name}; exec bash"])
                         st.toast(f"已启动 TUI (agent: {agent_name})", icon="✅")
             
             with col2:
