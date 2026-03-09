@@ -416,6 +416,60 @@ aop agent run "Your task description here"
 - **Provider shows "Not found"** → Install corresponding CLI, configure API Key
 - **`aop` command not found** → Ensure pip install succeeded, check PATH
 
+
+### OpenClaw Skill Installation (Optional)
+
+If the user is using [OpenClaw](https://github.com/open-claw/open-claw), install the AOP Agile Coach Skill:
+
+**Detect OS and provide corresponding commands:**
+
+Cross-platform (Python, most universal):
+```bash
+python -c "
+import shutil
+from pathlib import Path
+
+src = Path('skills/aop-coach')
+dst = Path.home() / '.openclaw' / 'skills' / 'aop-coach'
+dst.mkdir(parents=True, exist_ok=True)
+
+for f in ['SKILL.md', 'README.md']:
+    shutil.copy(src / f, dst / f)
+
+(dst / 'references').mkdir(exist_ok=True)
+for f in ['TEAM.md', 'WORKFLOW.md']:
+    shutil.copy(src / 'references' / f, dst / 'references' / f)
+
+print(f'Skill installed to: {dst}')
+"
+```
+
+Windows PowerShell:
+```powershell
+$src = "skills\aop-coach"
+$dst = "$env:USERPROFILE\.openclaw\skills\aop-coach"
+New-Item -ItemType Directory -Path $dst -Force | Out-Null
+Copy-Item -Path "$src\SKILL.md", "$src\README.md" -Destination $dst
+New-Item -ItemType Directory -Path "$dst\references" -Force | Out-Null
+Copy-Item -Path "$src\references\TEAM.md", "$src\references\WORKFLOW.md" -Destination "$dst\references"
+Write-Host "Skill installed to: $dst"
+```
+
+macOS/Linux:
+```bash
+src="skills/aop-coach"
+dst="$HOME/.openclaw/skills/aop-coach"
+mkdir -p "$dst/references"
+cp "$src/SKILL.md" "$src/README.md" "$dst/"
+cp "$src/references/TEAM.md" "$src/references/WORKFLOW.md" "$dst/references/"
+echo "Skill installed to: $dst"
+```
+
+**After installation, tell the user:**
+- Test in OpenClaw with: `-aop status`
+- See `skills/aop-coach/README.md` for details
+
+---
 ### After Installation
 
 **Ask the user:** "Installation complete! What do you want to build with AOP?"

@@ -368,6 +368,73 @@ aop agent run "你的任务描述"
 - **Provider 显示 "Not found"** → 安装对应 CLI，配置 API Key
 - **`aop` 命令找不到** → 确保 pip install 成功，检查 PATH
 
+
+### OpenClaw Skill 安装（可选）
+
+如果用户使用 [OpenClaw](https://github.com/open-claw/open-claw)，可以安装 AOP 敏捷教练 Skill：
+
+**检测操作系统并提供对应命令：**
+
+```bash
+# 检测操作系统
+# Windows: $env:OS 或 ver
+# macOS/Linux: uname -a
+
+# 跨平台安装命令（Python 方式，最通用）
+python -c "
+import shutil
+from pathlib import Path
+
+# 源目录（AOP 项目中的 skill）
+src = Path('skills/aop-coach')
+
+# 目标目录
+if Path.home().name == 'Users' or Path.home().name == 'home':
+    dst = Path.home() / '.openclaw' / 'skills' / 'aop-coach'
+else:
+    dst = Path.home() / '.openclaw' / 'skills' / 'aop-coach'
+
+dst.mkdir(parents=True, exist_ok=True)
+
+for f in ['SKILL.md', 'README.md']:
+    shutil.copy(src / f, dst / f)
+
+(dst / 'references').mkdir(exist_ok=True)
+for f in ['TEAM.md', 'WORKFLOW.md']:
+    shutil.copy(src / 'references' / f, dst / 'references' / f)
+
+print(f'Skill installed to: {dst}')
+"
+```
+
+**或者使用平台原生命令：**
+
+Windows PowerShell:
+```powershell
+$src = "skills\aop-coach"
+$dst = "$env:USERPROFILE\.openclaw\skills\aop-coach"
+New-Item -ItemType Directory -Path $dst -Force | Out-Null
+Copy-Item -Path "$src\SKILL.md", "$src\README.md" -Destination $dst
+New-Item -ItemType Directory -Path "$dst\references" -Force | Out-Null
+Copy-Item -Path "$src\references\TEAM.md", "$src\references\WORKFLOW.md" -Destination "$dst\references"
+Write-Host "Skill installed to: $dst"
+```
+
+macOS/Linux:
+```bash
+src="skills/aop-coach"
+dst="$HOME/.openclaw/skills/aop-coach"
+mkdir -p "$dst/references"
+cp "$src/SKILL.md" "$src/README.md" "$dst/"
+cp "$src/references/TEAM.md" "$src/references/WORKFLOW.md" "$dst/references/"
+echo "Skill installed to: $dst"
+```
+
+**安装后告知用户：**
+- 在 OpenClaw 中输入 `-aop status` 测试
+- 详细使用方法见 `skills/aop-coach/README.md`
+
+---
 ### 安装完成后
 
 **询问用户：** "安装完成！你想用 AOP 做什么项目？"
