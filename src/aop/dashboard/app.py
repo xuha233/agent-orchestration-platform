@@ -839,10 +839,23 @@ def page_coach():
             import subprocess
             import shutil
             from pathlib import Path
+            import json
             
-            # 项目名称作为 agent 名称
+            # 项目名称作为 session 标识
             project_name_safe = Path(project_path).name
-            agent_name = "aop_" + "".join(c if c.isalnum() else "_" for c in project_name_safe).lower()
+            session_name = "aop_" + "".join(c if c.isalnum() else "_" for c in project_name_safe).lower()
+            
+            # 读取项目记忆（用于初始化消息）
+            def get_project_context(project_path):
+                context_parts = []
+                aop_dir = Path(project_path) / ".aop"
+                
+                # 读取项目记忆
+                memory_file = aop_dir / "PROJECT_MEMORY.md"
+                if memory_file.exists():
+                    context_parts.append(memory_file.read_text(encoding="utf-8")[:500])
+                
+                return "\n".join(context_parts) if context_parts else "暂无项目记忆"
             
             col1, col2, col3 = st.columns([2, 2, 1])
             
@@ -851,17 +864,21 @@ def page_coach():
                     if not shutil.which("openclaw"):
                         st.error("openclaw 未安装或不在 PATH 中")
                     else:
-                        # 启动 TUI（每个项目使用独立 agent）
+                        # 构建初始化消息（AOP 敏捷教练身份 + 项目上下文）
+                        project_context = get_project_context(project_path)
+                        init_message = f"[系统指令] 你现在是 AOP 敏捷教练，负责协调多 Agent 团队。当前项目: {project_name_safe}，路径: {project_path}。核心理念: AAIF 循环（探索→构建→验证→学习），假设驱动开发。请以敏捷教练身份回应，直接简洁。项目记忆: {project_context[:200]}"
+                        
+                        # 启动 TUI
                         if sys.platform == "win32":
-                            cmd = f'start "AOP 敏捷教练 - {project_name_safe}" cmd /k "openclaw tui --session {agent_name}"'
+                            cmd = f'start "AOP 敏捷教练 - {project_name_safe}" cmd /k "openclaw tui --session {session_name} --message \"{init_message}\""'
                             subprocess.Popen(cmd, shell=True)
                         elif sys.platform == "darwin":
-                            apple_script = f'tell application "Terminal" to do script "openclaw tui --session {agent_name}"'
+                            apple_script = f'tell application "Terminal" to do script "openclaw tui --session {session_name} --message \\\"{init_message}\\\""'
                             subprocess.Popen(["osascript", "-e", apple_script])
                         else:
                             if shutil.which("gnome-terminal"):
-                                subprocess.Popen(["gnome-terminal", "--", "bash", "-c", f"openclaw tui --session {agent_name}; exec bash"])
-                        st.toast(f"已启动 TUI (agent: {agent_name})", icon="✅")
+                                subprocess.Popen(["gnome-terminal", "--", "bash", "-c", f'openclaw tui --session {session_name} --message "{init_message}"; exec bash'])
+                        st.toast(f"已启动 TUI (session: {session_name})", icon="✅")
             
             with col2:
                 if st.button("🌐 打开 Web 对话", use_container_width=True, key="launch_openclaw_web"):
@@ -873,7 +890,7 @@ def page_coach():
                 if st.button("🔄", use_container_width=True, key="refresh_status"):
                     st.rerun()
             
-            st.caption(f"💡 Agent: `{agent_name}` | 项目: `{project_path}`")
+            st.caption(f"💡 Session: `{session_name}` | 项目: `{project_path}`")
 
         elif primary_agent in ["claude_code", "opencode"]:
             # CLI 模式 - 启动命令行工具
