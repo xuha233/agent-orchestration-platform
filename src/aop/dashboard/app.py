@@ -949,7 +949,8 @@ def page_coach():
                                     st.toast(f"已创建 agent: {agent_name}", icon="✅")
                                     agent_exists = True
                                 else:
-                                    st.warning(f"创建 agent 失败: {error[:100] if error else \"未知错误\"}")
+                                    err_msg = error[:100] if error else "未知错误"
+                                    st.warning(f"创建 agent 失败: {err_msg}")
                         
                         # 启动项目专属 Agent（使用 --agent 参数）
                         if agent_exists or True:
@@ -2111,5 +2112,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
