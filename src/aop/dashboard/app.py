@@ -79,12 +79,15 @@ _listener_started = False
 def check_openclaw_status() -> tuple:
     """检查 OpenClaw Gateway 是否运行
     返回: (is_running: bool, status_text: str)
+    
+    检测 Gateway WebSocket 端口 (18789)，而非 Chrome CDP 端口 (18792)
     """
     import socket
+    GATEWAY_PORT = 18789  # Gateway WebSocket 端口
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(2)
-        result = sock.connect_ex(("127.0.0.1", 18792))
+        result = sock.connect_ex(("127.0.0.1", GATEWAY_PORT))
         sock.close()
         if result == 0:
             return True, "运行中"
