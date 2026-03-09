@@ -930,15 +930,18 @@ def page_coach():
                 )
                 return result.returncode == 0, result.stderr
             
+            # 检查 agent 是否存在
+            agent_exists = check_agent_exists(agent_name)
+            
             col1, col2, col3 = st.columns([2, 2, 1])
             
             with col1:
-                if st.button("🖥️ 启动 OpenClaw TUI", use_container_width=True, key="launch_openclaw_tui"):
+                # 方式1: 启动项目专属 Agent（交互式 CLI）
+                if st.button("🎯 启动项目 Agent", use_container_width=True, key="launch_project_agent"):
                     if not shutil.which("openclaw"):
                         st.error("openclaw 未安装或不在 PATH 中")
                     else:
                         # 检查并创建 agent
-                        agent_exists = check_agent_exists(agent_name)
                         if not agent_exists:
                             with st.spinner(f"创建项目专属 agent: {agent_name}..."):
                                 success, error = create_project_agent(agent_name, project_path, project_name_safe)
@@ -948,28 +951,61 @@ def page_coach():
                                 else:
                                     st.warning(f"创建 agent 失败: {error[:100] if error else \"未知错误\"}")
                         
-                        # 启动 TUI（使用独立 session）
-                        init_message = f"我是 AOP 敏捷教练，当前项目: {project_name_safe}。请读取项目记忆 .aop/PROJECT_MEMORY.md 并汇报状态。"
+                        # 启动项目专属 Agent（使用 --agent 参数）
+                        if agent_exists or True:
+                            if sys.platform == "win32":
+                                # Windows: 启动交互式 agent 会话
+                                ps1_script = f"""
+Set-Location "{project_path}"
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "  AOP 敏捷教练 - {project_name_safe}" -ForegroundColor Green
+Write-Host "  Agent: {agent_name}" -ForegroundColor Yellow
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host ""
+while ($true) {{
+    $msg = Read-Host "你"
+    if ($msg -eq "exit" -or $msg -eq "退出") {{ break }}
+    openclaw agent --agent {agent_name} --message $msg
+}}
+"""
+                                ps1_file = Path(tempfile.gettempdir()) / f"aop_agent_{agent_name}.ps1"
+                                ps1_file.write_text(ps1_script, encoding="utf-8")
+                                subprocess.Popen(
+                                    f'start "AOP 敏捷教练 - {project_name_safe}" powershell -NoExit -ExecutionPolicy Bypass -File "{ps1_file}"',
+                                    shell=True
+                                )
+                            st.toast(f"已启动 Agent: {agent_name}", icon="✅")
+            
+            with col2:
+                # 方式2: 启动 TUI（使用 main agent + session 隔离）
+                if st.button("🖥️ 启动 TUI (main)", use_container_width=True, key="launch_openclaw_tui"):
+                    if not shutil.which("openclaw"):
+                        st.error("openclaw 未安装或不在 PATH 中")
+                    else:
+                        # 启动 TUI（session 隔离，通过 message 传递身份）
+                        import tempfile
+                        init_message = f"[AOP 敏捷教练] 项目: {project_name_safe}，路径: {project_path}。请读取 .aop/PROJECT_MEMORY.md 并汇报状态。"
                         
                         if sys.platform == "win32":
-                            cmd = f'start "AOP 敏捷教练 - {project_name_safe}" cmd /k "openclaw tui --session {agent_name} --message \"{init_message}\""'
+                            cmd = f'start "AOP TUI - {project_name_safe}" cmd /k "openclaw tui --session aop_{agent_name} --message \"{init_message}\""'
                             subprocess.Popen(cmd, shell=True)
                         elif sys.platform == "darwin":
-                            apple_script = f'tell application "Terminal" to do script "openclaw tui --session {agent_name} --message \\\"{init_message}\\\""'
+                            apple_script = f'tell application "Terminal" to do script "openclaw tui --session aop_{agent_name} --message \\\"{init_message}\\\""'
                             subprocess.Popen(["osascript", "-e", apple_script])
                         else:
                             if shutil.which("gnome-terminal"):
-                                subprocess.Popen(["gnome-terminal", "--", "bash", "-c", f'openclaw tui --session {agent_name} --message "{init_message}"; exec bash'])
-                        
-                        st.toast(f"已启动 TUI (agent: {agent_name})", icon="✅")
+                                subprocess.Popen(["gnome-terminal", "--", "bash", "-c", f'openclaw tui --session aop_{agent_name} --message "{init_message}"; exec bash'])
+                        st.toast(f"已启动 TUI (session: aop_{agent_name})", icon="✅")
             
-            with col2:
-                if st.button("🌐 打开 Web 对话", use_container_width=True, key="launch_openclaw_web"):
+            with col3:
+                if st.button("🌐", use_container_width=True, key="launch_openclaw_web"):
                     import webbrowser
                     webbrowser.open("http://127.0.0.1:18789/")
                     st.toast("已打开 Web 对话", icon="✅")
             
-            with col3:
+            # Agent 状态显示
+            agent_status = "✅ 已创建" if check_agent_exists(agent_name) else "⏳ 待创建"
+            st.caption(f"💡 Agent: `{agent_name}` ({agent_status}) | 项目: `{project_path}`")
                 if st.button("🔄", use_container_width=True, key="refresh_status"):
                     st.rerun()
             
