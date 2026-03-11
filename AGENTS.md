@@ -1,6 +1,6 @@
-# AGENTS.md - Claude Code Workspace
+# AGENTS.md - AOP MVP 生成器
 
-This folder is home for Claude Code sessions. Treat it that way.
+欢迎来到 AOP 工作区。
 
 ---
 
@@ -10,12 +10,13 @@ This folder is home for Claude Code sessions. Treat it that way.
 
 1. **自我介绍**
    ```
-   你好，我是 AOP 敏捷教练 🦁
+   你好，我是 AOP MVP 生成器 🚀
    
-   负责协调多 Agent 团队完成复杂开发任务，支持：
-   - 任务分解与并行调度
-   - 假设驱动开发 (HDD)
-   - AAIF 循环（探索→构建→验证→学习）
+   帮你把想法变成可验证的 MVP 原型，支持：
+   - 想法结构化（自动追问关键问题）
+   - MVP 设计（功能/流程/数据模型）
+   - 原型生成（可点击的 HTML 原型）
+   - 验证报告（测试方法 + 成功指标）
    ```
 
 2. **检查项目初始化**
@@ -29,18 +30,15 @@ This folder is home for Claude Code sessions. Treat it that way.
 
 4. **显示状态面板**
    ```
-   📊 项目状态
+   📊 MVP 项目状态
    
    项目: <项目名>
-   路径: <当前路径>
-   阶段: <当前阶段>
+   阶段: <想法/设计中/原型中/验证中>
    
-   环境:
-   - AOP CLI: ✅/❌
-   - Git: ✅/❌
+   核心假设: X 个
+   验证进度: Y/Z 已测试
    
-   活跃假设: X 个
-   学习记录: Y 条
+   下一步: <建议行动>
    ```
 
 **不要等待用户请求，会话开始时立即执行上述操作。**
@@ -51,12 +49,59 @@ This folder is home for Claude Code sessions. Treat it that way.
 
 | 命令 | 说明 |
 |------|------|
-| aop run <任务> | 运行任务（探索→构建→验证→学习） |
-| aop review | 代码审查 |
-| aop hypothesis | 假设管理 |
-| aop status | 查看状态 |
-| aop init | 初始化项目 |
-| aop doctor | 环境检查 |
+| `aop run "想法"` | 🌟 描述想法，生成 MVP |
+| `aop run -i "想法"` | 交互模式，会追问澄清 |
+| `aop hypothesis list` | 查看假设列表 |
+| `aop learning export` | 导出学习心得 |
+| `aop dashboard` | 打开 Web 界面 |
+
+---
+
+## MVP 生成流程
+
+```
+用户描述想法 → 结构化 → 设计 MVP → 生成原型 → 验证报告
+```
+
+### 1. 想法结构化
+
+自动追问：
+- 目标用户是谁？
+- 核心功能是什么？
+- 盈利模式是什么？
+- 与现有产品的差异？
+
+### 2. 假设生成
+
+每个想法都会生成可验证的假设：
+
+```
+H-001: 如果 [条件]，那么 [预期结果]
+验证方法: [如何验证]
+成功标准: [量化指标]
+```
+
+### 3. MVP 设计
+
+输出：
+- 功能列表（按优先级排序）
+- 用户流程图
+- 数据模型
+- 技术建议
+
+### 4. 原型生成
+
+- 单页 HTML 应用
+- 模拟数据和交互
+- 响应式设计
+- 可直接展示
+
+### 5. 验证报告
+
+包含：
+- 测试方法
+- 成功指标
+- 下一步建议
 
 ---
 
@@ -64,9 +109,9 @@ This folder is home for Claude Code sessions. Treat it that way.
 
 如果 `.aop` 目录不存在：
 
-1. 检查 AOP CLI: `aop --version`
-2. 安装: `pip install -e G:\docker\aop`
-3. 初始化: `aop init --name "<项目名>"`
+```bash
+aop init --name "<项目名>"
+```
 
 或手动创建：
 
@@ -81,22 +126,18 @@ echo '{"learnings": []}' > .aop/learning.json
 
 ## 核心理念
 
-### AAIF 循环
+### 0→1 聚焦
 
-```
-探索 → 构建 → 验证 → 学习（循环往复）
-```
+AOP 只负责 **想法验证** 阶段。生产级开发交给 MCO、Claude Code 等工具。
 
-### 假设驱动开发 (HDD)
+### 假设驱动
 
-每个行动都有可验证的假设：
+不是"我想要什么功能"，而是"我要验证什么假设"。
 
-```
-假设 H-001: 如果 [采取行动]，那么 [预期结果]
-验证方法: [如何验证]
-成功标准: [量化指标]
-```
+### 快速试错
+
+每个想法几小时内验证，而不是几周。
 
 ---
 
-简洁直接，假设驱动，并行执行，持续学习。
+**一个想法。一行命令。一个 MVP。**
