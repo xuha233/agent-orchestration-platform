@@ -1,5 +1,7 @@
 """Tests for ShimAdapterBase."""
 
+import os
+import tempfile
 import pytest
 from aop.core.adapter.shim import ShimAdapterBase, TaskRunRef
 from aop.core.types import NormalizeContext
@@ -59,7 +61,7 @@ class TestTaskRunRef:
             task_id="test-task-001",
             provider="claude",
             run_id="test-run-001",
-            artifact_path="/tmp/artifacts",
+            artifact_path=os.path.join(tempfile.gettempdir(), "artifacts"),
             started_at=1234567890.0,
             pid=1234,
             session_id="session-001",

@@ -22,6 +22,7 @@ from aop.primary.base import PrimaryAgent
 from aop.primary.workspace import WorkspaceManager, Workspace, SettingsManager
 from aop.primary.listener import start_listener, submit_command
 from aop.dashboard.logger import get_dashboard_logger, setup_dashboard_logging
+from aop.dashboard.refresh import render_refresh_controls, auto_refresh
 
 import logging
 _logger = logging.getLogger(__name__)
@@ -292,7 +293,7 @@ def get_project_stats() -> Dict[str, Any]:
 
 def get_hypotheses_data() -> List[Dict]:
     """获取假设数据"""
-    data = read_aop_json("hypotheses.json/hypotheses.json")
+    data = read_aop_json("hypotheses.json")
     if data and "data" in data:
         return list(data["data"].values())
     return []
@@ -332,6 +333,120 @@ def parse_md_section(content: str, section_title: str) -> str:
     return "\n".join(section_lines).strip()
 
 
+
+def get_project_progress_data(project_path: str) -> dict:
+    """获取项目进度数据
+    
+    Args:
+        project_path: 项目根目录路径
+        
+    Returns:
+        包含假设、学习、Git、测试状态的字典
+    """
+    result = {
+        "hypotheses": {"total": 0, "validated": 0, "testing": 0, "pending": 0},
+        "learnings": {"total": 0, "latest": ""},
+        "git": {"branch": "unknown", "changes": 0},
+        "tests": {"passed": 0, "total": 0}
+    }
+    
+    aop_dir = Path(project_path) / ".aop"
+    
+    # 假设数据
+    hypotheses_file = aop_dir / "hypotheses.json"
+    if hypotheses_file.exists():
+        try:
+            data = json.loads(hypotheses_file.read_text(encoding="utf-8"))
+            hypotheses = list(data.get("data", {}).values())
+            result["hypotheses"]["total"] = len(hypotheses)
+            for h in hypotheses:
+                status = h.get("state", "pending")
+                if status == "validated":
+                    result["hypotheses"]["validated"] += 1
+                elif status == "testing":
+                    result["hypotheses"]["testing"] += 1
+                else:
+                    result["hypotheses"]["pending"] += 1
+        except Exception:
+            pass
+    
+    # 学习记录
+    learning_file = aop_dir / "learning.json"
+    if learning_file.exists():
+        try:
+            data = json.loads(learning_file.read_text(encoding="utf-8"))
+            learnings = data.get("data", {}).get("records", [])
+            result["learnings"]["total"] = len(learnings)
+            if learnings:
+                insights = learnings[-1].get("insights", [])
+                if insights:
+                    result["learnings"]["latest"] = insights[-1][:50]
+        except Exception:
+            pass
+    
+    # Git 状态
+    try:
+        branch_result = subprocess.run(
+            ["git", "branch", "--show-current"],
+            cwd=project_path,
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        result["git"]["branch"] = branch_result.stdout.strip() or "unknown"
+        
+        status_result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=project_path,
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        changes = [line for line in status_result.stdout.strip().split("\n") if line]
+        result["git"]["changes"] = len(changes)
+    except Exception:
+        pass
+    
+    # 测试状态（运行 pytest）
+    try:
+        test_result = subprocess.run(
+            ["pytest", "--collect-only", "-q"],
+            cwd=project_path,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        # 解析测试收集结果
+        output = test_result.stdout + test_result.stderr
+        import re as regex
+        # 匹配 "X tests collected" 或 "X items collected"
+        match = regex.search(r"(\d+)\s+(?:tests?|items?)\s+(?:collected|selected)", output, regex.IGNORECASE)
+        if match:
+            result["tests"]["total"] = int(match.group(1))
+        
+        # 运行测试获取通过数
+        run_result = subprocess.run(
+            ["pytest", "-q", "--tb=no", "-x"],
+            cwd=project_path,
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        # 解析测试结果
+        run_output = run_result.stdout + run_result.stderr
+        # 匹配 "X passed"
+        passed_match = regex.search(r"(\d+)\s+passed", run_output)
+        if passed_match:
+            result["tests"]["passed"] = int(passed_match.group(1))
+        elif result["tests"]["total"] > 0 and run_result.returncode == 0:
+            # 如果测试全部通过，passed = total
+            result["tests"]["passed"] = result["tests"]["total"]
+    except Exception:
+        pass
+    
+    return result
+
+
 # ============ 页面组件 ============
 
 def render_sidebar():
@@ -339,13 +454,13 @@ def render_sidebar():
     with st.sidebar:
         st.title("🤖 AOP")
 
-        # 获取设置，决定是否显示开发者控制台
+        # 获取设置，决定是否显示调试日志
         sm = st.session_state.settings_manager
         show_dev_console = sm.get_show_dev_console()
 
         pages = ["🏠 首页", "💬 敏捷教练", "📚 项目记忆", "📁 工作区", "⚙️ 设置"]
         if show_dev_console:
-            pages.append("🖥️ 开发者控制台")
+            pages.append("🖥️ 调试日志")
 
         page = st.radio(
             "导航",
@@ -744,6 +859,52 @@ def page_home():
     else:
         st.info("未找到项目记忆文件")
 
+    # === 项目实时状态 ===
+    # 融合说明：移除重复的假设统计（已在"项目进度报告"模块显示），只保留 Git/测试/学习状态
+    st.markdown("---")
+    st.markdown("### 📊 项目实时状态")
+    
+    # 获取当前工作区路径
+    if st.session_state.current_workspace:
+        project_path = st.session_state.current_workspace.project_path
+    else:
+        project_path = "G:/docker/aop"
+    
+    # 获取实时状态数据
+    progress_data = get_project_progress_data(project_path)
+    
+    # 显示 3 个指标卡片（Git、学习、测试）
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        # Git 状态
+        g = progress_data["git"]
+        st.metric("Git 分支", g['branch'])
+        if g['changes'] > 0:
+            st.caption(f"⚠️ {g['changes']} 个未提交更改")
+        else:
+            st.caption("✅ 工作区干净")
+    
+    with col2:
+        # 学习记录
+        l = progress_data["learnings"]
+        st.metric("学习记录", l['total'])
+        if l['latest']:
+            st.caption(f"最新: {l['latest']}...")
+    
+    with col3:
+        # 测试状态
+        t = progress_data["tests"]
+        if t['total'] > 0:
+            st.metric("测试状态", f"{t['passed']}/{t['total']}")
+            if t['passed'] == t['total']:
+                st.caption("✅ 全部通过")
+            else:
+                st.caption(f"❌ {t['total'] - t['passed']} 个失败")
+        else:
+            st.metric("测试状态", "N/A")
+            st.caption("无测试数据")
+
     # === 快速操作 ===
     st.markdown("---")
     st.markdown("### ⚡ 快速操作")
@@ -762,6 +923,94 @@ def page_home():
         if st.button("⚙️ 系统设置", use_container_width=True):
             st.info("请前往「设置」页面配置")
 
+    # === 刷新控制 ===
+    st.markdown("---")
+    refresh_interval, auto_refresh_enabled = render_refresh_controls(default_interval=30)
+    
+    # 自动刷新
+    if auto_refresh_enabled:
+        auto_refresh(refresh_interval)
+    
+
+    # === 工作区快速启动 ===
+    st.markdown("---")
+    st.markdown("### 🚀 工作区快速启动")
+    
+    # 获取所有工作区
+    workspaces_list = wm.list_workspaces()
+    
+    # 获取主 Agent 设置
+    primary_agent = sm.get_primary_agent()
+    
+    # Agent ID 映射（Webhook agentId）
+    agent_id_map = {
+        "openclaw": "main",
+        "claude_code": "claude",
+        "opencode": "opencode",
+        None: "main",  # 默认使用 main
+    }
+    webhook_agent_id = agent_id_map.get(primary_agent, "main")
+    
+    if not workspaces_list:
+        st.info("还没有工作区，请前往「工作区」页面创建")
+    else:
+        # 显示工作区卡片
+        for ws in workspaces_list:
+            with st.container():
+                col1, col2, col3 = st.columns([3, 2, 1])
+                
+                with col1:
+                    st.markdown(f"**{ws.name}**")
+                    st.caption(f"📂 {ws.project_path}")
+                
+                with col2:
+                    # 检查初始化状态
+                    from pathlib import Path
+                    aop_dir = Path(ws.project_path) / ".aop"
+                    project_memory = aop_dir / "PROJECT_MEMORY.md"
+                    is_initialized = aop_dir.exists() and project_memory.exists()
+                    
+                    if is_initialized:
+                        st.markdown("✅ 已初始化")
+                    else:
+                        st.markdown("⚠️ 未初始化")
+                
+                with col3:
+                    # 启动按钮
+                    if st.button("🚀 启动", key=f"quick_launch_{ws.id}", use_container_width=True):
+                        # 切换到该工作区
+                        st.session_state.current_workspace = ws
+                        wm.set_current_workspace(ws.id)
+                        
+                        # 通过 Webhook 启动 Agent
+                        import requests
+                        try:
+                            response = requests.post(
+                                "http://127.0.0.1:18789/hooks/agent",
+                                headers={
+                                    "Authorization": "Bearer 67bf38952e1a0d4c",
+                                    "Content-Type": "application/json"
+                                },
+                                json={
+                                    "message": "你好，请汇报项目状态",
+                                    "agentId": webhook_agent_id,
+                                    "wakeMode": "now"
+                                },
+                                timeout=5
+                            )
+                            if response.status_code == 200:
+                                result = response.json()
+                                if result.get("ok"):
+                                    st.toast(f"已启动: {ws.name}", icon="✅")
+                                else:
+                                    st.toast(f"启动失败: {result}", icon="❌")
+                            else:
+                                st.toast(f"启动失败: {response.text}", icon="❌")
+                        except Exception as e:
+                            st.toast(f"Webhook 调用失败: {e}", icon="❌")
+                        st.rerun()
+            
+            st.markdown("---")
 
 def page_coach():
     """敏捷教练页面 - 快捷指令面板"""
@@ -826,6 +1075,8 @@ def page_coach():
 
         st.markdown("---")
 
+    st.markdown("---")
+    
     # === 启动 CLI 按钮 ===
     st.markdown("### 🖥️ 启动 CLI")
 
@@ -949,7 +1200,7 @@ def page_coach():
                         if hypotheses_file.exists():
                             try:
                                 data = json.loads(hypotheses_file.read_text(encoding="utf-8"))
-                                hypotheses = data.get("hypotheses", [])
+                                hypotheses = list(data.get("data", {}).values())
                                 if hypotheses:
                                     hypo_text = "\n".join([
                                         f"- [{h.get('status', 'pending')}] {h.get('statement', '')}"
@@ -964,7 +1215,7 @@ def page_coach():
                         if learning_file.exists():
                             try:
                                 data = json.loads(learning_file.read_text(encoding="utf-8"))
-                                learnings = data.get("learnings", [])
+                                learnings = data.get("data", {}).get("records", [])
                                 if learnings:
                                     learn_text = "\n".join([
                                         f"- {l.get('insight', '')[:100]}"
@@ -1493,18 +1744,18 @@ def page_settings():
 
     st.markdown("---")
 
-    # 开发者控制台设置
-    st.markdown("### 开发者控制台")
+    # 调试日志设置
+    st.markdown("### 调试日志")
     show_dev_console = sm.get_show_dev_console()
     new_show_dev = st.toggle(
-        "显示开发者控制台",
+        "显示调试日志",
         value=show_dev_console,
-        help="开启后侧边栏将显示「开发者控制台」选项卡",
+        help="开启后侧边栏将显示「调试日志」选项卡",
     )
 
     if new_show_dev != show_dev_console:
         sm.set_show_dev_console(new_show_dev)
-        st.success(f"已{'开启' if new_show_dev else '关闭'}开发者控制台")
+        st.success(f"已{"开启" if new_show_dev else "关闭"}调试日志")
         st.rerun()
 
     st.markdown("---")
@@ -1745,10 +1996,16 @@ def page_memory():
 
 
 def page_dev_console():
+    from datetime import datetime  # 修复局部变量问题
     """开发者控制台页面"""
-    st.title("🖥️ 开发者控制台")
+    st.title("🖥️ 调试日志")
 
     logger = get_dashboard_logger()
+
+    # 获取当前工作区
+    workspace_id = None
+    if 'current_workspace' in st.session_state and st.session_state.current_workspace:
+        workspace_id = st.session_state.current_workspace.id
 
     # 工具栏
     col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
@@ -1993,12 +2250,18 @@ def main():
         page_workspaces()
     elif page == "⚙️ 设置":
         page_settings()
-    elif page == "🖥️ 开发者控制台":
+    elif page == "🖥️ 调试日志":
         page_dev_console()
 
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
+
 
 
 

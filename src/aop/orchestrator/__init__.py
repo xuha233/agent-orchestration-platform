@@ -1,4 +1,4 @@
-"""
+﻿"""
 Orchestrator Layer - 中枢 Agent 抽象层
 
 统一接口支持多种中枢类型：
@@ -19,6 +19,14 @@ Orchestrator Layer - 中枢 Agent 抽象层
 
     # 检测可用中枢
     available = get_available_orchestrators()
+    
+    # 多 Provider 调度
+    from aop.orchestrator import MultiProviderOrchestrator, TaskType
+    orchestrator = MultiProviderOrchestrator()
+    results = await orchestrator.dispatch(
+        prompt="Review code",
+        agents=[{"name": "reviewer", "provider": "opencode"}]
+    )
 """
 
 from __future__ import annotations
@@ -37,6 +45,12 @@ from .claude_code_orchestrator import ClaudeCodeOrchestrator
 from .opencode_orchestrator import OpenCodeOrchestrator
 from .openclaw_orchestrator import OpenClawOrchestrator
 from .api_orchestrator import APIOrchestrator
+from .multi_provider_orchestrator import (
+    MultiProviderOrchestrator,
+    TaskType,
+    ProviderStats,
+    AgentSpec,
+)
 
 if TYPE_CHECKING:
     from ..llm import LLMClient
@@ -154,6 +168,11 @@ __all__ = [
     "OpenCodeOrchestrator",
     "OpenClawOrchestrator",
     "APIOrchestrator",
+    # 多 Provider 调度器
+    "MultiProviderOrchestrator",
+    "TaskType",
+    "ProviderStats",
+    "AgentSpec",
     # 工厂函数
     "create_orchestrator",
     "discover_orchestrators",

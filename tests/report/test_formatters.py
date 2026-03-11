@@ -1,6 +1,8 @@
 ﻿"""Tests for report formatters."""
 
 import json
+import os
+import tempfile
 import pytest
 from dataclasses import dataclass, field
 from typing import Dict, List, Any
@@ -10,7 +12,7 @@ from typing import Dict, List, Any
 class MockReviewResult:
     """Mock ReviewResult for testing."""
     task_id: str = "test-task-001"
-    artifact_root: str = "/tmp/artifacts/test-task-001"
+    artifact_root: str = os.path.join(tempfile.gettempdir(), "artifacts", "test-task-001")
     decision: str = "FAIL"
     terminal_state: str = "completed"
     provider_results: Dict[str, Any] = field(default_factory=dict)

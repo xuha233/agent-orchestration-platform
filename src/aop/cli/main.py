@@ -32,6 +32,9 @@ EXIT_INCONCLUSIVE = 3
 # Default policy for CLI defaults
 DEFAULT_POLICY = ReviewPolicy()
 
+# Valid provider types for --provider option
+VALID_PROVIDER_TYPES = ["opencode", "claude-code", "openclaw", "auto"]
+
 
 def _get_default_providers() -> str:
     """Get default providers from config or fallback."""
@@ -53,10 +56,7 @@ def _parse_providers(raw: str) -> List[str]:
 
 
 def _parse_provider_timeouts(raw: str) -> Dict[str, int]:
-    """Parse provider-specific timeouts from CLI argument.
-    
-    Format: "claude=120,codex=90"
-    """
+    """Parse provider-specific timeouts from CLI argument."""
     result: Dict[str, int] = {}
     if not raw.strip():
         return result
@@ -73,9 +73,9 @@ def _parse_provider_timeouts(raw: str) -> Dict[str, int]:
         try:
             timeout = int(timeout_text.strip())
         except Exception:
-            raise ValueError(f"invalid timeout value for provider '{provider_name}': {timeout_text.strip()}") from None
+            raise ValueError(f"invalid timeout value for provider ''{provider_name}'': {timeout_text.strip()}") from None
         if timeout <= 0:
-            raise ValueError(f"timeout must be > 0 for provider '{provider_name}'")
+            raise ValueError(f"timeout must be > 0 for provider ''{provider_name}''")
         result[provider_name] = timeout
     return result
 
@@ -103,12 +103,12 @@ def _parse_provider_permissions_json(raw: str) -> Dict[str, Dict[str, str]]:
         if not provider_name:
             raise ValueError("--provider-permissions-json contains empty provider name")
         if not isinstance(permissions, dict):
-            raise ValueError(f"permissions for provider '{provider_name}' must be an object")
+            raise ValueError(f"permissions for provider ''{provider_name}'' must be an object")
         normalized: Dict[str, str] = {}
         for key, value in permissions.items():
             key_name = str(key).strip()
             if not key_name:
-                raise ValueError(f"provider '{provider_name}' contains empty permission key")
+                raise ValueError(f"provider ''{provider_name}'' contains empty permission key")
             normalized[key_name] = str(value)
         result[provider_name] = normalized
     return result
@@ -140,7 +140,6 @@ def _resolve_policy(
     provider_permissions_json: str,
 ) -> ReviewPolicy:
     """Resolve ReviewPolicy from config and CLI overrides."""
-    # Parse CLI overrides
     parsed_provider_timeouts = dict(config.policy.provider_timeouts)
     parsed_provider_timeouts.update(_parse_provider_timeouts(provider_timeouts))
     
@@ -151,7 +150,6 @@ def _resolve_policy(
         _parse_provider_permissions_json(provider_permissions_json),
     )
     
-    # Resolve values (CLI takes precedence)
     final_stall_timeout = stall_timeout if stall_timeout > 0 else config.policy.stall_timeout_seconds
     final_hard_timeout = review_hard_timeout if review_hard_timeout >= 0 else config.policy.review_hard_timeout_seconds
     final_poll_interval = poll_interval if poll_interval > 0 else config.policy.poll_interval_seconds
@@ -175,6 +173,22 @@ def _resolve_policy(
     )
 
 
+def _get_best_provider() -> str:
+    """Get the best available provider (orchestrator type)."""
+    try:
+        from ..orchestrator import get_best_orchestrator
+        return get_best_orchestrator()
+    except Exception:
+        return "api"
+
+
+def _resolve_provider(provider: str) -> str:
+    """Resolve provider type from CLI argument."""
+    if provider == "auto":
+        return _get_best_provider()
+    return provider
+
+
 def _show_next_steps():
     """Show next steps after init."""
     steps = """
@@ -195,51 +209,36 @@ def _show_next_steps():
 @click.option("--port", "-p", default=8501, help="Dashboard port (default: 8501)")
 @click.option("--host", "-h", default="localhost", help="Dashboard host (default: localhost)")
 @click.option("--no-browser", is_flag=True, help="Don't open browser automatically")
+@click.option("--foreground", "-f", is_flag=True, help="Run in foreground and show logs in current terminal")
 @click.pass_context
-def cli(ctx, port: int, host: str, no_browser: bool):
-    """Agent Orchestration Platform.
-    
-    A unified platform for multi-agent code review and analysis.
-    
-    Running 'aop' without a subcommand starts the Dashboard.
-    """
-    # If no subcommand is invoked, start the dashboard
+def cli(ctx, port: int, host: str, no_browser: bool, foreground: bool):
+    """Agent Orchestration Platform."""
     if ctx.invoked_subcommand is None:
-        _start_dashboard(port=port, host=host, open_browser=not no_browser)
+        _start_dashboard(port=port, host=host, open_browser=not no_browser, foreground=foreground)
 
 
-def _start_dashboard(port: int, host: str, open_browser: bool):
+def _start_dashboard(port: int, host: str, open_browser: bool, foreground: bool = False):
     """Start the AOP Dashboard."""
     try:
         from ..dashboard import run_dashboard
-        import webbrowser
-        import threading
-        import time
+
+
+
         
         console.print(Panel.fit(
-            f"[bold cyan]🤖 AOP Dashboard[/bold cyan]\n\n"
+            f"[bold cyan]AOP Dashboard[/bold cyan]\n\n"
             f"Starting at: [link]http://{host}:{port}[/link]\n\n"
             f"[dim]Press Ctrl+C to stop[/dim]",
             title="AOP - Agent Orchestration Platform",
             border_style="blue",
         ))
         
-        if open_browser:
-            # Delay browser open slightly to let server start
-            def open_browser_delayed():
-                time.sleep(1.5)  # Wait for server to be ready
-                webbrowser.open(f"http://{host}:{port}")
-            
-            threading.Thread(target=open_browser_delayed, daemon=True).start()
-        
-        run_dashboard(port=port, host=host)
+        run_dashboard(port=port, host=host, foreground=foreground, open_browser=open_browser)
         
     except ImportError:
         console.print("[bold red]Error: streamlit is not installed[/bold red]")
         console.print("\nInstall with:")
         console.print("  [cyan]pip install streamlit[/cyan]")
-        console.print("\nOr reinstall AOP with dashboard support:")
-        console.print("  [cyan]pip install git+https://github.com/xuha233/agent-orchestration-platform.git[/cyan]")
         sys.exit(EXIT_ERROR)
     except KeyboardInterrupt:
         console.print("\n[dim]Dashboard stopped[/dim]")
@@ -252,19 +251,12 @@ def _start_dashboard(port: int, host: str, open_browser: bool):
 @cli.command()
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--fix", "show_fix", is_flag=True, help="Show fix suggestions for issues")
-def doctor(json_output: bool, show_fix: bool):
-    """Check provider availability and configuration.
-    
-    \b
-    Exit Codes:
-      0 - All providers available
-      1 - Some providers unavailable
-      3 - No providers available
-    """
+@click.option("--all", "show_all", is_flag=True, help="Show all providers including orchestrators")
+def doctor(json_output: bool, show_fix: bool, show_all: bool):
+    """Check provider availability and configuration."""
     engine = ExecutionEngine()
     results = engine.detect_providers()
     
-    # Get provider details (version, auth status)
     provider_info = {}
     from ..core.adapter import get_adapter_registry
     registry = get_adapter_registry()
@@ -275,7 +267,8 @@ def doctor(json_output: bool, show_fix: bool):
             "detected": presence.detected,
             "version": None,
             "auth_status": None,
-            "fix_suggestion": None
+            "fix_suggestion": None,
+            "type": "adapter"
         }
         
         if adapter and hasattr(adapter, "get_info"):
@@ -295,17 +288,66 @@ def doctor(json_output: bool, show_fix: bool):
         
         provider_info[pid] = info
     
+    orchestrator_info = {}
+    try:
+        from ..orchestrator import discover_orchestrators, get_best_orchestrator, ORCHESTRATOR_REGISTRY
+        discovered = discover_orchestrators()
+        
+        for orch_type in ORCHESTRATOR_REGISTRY.keys():
+            if orch_type == "api":
+                orchestrator_info[orch_type] = {
+                    "detected": True,
+                    "version": "-",
+                    "auth_status": "config required",
+                    "fix_suggestion": "Configure LLMClient for API mode",
+                    "type": "orchestrator"
+                }
+                continue
+            
+            presence = discovered.get(orch_type)
+            if presence:
+                orchestrator_info[orch_type] = {
+                    "detected": presence.detected and presence.auth_ok,
+                    "version": presence.version,
+                    "auth_status": "OK" if presence.auth_ok else "Failed",
+                    "fix_suggestion": None if presence.auth_ok else f"Run '{orch_type} auth' or check configuration",
+                    "type": "orchestrator"
+                }
+            else:
+                orchestrator_info[orch_type] = {
+                    "detected": False,
+                    "version": None,
+                    "auth_status": None,
+                    "fix_suggestion": f"Install {orch_type}",
+                    "type": "orchestrator"
+                }
+    except Exception:
+        pass
+    
+    recommended_provider = None
+    all_providers = {**provider_info, **orchestrator_info}
+    available_providers = [p for p, info in all_providers.items() if info["detected"]]
+    
+    priority_order = ["claude-code", "opencode", "openclaw", "claude", "codex"]
+    for p in priority_order:
+        if p in available_providers:
+            recommended_provider = p
+            break
+    
     if json_output:
         output = {
             "providers": provider_info,
+            "orchestrators": orchestrator_info,
             "all_available": all(p["detected"] for p in provider_info.values()),
             "available_count": sum(1 for p in provider_info.values() if p["detected"]),
-            "total_count": len(provider_info)
+            "total_count": len(provider_info),
+            "recommended_provider": recommended_provider,
+            "available_providers": available_providers
         }
         console.print_json(data=output)
         return
     
-    table = Table(title="Provider Status")
+    table = Table(title="Provider Status (Adapters)")
     table.add_column("Provider")
     table.add_column("Status")
     table.add_column("Version")
@@ -319,16 +361,34 @@ def doctor(json_output: bool, show_fix: bool):
     
     console.print(table)
     
-    # Show fix suggestions if requested
+    orch_table = Table(title="Provider Status (Orchestrators/Agents)")
+    orch_table.add_column("Provider")
+    orch_table.add_column("Status")
+    orch_table.add_column("Version")
+    orch_table.add_column("Auth")
+    
+    for orch_type, info in orchestrator_info.items():
+        status = "[green]Available[/green]" if info["detected"] else "[red]Not found[/red]"
+        version = info["version"] or "-"
+        auth = info["auth_status"] or "-"
+        orch_table.add_row(orch_type, status, version, auth)
+    
+    console.print(orch_table)
+    
+    if recommended_provider:
+        console.print(f"\n[bold cyan]Recommended provider:[/] [green]{recommended_provider}[/green]")
+    else:
+        console.print(f"\n[yellow]No recommended provider available[/yellow]")
+        console.print("Install one of: claude-code, opencode, openclaw")
+    
     if show_fix:
-        issues = [(pid, info) for pid, info in provider_info.items() if not info["detected"]]
+        issues = [(pid, info) for pid, info in all_providers.items() if not info["detected"]]
         if issues:
             console.print("\n[bold yellow]Fix Suggestions:[/bold yellow]")
             for pid, info in issues:
                 if info["fix_suggestion"]:
                     console.print(f"  * {pid}: {info['fix_suggestion']}")
     
-    # Return appropriate exit code
     available_count = sum(1 for p in provider_info.values() if p["detected"])
     if available_count == 0:
         sys.exit(EXIT_PROVIDER_UNAVAILABLE)
@@ -336,68 +396,32 @@ def doctor(json_output: bool, show_fix: bool):
         sys.exit(EXIT_ERROR)
 
 
-# Common review/run options (shared between review and run commands)
+# Common review/run options
 def _add_common_execution_options(f):
     """Add common execution options to a command."""
-    # Execution Scope
-    f = click.option("--prompt", "-p", required=True, 
-                     help="The prompt/question for multi-agent review")(f)
-    f = click.option("--providers", "-P", default=None,
-                     help="Comma-separated provider list. Default: claude,codex (from config)")(f)
-    f = click.option("--repo", "-r", default=".",
-                     help="Repository root path. Default: current directory")(f)
-    f = click.option("--target-paths", default=".",
-                     help="Comma-separated task scope paths (default: .)")(f)
-    f = click.option("--task-id", default="",
-                     help="Optional stable task id")(f)
-    
-    # Timeout and Parallelism
-    f = click.option("--timeout", "-t", default=600,
-                     help="Timeout in seconds for each provider. Default: 600")(f)
-    f = click.option("--stall-timeout", type=int, default=DEFAULT_POLICY.stall_timeout_seconds,
-                     help="Cancel a provider when output progress is idle for N seconds (default: 900)")(f)
-    f = click.option("--review-hard-timeout", type=int, default=DEFAULT_POLICY.review_hard_timeout_seconds,
-                     help="Review-mode hard deadline in seconds, 0 disables (default: 1800)")(f)
-    f = click.option("--poll-interval", type=float, default=DEFAULT_POLICY.poll_interval_seconds,
-                     help="Provider status polling interval in seconds (default: 1.0)")(f)
-    f = click.option("--max-provider-parallelism", type=int, default=DEFAULT_POLICY.max_provider_parallelism,
-                     help="Provider fan-out concurrency. 0 means full parallelism (default: 0)")(f)
-    f = click.option("--provider-timeouts", default="",
-                     help="Provider-specific stall-timeout overrides, e.g. claude=120,codex=90")(f)
-    
-    # Output
-    f = click.option("--format", "-f", "output_format", default="report",
-                     type=click.Choice(["report", "json", "summary", "sarif", "markdown-pr"]),
-                     help="Output format. Default: report. sarif/markdown-pr are review-only")(f)
-    f = click.option("--result-mode", type=click.Choice(["stdout", "artifact", "both"]),
-                     default="stdout",
-                     help="artifact: write files, stdout: print payload, both: do both (default: stdout)")(f)
-    f = click.option("--artifact-base", default="reports/review",
-                     help="Artifact base directory (default: reports/review)")(f)
-    f = click.option("--include-token-usage", is_flag=True,
-                     help="Best-effort token usage extraction (provider and aggregate)")(f)
-    f = click.option("--save-artifacts", is_flag=True,
-                     help="Force artifact writes when result-mode is stdout")(f)
-    f = click.option("--json", "json_output", is_flag=True,
-                     help="Print machine-readable JSON output")(f)
-    
-    # Synthesis
-    f = click.option("--synthesize", is_flag=True,
-                     help="Run one extra synthesis pass to produce consensus/divergence summary")(f)
-    f = click.option("--synth-provider", default="",
-                     help="Provider to run synthesis pass (must be in --providers). Defaults to claude when available")(f)
-    
-    # Access and Contracts
-    f = click.option("--allow-paths", default=".",
-                     help="Comma-separated allowed paths under repo root (default: .)")(f)
-    f = click.option("--enforcement-mode", type=click.Choice(["strict", "best_effort"]),
-                     default=DEFAULT_POLICY.enforcement_mode,
-                     help="strict fails closed when permission requirements are unmet (default: strict)")(f)
-    f = click.option("--provider-permissions-json", default="",
-                     help="Provider permission mapping JSON, e.g. '{\"codex\":{\"sandbox\":\"workspace-write\"}}'")(f)
-    f = click.option("--strict-contract", is_flag=True,
-                     help="Review mode only: enforce strict findings JSON contract")(f)
-    
+    f = click.option("--prompt", "-p", required=True, help="The prompt/question for multi-agent review")(f)
+    f = click.option("--providers", "-P", default=None, help="Comma-separated provider list")(f)
+    f = click.option("--repo", "-r", default=".", help="Repository root path")(f)
+    f = click.option("--target-paths", default=".", help="Comma-separated task scope paths")(f)
+    f = click.option("--task-id", default="", help="Optional stable task id")(f)
+    f = click.option("--timeout", "-t", default=600, help="Timeout in seconds for each provider")(f)
+    f = click.option("--stall-timeout", type=int, default=DEFAULT_POLICY.stall_timeout_seconds, help="Idle timeout")(f)
+    f = click.option("--review-hard-timeout", type=int, default=DEFAULT_POLICY.review_hard_timeout_seconds, help="Hard deadline")(f)
+    f = click.option("--poll-interval", type=float, default=DEFAULT_POLICY.poll_interval_seconds, help="Polling interval")(f)
+    f = click.option("--max-provider-parallelism", type=int, default=DEFAULT_POLICY.max_provider_parallelism, help="Max parallel providers")(f)
+    f = click.option("--provider-timeouts", default="", help="Provider-specific timeouts")(f)
+    f = click.option("--format", "-f", "output_format", default="report", type=click.Choice(["report", "json", "summary", "sarif", "markdown-pr"]), help="Output format")(f)
+    f = click.option("--result-mode", type=click.Choice(["stdout", "artifact", "both"]), default="stdout", help="Result mode")(f)
+    f = click.option("--artifact-base", default="reports/review", help="Artifact base directory")(f)
+    f = click.option("--include-token-usage", is_flag=True, help="Extract token usage")(f)
+    f = click.option("--save-artifacts", is_flag=True, help="Force artifact writes")(f)
+    f = click.option("--json", "json_output", is_flag=True, help="JSON output")(f)
+    f = click.option("--synthesize", is_flag=True, help="Run synthesis pass")(f)
+    f = click.option("--synth-provider", default="", help="Synthesis provider")(f)
+    f = click.option("--allow-paths", default=".", help="Allowed paths")(f)
+    f = click.option("--enforcement-mode", type=click.Choice(["strict", "best_effort"]), default=DEFAULT_POLICY.enforcement_mode, help="Enforcement mode")(f)
+    f = click.option("--provider-permissions-json", default="", help="Provider permissions JSON")(f)
+    f = click.option("--strict-contract", is_flag=True, help="Enforce strict findings contract")(f)
     return f
 
 
@@ -428,28 +452,10 @@ def review(
     provider_permissions_json: str,
     strict_contract: bool,
 ):
-    """Run multi-agent code review.
-    
-    \b
-    Examples:
-      aop review -p "Review the authentication module"
-      aop review -p "Check for security issues" -P claude,gemini
-      aop review -p "Analyze performance" -f json
-      aop review -p "Review for bugs" --synthesize --synth-provider claude
-      aop review -p "Review for bugs" --format sarif --result-mode artifact
-      aop review -p "Review runtime/" --target-paths runtime --strict-contract
-    
-    \b
-    Exit Codes:
-      0 - Review completed successfully (PASS)
-      1 - Review failed (FAIL)
-      3 - Review inconclusive (INCONCLUSIVE, review mode only)
-    """
-    # Load config and merge with CLI options
+    """Run multi-agent code review."""
     config = load_config()
     provider_list = _parse_providers(providers or ",".join(config.providers))
     
-    # Resolve policy from config and CLI overrides
     policy = _resolve_policy(
         config=config,
         stall_timeout=stall_timeout,
@@ -463,7 +469,6 @@ def review(
         provider_permissions_json=provider_permissions_json,
     )
     
-    # Validate synthesis provider
     synth_provider_name = synth_provider.strip() if synth_provider else ""
     do_synthesize = bool(synthesize or synth_provider_name)
     if synth_provider_name and synth_provider_name not in provider_list:
@@ -472,16 +477,9 @@ def review(
     
     console.print(Panel(f"[bold]Running review with:[/] {', '.join(provider_list)}"))
     
-    engine = ReviewEngine(
-        providers=provider_list, 
-        default_timeout=timeout,
-    )
+    engine = ReviewEngine(providers=provider_list, default_timeout=timeout)
     
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-    ) as progress:
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
         task = progress.add_task("Analyzing...", total=None)
         result = engine.review(
             prompt, 
@@ -495,12 +493,10 @@ def review(
         )
         progress.update(task, description="Complete")
     
-    # Determine effective result mode
     effective_result_mode = result_mode
     if save_artifacts and effective_result_mode == "stdout":
         effective_result_mode = "both"
     
-    # Summary by severity
     if result.findings:
         severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
         for f in result.findings:
@@ -513,24 +509,7 @@ def review(
             color = {"critical": "red", "high": "yellow", "medium": "blue", "low": "dim"}[sev]
             console.print(f"  [{color}]{sev.upper()}: {count}[/{color}]")
     
-    # Top findings
-    if result.findings:
-        sorted_findings = sorted(result.findings, 
-                                 key=lambda f: {"critical": 0, "high": 1, "medium": 2, "low": 3}.get(f.get("severity", "low") if isinstance(f, dict) else f.severity, 4))
-        console.print("\n[bold]Top Findings:[/bold]")
-        for i, f in enumerate(sorted_findings[:5], 1):
-            sev = f.get("severity", "low") if isinstance(f, dict) else f.severity
-            title = f.get("title", "") if isinstance(f, dict) else f.title
-            evidence = f.get("evidence", {}) if isinstance(f, dict) else f.evidence
-            file_path = evidence.get("file", "") if isinstance(evidence, dict) else evidence.file
-            line = evidence.get("line") if isinstance(evidence, dict) else evidence.line
-            color = {"critical": "red", "high": "yellow", "medium": "blue", "low": "dim"}[sev]
-            console.print(f"  {i}. [{color}][{sev.upper()}][/{color}] {title}")
-            console.print(f"     [dim]{file_path}:{line or '-'}[/dim]")
-    
-    # Output based on format
     if output_format == "json" or json_output:
-        # Determine success based on decision
         is_success = result.decision == "PASS"
         output = {
             "command": "review",
@@ -548,24 +527,9 @@ def review(
         if result.synthesis is not None:
             output["synthesis"] = result.synthesis
         console.print_json(data=output)
-    elif output_format == "summary":
-        console.print(format_summary(result))
-    elif output_format == "sarif":
-        # SARIF output for GitHub Code Scanning
-        sarif_output = _format_sarif(result)
-        console.print_json(data=sarif_output)
-    elif output_format == "markdown-pr":
-        # Markdown PR comment format
-        md_output = _format_markdown_pr(result)
-        console.print(md_output)
-    elif output_format == "report":
-        # Use the new report formatter for report format
-        console.print(format_report(result))
     else:
-        # Default report format
         console.print(format_report(result))
     
-    # Exit codes based on decision
     if result.decision == "FAIL":
         sys.exit(EXIT_ERROR)
     if result.decision == "INCONCLUSIVE":
@@ -575,6 +539,22 @@ def review(
 
 @cli.command("run")
 @_add_common_execution_options
+@click.option(
+    "--provider",
+    type=click.Choice(VALID_PROVIDER_TYPES),
+    default="auto",
+    help="Orchestrator/agent provider to use (opencode, claude-code, openclaw, auto). Default: auto"
+)
+@click.option(
+    "--parallel",
+    is_flag=True,
+    help="Enable multi-agent parallel execution (use with --agents)"
+)
+@click.option(
+    "--agents",
+    default="",
+    help="Comma-separated agent list for parallel execution (e.g., reviewer,tester,implementer)"
+)
 def run_command(
     prompt: str,
     providers: Optional[str],
@@ -599,29 +579,31 @@ def run_command(
     enforcement_mode: str,
     provider_permissions_json: str,
     strict_contract: bool,
+    provider: str,
+    parallel: bool,
+    agents: str,
 ):
     """Run general multi-provider task execution.
     
-    Unlike 'review', this command does not enforce findings schema.
+    Provider Selection:
+      --provider opencode      Use OpenCode as orchestrator
+      --provider claude-code   Use Claude Code as orchestrator
+      --provider openclaw      Use OpenClaw as orchestrator
+      --provider auto          Auto-select best available (default)
     
-    \b
-    Examples:
-      aop run -p "Summarize the architecture"
-      aop run -p "List risky files" -P claude,codex --json
-      aop run -p "Compare provider outputs" -P claude,codex,qwen --synthesize
-      aop run -p "Analyze runtime" --save-artifacts --json
-    
-    \b
-    Exit Codes:
-      0 - Success
-      1 - Failed
-      2 - Input/config/runtime failure
+    Parallel Execution:
+      --parallel --agents reviewer,tester   Run multiple agents in parallel
     """
-    # Load config and merge with CLI options
+    actual_provider = _resolve_provider(provider)
+    agent_list = [a.strip() for a in agents.split(",") if a.strip()] if agents else []
+    
+    if parallel and not agent_list:
+        console.print("[yellow]Warning: --parallel requires --agents. Using default agents.[/yellow]")
+        agent_list = ["reviewer", "implementer"]
+    
     config = load_config()
     provider_list = _parse_providers(providers or ",".join(config.providers))
     
-    # Resolve policy from config and CLI overrides
     policy = _resolve_policy(
         config=config,
         stall_timeout=stall_timeout,
@@ -630,53 +612,99 @@ def run_command(
         provider_timeouts=provider_timeouts,
         allow_paths=allow_paths,
         enforcement_mode=enforcement_mode,
-        strict_contract=False,  # run mode doesn't enforce contract
+        strict_contract=False,
         max_provider_parallelism=max_provider_parallelism,
         provider_permissions_json=provider_permissions_json,
     )
     
-    # Validate synthesis provider
     synth_provider_name = synth_provider.strip() if synth_provider else ""
     do_synthesize = bool(synthesize or synth_provider_name)
     if synth_provider_name and synth_provider_name not in provider_list:
         console.print("[red]Error: --synth-provider must be one of selected providers[/red]")
         sys.exit(EXIT_ERROR)
     
-    # Validate format
     if output_format in ("sarif", "markdown-pr"):
         console.print(f"[red]Error: --format {output_format} is supported only for review command[/red]")
         sys.exit(EXIT_ERROR)
     
-    console.print(Panel(f"[bold]Running task with:[/] {', '.join(provider_list)}"))
+    if parallel:
+        console.print(Panel(
+            f"[bold]Running parallel task with:[/]\n"
+            f"  Provider: {actual_provider}\n"
+            f"  Agents: {', '.join(agent_list)}\n"
+            f"  Adapters: {', '.join(provider_list)}"
+        ))
+    else:
+        console.print(Panel(
+            f"[bold]Running task with:[/]\n"
+            f"  Provider: {actual_provider}\n"
+            f"  Adapters: {', '.join(provider_list)}"
+        ))
     
-    engine = ExecutionEngine(
-        providers=provider_list,
-        default_timeout=timeout,
-    )
+    if provider != "auto" or parallel:
+        try:
+            from ..orchestrator import create_orchestrator
+            from ..primary import get_registry
+            
+            registry = get_registry()
+            agent = registry.get(actual_provider)
+            
+            if agent and not agent.is_available():
+                console.print(f"[yellow]Warning: Provider '{actual_provider}' is not available. Falling back to auto.[/yellow]")
+                actual_provider = _get_best_provider()
+            
+            if parallel:
+                result = _run_parallel_execution(
+                    prompt=prompt,
+                    provider=actual_provider,
+                    agents=agent_list,
+                    repo_root=repo,
+                    target_paths=_parse_paths(target_paths),
+                    timeout=timeout,
+                )
+            else:
+                orchestrator = create_orchestrator(actual_provider)
+                result = _run_with_orchestrator(
+                    orchestrator=orchestrator,
+                    prompt=prompt,
+                    repo_root=repo,
+                    target_paths=_parse_paths(target_paths),
+                    timeout=timeout,
+                )
+                
+        except ImportError as e:
+            console.print(f"[yellow]Orchestrator module not available: {e}. Using adapter mode.[/yellow]")
+            result = _run_with_adapters(
+                prompt=prompt,
+                provider_list=provider_list,
+                repo_root=repo,
+                target_paths=_parse_paths(target_paths),
+                task_id=task_id,
+                timeout=timeout,
+                include_token_usage=include_token_usage,
+                synthesize=do_synthesize,
+                synthesis_provider=synth_provider_name,
+            )
+    else:
+        engine = ExecutionEngine(providers=provider_list, default_timeout=timeout)
+        
+        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+            task = progress.add_task("Executing...", total=None)
+            result = engine.run(
+                prompt,
+                repo_root=repo,
+                target_paths=_parse_paths(target_paths),
+                task_id=task_id or None,
+                include_token_usage=include_token_usage,
+                synthesize=do_synthesize,
+                synthesis_provider=synth_provider_name or None,
+            )
+            progress.update(task, description="Complete")
     
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-    ) as progress:
-        task = progress.add_task("Executing...", total=None)
-        result = engine.run(
-            prompt,
-            repo_root=repo,
-            target_paths=_parse_paths(target_paths),
-            task_id=task_id or None,
-            include_token_usage=include_token_usage,
-            synthesize=do_synthesize,
-            synthesis_provider=synth_provider_name or None,
-        )
-        progress.update(task, description="Complete")
-    
-    # Determine effective result mode
     effective_result_mode = result_mode
     if save_artifacts and effective_result_mode == "stdout":
         effective_result_mode = "both"
     
-    # Output
     if output_format == "json" or json_output:
         output = {
             "command": "run",
@@ -688,8 +716,12 @@ def run_command(
             "result_mode": effective_result_mode,
             "artifact_root": str(Path(artifact_base) / result.task_id) if effective_result_mode in ("artifact", "both") else None,
             "provider_results": result.provider_results,
-            "errors": result.errors
+            "errors": result.errors,
+            "provider_used": actual_provider,
         }
+        if parallel:
+            output["parallel"] = True
+            output["agents"] = agent_list
         if result.token_usage_summary is not None:
             output["token_usage_summary"] = result.token_usage_summary
         if result.synthesis is not None:
@@ -697,24 +729,26 @@ def run_command(
         console.print_json(data=output)
     elif output_format == "summary":
         console.print(f"\n[bold]Task:[/] {result.task_id}")
+        console.print(f"[bold]Provider:[/] {actual_provider}")
         console.print(f"[bold]Duration:[/] {result.duration_seconds:.2f}s")
         console.print(f"[bold]Status:[/] {'[green]Success[/green]' if result.success else '[red]Failed[/red]'}")
     else:
         console.print(f"\n[bold]Task:[/] {result.task_id}")
+        console.print(f"[bold]Provider:[/] {actual_provider}")
+        if parallel:
+            console.print(f"[bold]Agents:[/] {', '.join(agent_list)}")
         console.print(f"[bold]Duration:[/] {result.duration_seconds:.2f}s")
         console.print(f"[bold]Status:[/] {'[green]Success[/green]' if result.success else '[red]Failed[/red]'}")
         
-        # Show provider outputs in report mode
         if result.provider_results:
             console.print("\n[bold]Provider Results:[/bold]")
-            for provider, details in sorted(result.provider_results.items()):
-                # Handle both dict and TaskResult object
+            for provider_name, details in sorted(result.provider_results.items()):
                 if hasattr(details, 'success'):
                     success = details.success
                 else:
                     success = details.get("success", False)
                 status = "[green]Success[/green]" if success else "[red]Failed[/red]"
-                console.print(f"  {provider}: {status}")
+                console.print(f"  {provider_name}: {status}")
     
     if result.errors:
         console.print("\n[yellow]Warnings:[/yellow]")
@@ -722,6 +756,126 @@ def run_command(
             console.print(f"  * {err}")
     
     sys.exit(EXIT_SUCCESS if result.success else EXIT_ERROR)
+
+
+def _run_with_orchestrator(orchestrator, prompt: str, repo_root: str, target_paths: List[str], timeout: int):
+    """Run task using an orchestrator provider."""
+    from ..core.types import TaskResult
+    import time
+    
+    start_time = time.time()
+    
+    try:
+        response = orchestrator.execute(prompt=prompt, cwd=repo_root, timeout=timeout)
+        
+        duration = time.time() - start_time
+        task_id = f"task-{int(start_time)}"
+        
+        return TaskResult(
+            task_id=task_id,
+            decision="PASS" if response.success else "FAIL",
+            terminal_state="completed",
+            success=response.success,
+            duration_seconds=duration,
+            provider_results={
+                orchestrator.__class__.__name__: {
+                    "success": response.success,
+                    "output": response.content,
+                }
+            },
+            errors=[response.error] if response.error else [],
+            findings=[],
+        )
+    except Exception as e:
+        duration = time.time() - start_time
+        return TaskResult(
+            task_id=f"task-{int(start_time)}",
+            decision="FAIL",
+            terminal_state="error",
+            success=False,
+            duration_seconds=duration,
+            provider_results={},
+            errors=[str(e)],
+            findings=[],
+        )
+
+
+def _run_parallel_execution(prompt: str, provider: str, agents: List[str], repo_root: str, target_paths: List[str], timeout: int):
+    """Run parallel execution with multiple agents."""
+    from ..core.types import TaskResult
+    import time
+    import concurrent.futures
+    
+    start_time = time.time()
+    task_id = f"parallel-{int(start_time)}"
+    
+    console.print(f"[dim]Starting parallel execution with {len(agents)} agents...[/dim]")
+    
+    results = {}
+    errors = []
+    
+    try:
+        from ..orchestrator import create_orchestrator
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(agents)) as executor:
+            futures = {}
+            for agent_name in agents:
+                orch = create_orchestrator(provider)
+                future = executor.submit(
+                    orch.execute,
+                    prompt=f"[{agent_name}] {prompt}",
+                    cwd=repo_root,
+                    timeout=timeout,
+                )
+                futures[future] = agent_name
+            
+            for future in concurrent.futures.as_completed(futures):
+                agent_name = futures[future]
+                try:
+                    response = future.result()
+                    results[agent_name] = {
+                        "success": response.success,
+                        "output": response.content[:500] if response.content else None,
+                    }
+                except Exception as e:
+                    results[agent_name] = {
+                        "success": False,
+                        "error": str(e),
+                    }
+                    errors.append(f"{agent_name}: {str(e)}")
+                    
+    except Exception as e:
+        errors.append(f"Parallel execution error: {str(e)}")
+    
+    duration = time.time() - start_time
+    overall_success = all(r.get("success", False) for r in results.values())
+    
+    return TaskResult(
+        task_id=task_id,
+        decision="PASS" if overall_success else "FAIL",
+        terminal_state="completed",
+        success=overall_success,
+        duration_seconds=duration,
+        provider_results=results,
+        errors=errors,
+        findings=[],
+    )
+
+
+def _run_with_adapters(prompt: str, provider_list: List[str], repo_root: str, target_paths: List[str], 
+                        task_id: str, timeout: int, include_token_usage: bool, synthesize: bool, synthesis_provider: str):
+    """Run task using adapter-based execution (fallback)."""
+    engine = ExecutionEngine(providers=provider_list, default_timeout=timeout)
+    
+    return engine.run(
+        prompt,
+        repo_root=repo_root,
+        target_paths=target_paths,
+        task_id=task_id or None,
+        include_token_usage=include_token_usage,
+        synthesize=synthesize,
+        synthesis_provider=synthesis_provider or None,
+    )
 
 
 def _format_decision(decision: str) -> str:
@@ -739,51 +893,27 @@ def _format_decision(decision: str) -> str:
 
 def _format_sarif(result) -> dict:
     """Format result as SARIF 2.1.0 for GitHub Code Scanning."""
-    # Use the imported formatter - result is ReviewResult with findings attribute
     return format_sarif(result)
-
 
 
 def _format_markdown_pr(result) -> str:
     """Format result as Markdown PR comment."""
-    # Use the imported formatter - result is ReviewResult with findings attribute
     return format_markdown_pr(result)
 
 
 @cli.command()
 @click.option("--name", "-n", help="Project name")
 @click.option("--providers", "-P", help="Comma-separated providers (default: claude,codex)")
-@click.option("--project-type", "-t", type=click.Choice(["exploratory", "optimization", "transformation", "compliance_sensitive"]),
-              default="transformation", help="Project type. Default: transformation")
+@click.option("--project-type", "-t", type=click.Choice(["exploratory", "optimization", "transformation", "compliance_sensitive"]), default="transformation", help="Project type")
 @click.option("--force", "-f", is_flag=True, help="Overwrite existing files")
 def init(name: Optional[str], providers: Optional[str], project_type: str, force: bool):
-    """Initialize a new AOP project with config file.
-    
-    Creates:
-      - .aop.yaml configuration file
-      - runs/ directory for outputs
-      - hypotheses.md template
-    
-    \b
-    Examples:
-      aop init --name myproject
-      aop init -n myproject -P claude,gemini -t exploratory
-      aop init  # Interactive mode
-    
-    \b
-    Exit Codes:
-      0 - Project initialized successfully
-      1 - Configuration file already exists (use --force to overwrite)
-      2 - Failed to create project
-    """
+    """Initialize a new AOP project with config file."""
     config_path = Path(".aop.yaml")
     
-    # Check if config exists
     if config_path.exists() and not force:
         console.print("[red]Error: .aop.yaml already exists. Use --force to overwrite.[/red]")
         sys.exit(EXIT_ERROR)
     
-    # Interactive prompts if not provided
     if not name:
         name = click.prompt("Project name", default=Path.cwd().name)
     
@@ -794,23 +924,16 @@ def init(name: Optional[str], providers: Optional[str], project_type: str, force
     else:
         provider_list = [p.strip() for p in providers.split(",")]
     
-    # Create config
-    config = AOPConfig(
-        project_type=project_type,
-        providers=provider_list
-    )
+    config = AOPConfig(project_type=project_type, providers=provider_list)
     
     try:
-        # Save config
         config.to_yaml(config_path)
         console.print(f"[green]Created {config_path}[/green]")
         
-        # Create runs directory
         runs_dir = Path("runs")
         runs_dir.mkdir(exist_ok=True)
         console.print(f"[green]Created {runs_dir}/ directory[/green]")
         
-        # Create hypotheses template
         hypotheses_path = Path("hypotheses.md")
         if not hypotheses_path.exists() or force:
             hypotheses_content = f"""# Hypotheses - {name}
@@ -830,12 +953,6 @@ This file tracks your project hypotheses and their validation status.
 |----|-----------|------------|--------|
 | H-001 | Example: Adding a cache layer improves response time | Benchmark before/after | pending |
 
-## Deep Dives (H-011+)
-
-| ID | Statement | Validation | Status |
-|----|-----------|------------|--------|
-| | | | |
-
 ---
 
 Run `aop hypothesis create "your statement"` to add new hypotheses.
@@ -843,7 +960,6 @@ Run `aop hypothesis create "your statement"` to add new hypotheses.
             hypotheses_path.write_text(hypotheses_content, encoding="utf-8")
             console.print(f"[green]Created {hypotheses_path} template[/green]")
         
-        # Show success and next steps
         console.print(f"\n[bold green]Project '{name}' initialized![/bold green]")
         _show_next_steps()
         
@@ -856,39 +972,15 @@ Run `aop hypothesis create "your statement"` to add new hypotheses.
 
 @cli.group()
 def hypothesis():
-    """Manage hypotheses.
-    
-    \b
-    Commands:
-      create  Create a new hypothesis
-      list    List all hypotheses
-      update  Update hypothesis status
-    
-    \b
-    Examples:
-      aop hypothesis create "Adding cache improves performance"
-    """
+    """Manage hypotheses."""
     pass
 
 
 @hypothesis.command("create")
 @click.argument("statement")
-@click.option("--priority", "-p", type=click.Choice(["quick_win", "deep_dive"]),
-              default="quick_win", help="Hypothesis priority. Default: quick_win")
+@click.option("--priority", "-p", type=click.Choice(["quick_win", "deep_dive"]), default="quick_win", help="Hypothesis priority")
 def create_hypothesis(statement: str, priority: str):
-    """Create a hypothesis.
-    
-    \b
-    Examples:
-      aop hypothesis create "Adding cache improves performance"
-      aop hypothesis create "Refactoring reduces bugs" -p deep_dive
-    
-    \b
-    Exit Codes:
-      0 - Hypothesis created successfully
-      1 - Failed to create hypothesis
-    """
-    # 持久化到 .aop/hypotheses.json
+    """Create a hypothesis."""
     aop_dir = Path.cwd() / ".aop"
     aop_dir.mkdir(exist_ok=True)
     storage_path = aop_dir / "hypotheses.json"
@@ -903,10 +995,8 @@ def create_hypothesis(statement: str, priority: str):
     console.print(f"  Saved to: {storage_path}")
 
 
-
 @hypothesis.command("list")
-@click.option("--state", "-s", type=click.Choice(["pending", "validated", "refuted", "inconclusive"]),
-              default=None, help="Filter by state. Default: all")
+@click.option("--state", "-s", type=click.Choice(["pending", "validated", "refuted", "inconclusive"]), default=None, help="Filter by state")
 def list_hypotheses(state):
     """List all hypotheses."""
     from ..core.types import HypothesisState
@@ -930,17 +1020,16 @@ def list_hypotheses(state):
         table.add_row(h.hypothesis_id, stmt, h.priority, f"[{state_color}]{state_str}[/{state_color}]")
     console.print(table)
 
+
 @hypothesis.command("update")
 @click.argument("hypothesis_id")
-@click.option("--state", "-s", type=click.Choice(["pending", "validated", "refuted", "inconclusive"]),
-              required=True, help="New state for the hypothesis")
+@click.option("--state", "-s", type=click.Choice(["pending", "validated", "refuted", "inconclusive"]), required=True, help="New state")
 def update_hypothesis(hypothesis_id, state):
     """Update hypothesis status."""
     from ..core.types import HypothesisState
     default_path = Path.cwd() / ".aop" / "hypotheses.json"
     manager = HypothesisManager(storage_path=default_path) if default_path.exists() else HypothesisManager()
     
-    # 加载已有假设
     if default_path.exists():
         manager.load()
     new_state = HypothesisState(state)
@@ -952,7 +1041,6 @@ def update_hypothesis(hypothesis_id, state):
         manager.save()
     console.print(f"[green]Updated {hypothesis_id}[/green]")
     console.print(f"  New state: {state}")
-
 
 
 @cli.group()
@@ -971,12 +1059,7 @@ def capture_learning(phase, worked, failed, insight):
     default_path = Path.cwd() / ".aop" / "learning.json"
     log = LearningLog(storage_path=default_path) if default_path.exists() else LearningLog(storage_path=default_path)
     
-    log.capture(
-        phase=phase,
-        what_worked=list(worked),
-        what_failed=list(failed),
-        insights=list(insight)
-    )
+    log.capture(phase=phase, what_worked=list(worked), what_failed=list(failed), insights=list(insight))
     log.save()
     
     console.print(f"[green]Captured learning from phase: {phase}[/green]")
@@ -1010,12 +1093,7 @@ def list_learnings():
     table.add_column("Insights", style="yellow")
     
     for l in log.learnings:
-        table.add_row(
-            l.phase,
-            str(len(l.what_worked)),
-            str(len(l.what_failed)),
-            str(len(l.insights))
-        )
+        table.add_row(l.phase, str(len(l.what_worked)), str(len(l.what_failed)), str(len(l.insights)))
     
     console.print(table)
 
@@ -1040,44 +1118,17 @@ def export_learnings(output):
 
 @cli.group()
 def project():
-    """Project management.
-    
-    \b
-    Commands:
-      assess  Assess project complexity and get team configuration
-    
-    \b
-    Examples:
-      aop project assess -p high -d medium -t low -b medium
-    """
+    """Project management."""
     pass
 
 
 @project.command("assess")
-@click.option("--problem-clarity", "-p", default="medium",
-              type=click.Choice(["low", "medium", "high"]),
-              help="Problem clarity level. Default: medium")
-@click.option("--data-availability", "-d", default="medium",
-              type=click.Choice(["low", "medium", "high"]),
-              help="Data availability level. Default: medium")
-@click.option("--tech-novelty", "-t", default="medium",
-              type=click.Choice(["low", "medium", "high"]),
-              help="Technical novelty level. Default: medium")
-@click.option("--business-risk", "-b", default="medium",
-              type=click.Choice(["low", "medium", "high"]),
-              help="Business risk level. Default: medium")
+@click.option("--problem-clarity", "-p", default="medium", type=click.Choice(["low", "medium", "high"]), help="Problem clarity level")
+@click.option("--data-availability", "-d", default="medium", type=click.Choice(["low", "medium", "high"]), help="Data availability level")
+@click.option("--tech-novelty", "-t", default="medium", type=click.Choice(["low", "medium", "high"]), help="Technical novelty level")
+@click.option("--business-risk", "-b", default="medium", type=click.Choice(["low", "medium", "high"]), help="Business risk level")
 def assess(problem_clarity: str, data_availability: str, tech_novelty: str, business_risk: str):
-    """Assess project complexity.
-    
-    \b
-    Examples:
-      aop project assess -p high -d medium -t low -b medium
-      aop project assess --problem-clarity high --tech-novelty high
-    
-    \b
-    Exit Codes:
-      0 - Assessment completed
-    """
+    """Assess project complexity."""
     orchestrator = TeamOrchestrator()
     orchestrator.assess_project(problem_clarity, data_availability, tech_novelty, business_risk)
     config = orchestrator.get_team_config()
@@ -1091,53 +1142,29 @@ def assess(problem_clarity: str, data_availability: str, tech_novelty: str, busi
 
 
 @cli.command()
-@click.option("--port", "-p", default=8501, help="Port to run dashboard on (default: 8501)")
-@click.option("--host", "-h", default="localhost", help="Host to bind (default: localhost)")
+@click.option("--port", "-p", default=8501, help="Port to run dashboard on")
+@click.option("--host", "-h", default="localhost", help="Host to bind")
 @click.option("--open-browser", "-o", is_flag=True, help="Open browser automatically")
 def dashboard(port: int, host: str, open_browser: bool):
-    """Start the AOP Dashboard web UI.
-    
-    A visual interface for:
-    - Provider status monitoring
-    - Task execution history
-    - Hypothesis management
-    - Learning records
-    - Quick start guides
-    
-    \b
-    Examples:
-      aop dashboard
-      aop dashboard --port 8080
-      aop dashboard --open-browser
-    
-    \b
-    Exit Codes:
-      0 - Dashboard started successfully
-      1 - Failed to start (streamlit not installed or other error)
-    """
+    """Start the AOP Dashboard web UI."""
     try:
         from ..dashboard import run_dashboard
-        import webbrowser
+
         
         console.print(Panel.fit(
-            f"[bold cyan]🤖 AOP Dashboard[/bold cyan]\n\n"
+            f"[bold cyan]AOP Dashboard[/bold cyan]\n\n"
             f"Starting at: [link]http://{host}:{port}[/link]\n\n"
             f"[dim]Press Ctrl+C to stop[/dim]",
             title="Dashboard",
             border_style="blue",
         ))
         
-        if open_browser:
-            webbrowser.open(f"http://{host}:{port}")
-        
-        run_dashboard(port=port, host=host)
+        run_dashboard(port=port, host=host, open_browser=open_browser)
         
     except ImportError:
         console.print("[bold red]Error: streamlit is not installed[/bold red]")
         console.print("\nInstall with:")
         console.print("  [cyan]pip install streamlit[/cyan]")
-        console.print("\nOr reinstall AOP with dashboard support:")
-        console.print("  [cyan]pip install git+https://github.com/xuha233/agent-orchestration-platform.git[/cyan]")
         sys.exit(EXIT_ERROR)
     except KeyboardInterrupt:
         console.print("\n[dim]Dashboard stopped[/dim]")
@@ -1152,12 +1179,11 @@ try:
     from .agent import agent as agent_group
     cli.add_command(agent_group, name="agent")
 except ImportError:
-    pass  # Agent module not available
+    pass
 
 # Register orchestrator command group
 try:
     from .orchestrator import orchestrator as orchestrator_group
     cli.add_command(orchestrator_group, name="orchestrator")
 except ImportError:
-    pass  # Orchestrator module not available
-
+    pass

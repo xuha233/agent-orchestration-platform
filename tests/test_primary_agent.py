@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import tempfile
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -23,15 +24,15 @@ class TestAgentContext:
 
     def test_context_creation(self) -> None:
         """Test basic context creation."""
-        ctx = AgentContext(workspace_path=Path("/tmp/test"))
-        assert ctx.workspace_path == Path("/tmp/test")
+        ctx = AgentContext(workspace_path=Path(tempfile.gettempdir()) / "test")
+        assert ctx.workspace_path == Path(tempfile.gettempdir()) / "test"
         assert ctx.session_id is None
         assert ctx.history == []
 
     def test_context_with_session(self) -> None:
         """Test context with session ID."""
         ctx = AgentContext(
-            workspace_path=Path("/tmp/test"),
+            workspace_path=Path(tempfile.gettempdir()) / "test",
             session_id="test-session-123",
         )
         assert ctx.session_id == "test-session-123"
@@ -40,14 +41,14 @@ class TestAgentContext:
         """Test context with history."""
         history = [{"role": "user", "content": "Hello"}]
         ctx = AgentContext(
-            workspace_path=Path("/tmp/test"),
+            workspace_path=Path(tempfile.gettempdir()) / "test",
             history=history,
         )
         assert ctx.history == history
 
     def test_context_default_history(self) -> None:
         """Test that history defaults to empty list."""
-        ctx = AgentContext(workspace_path=Path("/tmp/test"))
+        ctx = AgentContext(workspace_path=Path(tempfile.gettempdir()) / "test")
         # Each call should return the same list instance
         assert ctx.history == []
         ctx.history.append("test")

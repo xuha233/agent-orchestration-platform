@@ -18,14 +18,23 @@ def _is_port_in_use(port: int) -> bool:
     return result == 0
 
 
-def run_dashboard(port: int = 8501, host: str = "localhost"):
-    """Run the Streamlit dashboard."""
+def run_dashboard(port: int = 8501, host: str = "localhost", foreground: bool = False, open_browser: bool = True):
+    """Run the Streamlit dashboard.
+    
+    Args:
+        port: Port to run on
+        host: Host to bind to
+        foreground: If True, run in foreground and show logs in current terminal.
+                   If False (default), run in background in a new window.
+        open_browser: If True, open browser after starting. Default: True
+    """
     from pathlib import Path
     
     # Check if already running
     if _is_port_in_use(port):
         print(f"Dashboard is already running at http://{host}:{port}")
-        webbrowser.open(f"http://{host}:{port}")
+        if open_browser:
+            webbrowser.open(f"http://{host}:{port}")
         return
     
     # Disable streamlit usage stats prompt
@@ -34,15 +43,29 @@ def run_dashboard(port: int = 8501, host: str = "localhost"):
     app_path = Path(__file__).parent / "app.py"
     
     try:
-        if sys.platform == "win32":
-            # On Windows, use `start` command to launch in a NEW window
-            # This creates a completely independent process
-            python_exe = sys.executable
-            cmd = f'"{python_exe}" -m streamlit run "{app_path}" --server.port {port} --server.headless true --browser.gatherUsageStats false'
+        if foreground:
+            # 前台模式：直接运行，日志输出到当前终端
+            cmd = [
+                sys.executable, "-m", "streamlit", "run",
+                str(app_path),
+                "--server.port", str(port),
+                "--server.headless", "true",
+                "--browser.gatherUsageStats", "false"
+            ]
+            print(f"Starting Dashboard at http://{host}:{port}...")
+            print("Press Ctrl+C to stop")
+            print("-" * 50)
+            subprocess.run(cmd)
             
-            # start command: open a new command prompt window and run the command
-            # The dashboard will continue running even after this script exits
-            full_cmd = f'cmd /c start "AOP Dashboard" cmd /c "{cmd}"'
+        elif sys.platform == "win32":
+            # 后台模式：使用 cmd /c start 弹出新窗口
+            python_exe = sys.executable
+            
+            # 构建在新窗口中运行的命令
+            inner_cmd = f'title AOP Dashboard & "{python_exe}" -m streamlit run "{app_path}" --server.port {port} --server.headless true & pause'
+            
+            # 使用 cmd /c start 弹出新窗口
+            full_cmd = f'cmd /c start "AOP Dashboard" cmd /c "{inner_cmd}"'
             
             subprocess.run(full_cmd, shell=True)
             
@@ -53,7 +76,9 @@ def run_dashboard(port: int = 8501, host: str = "localhost"):
                 time.sleep(1)
                 if _is_port_in_use(port):
                     print(f"Dashboard started at http://{host}:{port}")
-                    print("Close the Dashboard window to stop the server.")
+                    print("A new window has opened. Close it to stop the server.")
+                    if open_browser:
+                        webbrowser.open(f"http://{host}:{port}")
                     return
             
             print("Failed to start Dashboard after 10 seconds.")
@@ -64,6 +89,8 @@ def run_dashboard(port: int = 8501, host: str = "localhost"):
             cmd = f'nohup "{sys.executable}" -m streamlit run "{app_path}" --server.port {port} --server.headless true --browser.gatherUsageStats false &'
             subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             print(f"Dashboard started at http://{host}:{port}")
+            if open_browser:
+                webbrowser.open(f"http://{host}:{port}")
         
     except FileNotFoundError:
         print("Error: streamlit not found. Please install it:")
