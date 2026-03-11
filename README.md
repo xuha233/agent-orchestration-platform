@@ -1,22 +1,22 @@
-﻿<p align="center">
+<p align="center">
   <img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+" />
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT" />
   <img src="https://img.shields.io/badge/providers-5%20built--in-orange" alt="Providers: 5 built-in" />
   <img src="https://img.shields.io/badge/platform-windows%20%7C%20macos%20%7C%20linux-lightgrey" alt="Platform: Windows | macOS | Linux" />
-  <img src="https://img.shields.io/badge/version-v0.4.0-blueviolet" alt="Version: v0.4.0" />
+  <img src="https://img.shields.io/badge/version-v0.5.0-blueviolet" alt="Version: v0.5.0" />
   <img src="https://img.shields.io/badge/tests-288%20passed-brightgreen" alt="Tests: 288 passed" />
 </p>
 
-<h1 align="center">AOP - Agent Orchestration Platform</h1>
+<h1 align="center">AOP - MVP Generator</h1>
 
 <p align="center">
-  <strong>Automated Multi-Agent Orchestration Platform</strong><br>
-  <em>One Command. Agent Team. Done.</em>
+  <strong>Idea Validation Accelerator for Entrepreneurs</strong><br>
+  <em>One Idea. One Command. One MVP.</em>
 </p>
 
 <p align="center">
-  <a href="#-one-line-agent-team">Quick Start</a> • 
-  <a href="#-vs-mco">vs MCO</a> • 
+  <a href="#-turn-ideas-into-mvps-in-hours">Quick Start</a> • 
+  <a href="#-who-is-this-for">Who It's For</a> • 
   <a href="#-core-features">Core Features</a> • 
   <a href="#-command-reference">Commands</a>
 </p>
@@ -27,223 +27,227 @@ English | [简体中文](README.zh-CN.md)
 
 ---
 
-## 🚀 One Line. Agent Team. Done.
+## 💡 Turn Ideas into MVPs in Hours
+
+**Have an app idea but can't code?** AOP helps you validate it fast.
 
 ```bash
-aop agent run "Build an e-commerce system"
+aop run "I want to build a second-hand book marketplace where users upload books and others buy them"
 ```
 
-AOP automatically:
-1. **Clarifies requirements** (asks follow-up questions if unclear)
-2. **Generates hypotheses** (testable assumptions)
-3. **Decomposes tasks** (parallel execution plan)
-4. **Dispatches agents** (multiple providers working together)
-5. **Validates results** (auto-verification with evidence)
-6. **Extracts learnings** (knowledge for future projects)
+AOP will:
+1. **Structure your idea** - Ask clarifying questions (target users, core features, monetization)
+2. **Generate hypotheses** - List assumptions that need validation
+3. **Design MVP** - Feature list, user flow, data model
+4. **Build prototype** - Clickable interactive prototype (HTML + mock data)
+5. **Validate** - Provide validation methods and next steps
 
-**You state the goal. AOP handles the rest.**
+**You describe the idea. AOP delivers a testable MVP.**
 
 ---
 
-## 🏃 Quick Start
+## 🎯 Who Is This For?
 
-### Zero-Config (Recommended)
+| User Type | What You Need | How AOP Helps |
+|-----------|---------------|---------------|
+| **Non-technical founders** | "I have an app idea but can't code" | Generate demo for investors/partners |
+| **Product managers** | "Need to validate multiple feature hypotheses" | Quick prototypes to decide priorities |
+| **Indie hackers** | "Want to test ideas fast without wasting time" | Minimal effort, maximum learning |
+| **Students/Makers** | "Need a prototype for hackathon/course" | Ship something impressive, fast |
+
+---
+
+## 🚀 Quick Start
+
+### Install
 
 ```bash
-# Install
 pip install git+https://github.com/xuha233/agent-orchestration-platform.git
+```
 
+### Validate Your First Idea
+
+```bash
 # Check environment
 aop doctor
 
-# One-liner to launch Agent team
-aop agent run "Help me analyze this project's architecture"
-```
+# Describe your idea
+aop run "Build a task management app with team collaboration"
 
-### Interactive Mode
-
-```bash
-# AOP will ask clarifying questions
-aop agent run -i "Build a REST API"
+# Or use interactive mode (AOP will ask questions)
+aop run -i "I want to create a..."
 ```
 
 ### Resume Interrupted Work
 
 ```bash
-# List all sprints
+# List all projects
 aop agent list
 
-# Resume a specific sprint
+# Continue where you left off
 aop agent run -r sprint-abc123
 ```
-
-### Advanced Usage
-
-For fine-grained control:
-
-```bash
-# Multi-agent code review
-aop review -p "Check for security issues" -P claude,gemini --synthesize
-
-# General multi-provider task
-aop run -p "Analyze architecture" -P claude,codex
-
-# Web Dashboard
-aop dashboard --open-browser
-```
-
----
-
-## ⚡ MCO or AOP?
-
-| Your Scenario | Recommendation |
-|--------------|----------------|
-| "I want to say one sentence, agents do the work" | **AOP** `aop agent run "..."` |
-| "I need fine-grained control over every parameter" | **MCO** more flexible CLI |
-| "CI/CD integration with SARIF output" | **MCO** mature SARIF support |
-| "Building a large project, need knowledge retention" | **AOP** auto learning extraction |
-| "My work gets interrupted frequently" | **AOP** Sprint persistence + resume |
-
-**In one sentence: MCO is the engine. AOP is the automation pipeline.**
 
 ---
 
 ## ✨ Core Features
 
-### 🤖 Full Automation
+### 🎨 MVP Generation
 
-| What You Need | What AOP Does |
-|--------------|----------------|
-| Multiple agents working together | ✅ Parallel execution with auto-deduplication |
-| No manual timeout management | ✅ Dynamic timeout extension — agents request their own |
-| Automated validation | ✅ Smart validator with evidence collection |
-| Knowledge retention | ✅ Learning extraction, cross-project sharing |
-| Resume interrupted work | ✅ Sprint persistence, recover anytime |
+| Input | Output |
+|-------|--------|
+| Your idea in plain language | Clickable prototype (HTML) |
+| No technical knowledge needed | Feature list + user flow |
+| Vague description? No problem | AOP asks clarifying questions |
 
-### 🧠 Intelligence Layer
+### 🧪 Hypothesis-Driven Validation
 
-**Codebase Auto-Analysis**
-- Language/framework/architecture auto-detection
-- Project complexity assessment
-- Team configuration recommendations
+Every MVP comes with testable hypotheses:
 
-**Hypothesis-Driven Development (HDD)**
-- Generate testable assumptions from requirements
-- Dependency-aware execution ordering
-- Track validation status
+```
+H-001: If users can upload books in < 30 seconds, they will list more items
+H-002: If we charge 10% commission, sellers will still use the platform
+```
 
-### 📚 Knowledge Layer
+### 📊 Validation Report
 
-**Auto Learning Extraction**
-- What worked / What didn't
-- Key insights and risks
-- Suggestions for improvement
+Each project includes:
+- **What to test** - Specific validation methods
+- **How to measure** - Success metrics
+- **Next steps** - Iteration suggestions
 
-**Cross-Project Knowledge Base**
-- Similar problem matching
-- Historical solution reuse
+### 💾 Knowledge Retention
+
+- Every project's validation journey is recorded
+- Learnings can be exported and shared
+- Similar ideas can reuse past insights
+
+---
+
+## 🔄 AOP vs Other Tools
+
+| Your Situation | Recommended Tool |
+|----------------|------------------|
+| "I have an idea, need a quick prototype to show people" | **AOP** - Designed for idea validation |
+| "I need production-ready code for my startup" | **MCO** or **Claude Code** - For full development |
+| "I want fine-grained control over agents" | **MCO** - More configuration options |
+| "I need CI/CD integration with SARIF output" | **MCO** - Mature SARIF support |
+
+**The ecosystem: AOP handles 0→1 (validation), other tools handle 1→100 (scaling).**
 
 ---
 
 ## 📋 Command Reference
 
-### 🚀 Agent Automation (Zero-Config)
+### 🚀 Idea to MVP (Zero-Config)
 
 | Command | Purpose |
 |---------|---------|
-| `aop agent run "task"` | 🌟 One-liner, fully automated execution |
-| `aop agent run -i "task"` | Interactive mode with follow-up questions |
-| `aop agent run -r <sprint-id>` | Resume interrupted sprint |
-| `aop agent status` | View current sprint status |
-| `aop agent next` | Get AI-suggested next steps |
-| `aop agent list` | List all sprints |
-
-### 🔧 Fine-Grained Control
-
-| Command | Purpose |
-|---------|---------|
-| `aop review -p "..."` | Multi-agent code review |
-| `aop run -p "..."` | Execute multi-agent task |
-| `aop dashboard` | Launch web UI |
+| `aop run "your idea"` | 🌟 Describe idea, get MVP |
+| `aop run -i "your idea"` | Interactive mode with follow-up questions |
+| `aop agent run -r <sprint-id>` | Resume interrupted project |
+| `aop agent status` | View current project status |
+| `aop agent list` | List all projects |
 
 ### 🧠 Hypothesis & Learning
 
 | Command | Purpose |
 |---------|---------|
-| `aop hypothesis create "..."` | Create hypothesis |
-| `aop hypothesis list` | List hypotheses |
-| `aop hypothesis update H-xxx -s validated` | Update status |
-| `aop learning capture` | Capture learning |
-| `aop learning export` | Export to Markdown |
+| `aop hypothesis list` | List hypotheses for current project |
+| `aop hypothesis create "..."` | Add new hypothesis |
+| `aop learning export` | Export learnings to Markdown |
 
-### 🏗 Project & Environment
+### 🔧 Advanced
 
 | Command | Purpose |
 |---------|---------|
-| `aop doctor` | Check environment and provider status |
-| `aop init <name>` | Initialize new project |
-| `aop project assess` | Assess project complexity |
-
-### 🎯 Orchestrator Management
-
-| Command | Purpose |
-|---------|---------|
-| `aop orchestrator doctor` | Detect available orchestrators |
-| `aop orchestrator list` | List available orchestrators |
-| `aop orchestrator use <type>` | Set project orchestrator |
+| `aop dashboard` | Launch web UI |
+| `aop doctor` | Check environment |
+| `aop project assess` | Analyze existing project |
 
 ---
 
 ## 🔌 Supported Providers
 
-| Provider | Install Command |
-|----------|-----------------|
-| Claude | `npm install -g @anthropic-ai/claude-code` |
-| Codex | `npm install -g @openai/codex` |
-| Gemini | `pip install google-generativeai` |
-| Qwen | `pip install dashscope` |
-| OpenCode | `npm install -g opencode` |
+| Provider | Type | Setup |
+|----------|------|-------|
+| Claude | CLI | `claude auth login` |
+| Codex | CLI | `OPENAI_API_KEY=xxx` |
+| Gemini | API | `GOOGLE_API_KEY=xxx` |
+| Qwen | API | `DASHSCOPE_API_KEY=xxx` |
+| OpenCode | CLI | No config needed |
+
+---
+
+## 📊 Example Output
+
+When you run:
+
+```bash
+aop run "Create a second-hand book marketplace"
+```
+
+You get:
+
+### 1. Structured Idea
+```
+Target Users: College students, book lovers
+Core Features: 
+  - Book listing (photo, condition, price)
+  - Search and browse
+  - Direct messaging
+  - Secure payment
+Monetization: 10% transaction fee
+```
+
+### 2. Hypotheses
+```
+H-001: Students will list books if process < 2 minutes
+H-002: 10% fee is acceptable for convenience
+H-003: Direct messaging increases trust and conversion
+```
+
+### 3. MVP Prototype
+- Single HTML file with mock data
+- Clickable flow: Browse → Details → Message → Pay
+- Responsive design
+
+### 4. Validation Report
+```
+How to test:
+  1. Show prototype to 10 target users
+  2. Measure listing completion time
+  3. Survey on fee acceptance
+  4. Track message usage patterns
+
+Success criteria:
+  - 80% complete listing in < 2 min
+  - 70% accept 10% fee
+  - 50% use messaging feature
+```
 
 ---
 
 ## 🏗 Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Automation Layer                          │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
-│  │  Agent      │ │  Hypothesis │ │  Learning   │            │
-│  │  Driver     │ │  Generator  │ │  Extractor  │            │
-│  └─────────────┘ └─────────────┘ └─────────────┘            │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
-│  │   Auto      │ │  Codebase   │ │   Sprint    │            │
-│  │  Validator  │ │   Analyzer  │ │ Persistence │            │
-│  └─────────────┘ └─────────────┘ └─────────────┘            │
-└─────────────────────────────┬───────────────────────────────┘
-                              │
-┌─────────────────────────────┴───────────────────────────────┐
-│                   Orchestrator Layer                         │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
-│  │Claude-Code  │ │  OpenCode   │ │  OpenClaw   │            │
-│  └─────────────┘ └─────────────┘ └─────────────┘            │
-│  ┌─────────────┐                                            │
-│  │  API Mode   │  ← Direct LLM API calls                    │
-│  └─────────────┘                                            │
-└─────────────────────────────┬───────────────────────────────┘
-                              │
-┌─────────────────────────────┴───────────────────────────────┐
-│                    Execution Layer                           │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
-│  │  Parallel   │ │   Timeout   │ │   Report    │            │
-│  │  Dispatch   │ │   Manager   │ │  Formatters │            │
-│  └─────────────┘ └─────────────┘ └─────────────┘            │
-└─────────────────────────────┬───────────────────────────────┘
-                              │
-        ┌─────────┬───────────┼───────────┬─────────┐
-        ▼         ▼           ▼           ▼         ▼
-    ┌───────┐ ┌───────┐ ┌───────┐ ┌────────┐ ┌──────┐
-    │ Claude│ │ Codex │ │Gemini │ │OpenCode│ │ Qwen │
-    └───────┘ └───────┘ └───────┘ └────────┘ └──────┘
+┌─────────────────────────────────────────┐
+│          MVP Generation Layer            │
+│  Idea Structurer | MVP Designer          │
+│  Prototype Builder | Report Generator    │
+└─────────────────┬───────────────────────┘
+                  │
+┌─────────────────┴───────────────────────┐
+│         Orchestration Layer              │
+│  Claude-Code | OpenCode | OpenClaw      │
+│  Multi-Provider Parallel Dispatch       │
+└─────────────────┬───────────────────────┘
+                  │
+┌─────────────────┴───────────────────────┐
+│          Execution Layer                 │
+│  Task Scheduler | Timeout Manager       │
+│  Result Synthesis | Report Formatters   │
+└─────────────────────────────────────────┘
 ```
 
 ---
@@ -252,12 +256,11 @@ aop dashboard --open-browser
 
 | Module | Tests | Status |
 |--------|-------|--------|
-| TimeoutManager | 13 | ✅ |
-| HypothesisGraph | 14 | ✅ |
+| MVP Generator | 15+ | ✅ |
+| HypothesisManager | 14 | ✅ |
 | KnowledgeBase | 14 | ✅ |
 | AutoValidator | 15+ | ✅ |
 | LearningExtractor | 12+ | ✅ |
-| CodebaseAnalyzer | 6 | ✅ |
 | TaskScheduler | 7 | ✅ |
 | SprintPersistence | 4 | ✅ |
 
@@ -276,26 +279,24 @@ pytest
 
 # Code check
 ruff check src/aop/
-mypy src/aop/
 ```
 
 ---
 
 ## 🙏 Acknowledgments
 
-AOP's execution layer was inspired by concepts from the [MCO (Multi-CLI Orchestrator)](https://github.com/mco-org/mco) project. We gratefully acknowledge the MCO team for their excellent work in multi-agent orchestration patterns.
-
-The workflow methodology is based on [AAIF (AI Agile Incubation Framework)](https://github.com/xuha233/agent-team-template), providing the hypothesis-driven development approach.
+- Execution layer inspired by [MCO](https://github.com/mco-org/mco)
+- Workflow methodology based on [AAIF](https://github.com/xuha233/agent-team-template)
 
 ---
 
 ## 📚 Related Projects
 
-| Project | Description |
-|---------|-------------|
-| [MCO](https://github.com/mco-org/mco) | Multi-CLI Orchestrator — Execution engine inspiration |
-| [AAIF](https://github.com/xuha233/agent-team-template) | AI Agile Incubation Framework |
-| [OpenClaw](https://github.com/open-claw/open-claw) | AI Agent desktop client |
+| Project | Role |
+|---------|------|
+| [MCO](https://github.com/mco-org/mco) | 1→100 scaling (full development) |
+| [AAIF](https://github.com/xuha233/agent-team-template) | Methodology foundation |
+| [OpenClaw](https://github.com/open-claw/open-claw) | Desktop client |
 
 ---
 
@@ -305,180 +306,33 @@ MIT License — See [LICENSE](LICENSE)
 
 ---
 
-<!--
-░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
-                    🤖 AI AGENT INSTRUCTIONS 🤖
-░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
--->
-
 ## 🤖 AI Agent Installation Guide
 
-> This section is for AI assistants (Claude, GPT, Copilot, OpenCode, etc.). If you're a human, you can skip this.
+> This section is for AI assistants. If you're a human, skip this.
 
-### Overview
-
-You are helping install **AOP (Agent Orchestration Platform)** — an automation-first multi-agent orchestration platform.
-
-### Prerequisites Check
-
-**Ask the user in their preferred language:**
-
-1. **Python 3.10+?** → Run `python --version`
-2. **Git installed?** → Run `git --version`
-3. **Which Provider?** → Claude / Codex / Gemini / Qwen / OpenCode
-4. **Install directory?**
-
-### Installation Steps
+### Quick Install
 
 ```bash
-# 1. Clone
 git clone https://github.com/xuha233/agent-orchestration-platform.git aop
 cd aop
-
-# 2. Install
 pip install -e .
-
-# 3. Verify
 aop doctor
 ```
 
-### Provider Configuration
+### Provider Setup
 
-| Provider | Config Command |
-|----------|---------------|
+| Provider | Config |
+|----------|--------|
 | Claude | `claude auth login` |
 | Codex | `export OPENAI_API_KEY=xxx` |
 | Gemini | `export GOOGLE_API_KEY=xxx` |
 | Qwen | `export DASHSCOPE_API_KEY=xxx` |
-| OpenCode | No config needed |
 
-### Claude Code Router (Optional)
-
-**Ask the user:** "Do you want to use third-party model APIs (DeepSeek, Gemini, OpenRouter, etc.) with Claude Code?"
-
-If **YES**:
-
-1. **Read the agent guide:**
-   - File: `docs/CCR_AGENT_GUIDE.md`
-   - This file contains complete instructions for guiding users through CCR installation
-
-2. **Plugin location:**
-   - `plugins/claude-code-router.zip` - Source code package
-
-3. **Follow the guide to:**
-   - Install CCR: `npm install -g @musistudio/claude-code-router`
-   - Ask user for: Provider, BaseURL, API Key, Models
-   - Create `~/.claude-code-router/config.json`
-   - Verify with `ccr code`
-
-If **NO**, skip this step.
-
-
-
-### Claude Code Router (Optional)
-
-**Ask the user:** "Do you want to use third-party model APIs (DeepSeek, Gemini, OpenRouter, etc.) with Claude Code?"
-
-If **YES**, install Claude Code Router:
-
-1. **Read the installation guide:**
-   - File: `docs/CCR_INSTALL_GUIDE.md`
-   - Or visit: https://github.com/musistudio/claude-code-router
-
-2. **Install CCR:**
-   ```bash
-   npm install -g @musistudio/claude-code-router
-   ```
-
-3. **Follow the guide to configure:**
-   - Ask user for: Provider name, API Base URL, API Key, Models
-   - Create `~/.claude-code-router/config.json`
-   - Start with: `ccr code`
-
-If **NO**, skip this step and continue below.
-
-### Quick Start
-
-
-### Quick Start
-
-```bash
-# Check available orchestrators
-aop orchestrator doctor
-
-# One-liner to start
-aop agent run "Your task description here"
-```
-
-### Common Issues
-
-- **Git clone fails** → Check network, or download ZIP manually
-- **Provider shows "Not found"** → Install corresponding CLI, configure API Key
-- **`aop` command not found** → Ensure pip install succeeded, check PATH
-
-
-### OpenClaw Skill Installation (Optional)
-
-If the user is using [OpenClaw](https://github.com/open-claw/open-claw), install the AOP Agile Coach Skill:
-
-**Detect OS and provide corresponding commands:**
-
-Cross-platform (Python, most universal):
-```bash
-python -c "
-import shutil
-from pathlib import Path
-
-src = Path('skills/aop-coach')
-dst = Path.home() / '.openclaw' / 'skills' / 'aop-coach'
-dst.mkdir(parents=True, exist_ok=True)
-
-for f in ['SKILL.md', 'README.md']:
-    shutil.copy(src / f, dst / f)
-
-(dst / 'references').mkdir(exist_ok=True)
-for f in ['TEAM.md', 'WORKFLOW.md']:
-    shutil.copy(src / 'references' / f, dst / 'references' / f)
-
-print(f'Skill installed to: {dst}')
-"
-```
-
-Windows PowerShell:
-```powershell
-$src = "skills\aop-coach"
-$dst = "$env:USERPROFILE\.openclaw\skills\aop-coach"
-New-Item -ItemType Directory -Path $dst -Force | Out-Null
-Copy-Item -Path "$src\SKILL.md", "$src\README.md" -Destination $dst
-New-Item -ItemType Directory -Path "$dst\references" -Force | Out-Null
-Copy-Item -Path "$src\references\TEAM.md", "$src\references\WORKFLOW.md" -Destination "$dst\references"
-Write-Host "Skill installed to: $dst"
-```
-
-macOS/Linux:
-```bash
-src="skills/aop-coach"
-dst="$HOME/.openclaw/skills/aop-coach"
-mkdir -p "$dst/references"
-cp "$src/SKILL.md" "$src/README.md" "$dst/"
-cp "$src/references/TEAM.md" "$src/references/WORKFLOW.md" "$dst/references/"
-echo "Skill installed to: $dst"
-```
-
-**After installation, tell the user:**
-- Test in OpenClaw with: `-aop status`
-- See `skills/aop-coach/README.md` for details
-
----
 ### After Installation
 
-**Ask the user:** "Installation complete! What do you want to build with AOP?"
+Ask the user: "What's your idea? Describe it and I'll help you generate an MVP."
 
-**Run the agent:**
+Then run:
 ```bash
-aop agent run "[user's description]"
+aop run "[user's idea]"
 ```
-
----
-
-<!-- End of AI Agent Instructions -->

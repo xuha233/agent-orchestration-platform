@@ -1,24 +1,24 @@
-﻿<p align="center">
+<p align="center">
   <img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+" />
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT" />
   <img src="https://img.shields.io/badge/providers-5%20built--in-orange" alt="Providers: 5 built-in" />
   <img src="https://img.shields.io/badge/platform-windows%20%7C%20macos%20%7C%20linux-lightgrey" alt="Platform: Windows | macOS | Linux" />
-  <img src="https://img.shields.io/badge/version-v0.4.0-blueviolet" alt="Version: v0.4.0" />
+  <img src="https://img.shields.io/badge/version-v0.5.0-blueviolet" alt="Version: v0.5.0" />
   <img src="https://img.shields.io/badge/tests-288%20passed-brightgreen" alt="Tests: 288 passed" />
 </p>
 
-<h1 align="center">AOP - Agent Orchestration Platform</h1>
+<h1 align="center">AOP - MVP 生成器</h1>
 
 <p align="center">
-  <strong>自动化多 Agent 协作平台</strong><br>
-  <em>一行命令。Agent 团队。搞定。</em>
+  <strong>面向创业者的创意验证加速器</strong><br>
+  <em>一个想法。一行命令。一个 MVP。</em>
 </p>
 
 <p align="center">
-  <a href="#-一行命令agent-团队干活">快速开始</a> • 
-  <a href="#-选-mco-还是-aop">对比 MCO</a> • 
+  <a href="#-几小时内把想法变成-mvp">快速开始</a> • 
+  <a href="#-适合谁用">适合谁</a> • 
   <a href="#-核心功能">核心功能</a> • 
-  <a href="#-命令参考">命令一览</a>
+  <a href="#-命令参考">命令</a>
 </p>
 
 ---
@@ -27,223 +27,228 @@
 
 ---
 
-## 🚀 一行命令。Agent 团队。搞定。
+## 💡 几小时内把想法变成 MVP
+
+**有 app 想法但不会写代码？** AOP 帮你快速验证。
 
 ```bash
-aop agent run "做一个电商系统"
+aop run "我想做一个二手书交易平台，用户上传书本，其他人购买，我抽成"
 ```
 
-AOP 会自动：
-1. **澄清需求**（不确定会追问）
-2. **生成假设**（可验证的假设）
-3. **拆解任务**（并行执行计划）
-4. **调度 Agent**（多个 Provider 协同工作）
-5. **验证结果**（自动验证，收集证据）
-6. **提取学习**（沉淀知识供后续项目使用）
+AOP 会：
+1. **结构化你的想法** - 追问关键问题（目标用户、核心功能、盈利模式）
+2. **生成假设** - 列出需要验证的商业和技术假设
+3. **设计 MVP** - 功能列表、用户流程、数据模型
+4. **生成原型** - 可点击的交互原型（HTML + 模拟数据）
+5. **验证报告** - 提供验证方法和下一步建议
 
-**你说需求，AOP 帮你干完。**
+**你描述想法。AOP 输出可测试的 MVP。**
 
 ---
 
-## 🏃 快速开始
+## 🎯 适合谁？
 
-### 开箱即用（推荐）
+| 用户类型 | 需求 | AOP 帮你 |
+|---------|------|----------|
+| **非技术创业者** | "我有 app 想法，但不会编程" | 生成 demo 给投资人/合伙人看 |
+| **产品经理** | "需要快速验证多个功能假设" | 快速原型，决定开发优先级 |
+| **独立开发者** | "想用最少时间试错" | 最小投入，最大学习 |
+| **学生/创客** | "参加黑客松/课程项目" | 快速产出，惊艳全场 |
+
+---
+
+## 🚀 快速开始
+
+### 安装
 
 ```bash
-# 安装
 pip install git+https://github.com/xuha233/agent-orchestration-platform.git
+```
 
+### 验证你的第一个想法
+
+```bash
 # 检查环境
 aop doctor
 
-# 一行命令启动 Agent 团队
-aop agent run "帮我分析这个项目的架构"
-```
+# 描述你的想法
+aop run "做一个支持团队协作的任务管理工具"
 
-### 交互式模式
-
-```bash
-# AOP 会追问澄清问题
-aop agent run -i "做一个 REST API"
+# 或使用交互模式（AOP 会追问）
+aop run -i "我想创建一个..."
 ```
 
 ### 恢复中断的工作
 
 ```bash
-# 列出所有冲刺
+# 列出所有项目
 aop agent list
 
-# 恢复指定冲刺
+# 继续之前的工作
 aop agent run -r sprint-abc123
 ```
-
-### 高级用法
-
-需要精细控制时：
-
-```bash
-# 多 Agent 代码审查
-aop review -p "检查安全问题" -P claude,gemini --synthesize
-
-# 通用多 Provider 任务
-aop run -p "分析架构" -P claude,codex
-
-# Web Dashboard
-aop dashboard --open-browser
-```
-
----
-
-## ⚡ 选 MCO 还是 AOP？
-
-| 你的场景 | 推荐 |
-|---------|------|
-| "我想说一句话，Agent 自己干活" | **AOP** `aop agent run "..."` |
-| "我要精细控制每个参数" | **MCO** 更灵活的命令行 |
-| "我要 CI/CD 集成代码审查" | **MCO** SARIF 输出成熟 |
-| "我要开发大项目，需要知识沉淀" | **AOP** 自动学习提取 |
-| "我经常被打断，需要恢复" | **AOP** Sprint 持久化恢复 |
-
-**一句话总结：MCO 是引擎，AOP 是自动化流水线。**
 
 ---
 
 ## ✨ 核心功能
 
-### 🤖 全自动化
+### 🎨 MVP 生成
 
-| 你需要的 | AOP 做的 |
+| 输入 | 输出 |
+|-----|------|
+| 用自然语言描述想法 | 可点击的原型（HTML） |
+| 不需要技术知识 | 功能列表 + 用户流程 |
+| 描述模糊？没问题 | AOP 会追问澄清 |
+
+### 🧪 假设驱动验证
+
+每个 MVP 都附带可验证的假设：
+
+```
+H-001: 如果用户能在 30 秒内上传书本，他们会发布更多商品
+H-002: 如果收取 10% 佣金，卖家仍会使用平台
+H-003: 直接消息功能增加信任和转化率
+```
+
+### 📊 验证报告
+
+每个项目包含：
+- **测试什么** - 具体验证方法
+- **如何衡量** - 成功指标
+- **下一步** - 迭代建议
+
+### 💾 知识留存
+
+- 记录每个项目的验证过程
+- 学习心得可导出分享
+- 类似想法可复用过往经验
+
+---
+
+## 🔄 AOP vs 其他工具
+
+| 你的情况 | 推荐工具 |
 |---------|---------|
-| 让多个 AI 同时工作 | ✅ 并行执行，自动去重 |
-| 不想手动管理超时 | ✅ 动态超时延长，Agent 自己申请延期 |
-| 想要自动化验证 | ✅ 智能验证器，自动收集证据 |
-| 需要知识沉淀 | ✅ 学习提取，跨项目共享 |
-| 希望能恢复中断的工作 | ✅ Sprint 持久化，随时恢复 |
+| "我有个想法，需要快速做原型给别人看" | **AOP** - 专为创意验证设计 |
+| "我需要生产级代码来启动项目" | **MCO** 或 **Claude Code** - 完整开发 |
+| "我想精细控制 Agent 行为" | **MCO** - 更多配置选项 |
+| "我需要 CI/CD 集成和 SARIF 输出" | **MCO** - 成熟的 SARIF 支持 |
 
-### 🧠 智能层
-
-**代码库自动分析**
-- 语言/框架/架构自动识别
-- 项目复杂度评估
-- 团队配置建议
-
-**假设驱动开发 (HDD)**
-- 从需求生成可验证假设
-- 依赖感知的执行顺序
-- 跟踪验证状态
-
-### 📚 知识层
-
-**学习自动提取**
-- 什么有效 / 什么无效
-- 关键洞察和风险
-- 改进建议
-
-**跨项目知识库**
-- 相似问题匹配
-- 历史解决方案复用
+**生态定位：AOP 负责 0→1（验证），其他工具负责 1→100（规模化）。**
 
 ---
 
 ## 📋 命令参考
 
-### 🚀 Agent 自动化（开箱即用）
+### 🚀 想法变 MVP（零配置）
 
 | 命令 | 用途 |
-|------|------|
-| `aop agent run "任务"` | 🌟 一行命令，全自动执行 |
-| `aop agent run -i "任务"` | 交互式追问模式 |
-| `aop agent run -r <sprint-id>` | 恢复中断的冲刺 |
-| `aop agent status` | 查看当前冲刺状态 |
-| `aop agent next` | 获取 AI 建议的下一步 |
-| `aop agent list` | 列出所有冲刺 |
-
-### 🔧 精细控制
-
-| 命令 | 用途 |
-|------|------|
-| `aop review -p "..."` | 多 Agent 代码审查 |
-| `aop run -p "..."` | 执行多 Agent 任务 |
-| `aop dashboard` | 启动 Web UI |
+|-----|------|
+| `aop run "你的想法"` | 🌟 描述想法，获得 MVP |
+| `aop run -i "你的想法"` | 交互模式，会追问问题 |
+| `aop agent run -r <sprint-id>` | 恢复中断的项目 |
+| `aop agent status` | 查看当前项目状态 |
+| `aop agent list` | 列出所有项目 |
 
 ### 🧠 假设与学习
 
 | 命令 | 用途 |
-|------|------|
-| `aop hypothesis create "..."` | 创建假设 |
-| `aop hypothesis list` | 列出假设 |
-| `aop hypothesis update H-xxx -s validated` | 更新状态 |
-| `aop learning capture` | 捕获学习 |
-| `aop learning export` | 导出为 Markdown |
+|-----|------|
+| `aop hypothesis list` | 列出当前项目的假设 |
+| `aop hypothesis create "..."` | 创建新假设 |
+| `aop learning export` | 导出学习心得为 Markdown |
 
-### 🏗 项目与环境
+### 🔧 高级功能
 
 | 命令 | 用途 |
-|------|------|
-| `aop doctor` | 检查环境和 Provider 状态 |
-| `aop init <name>` | 初始化新项目 |
-| `aop project assess` | 评估项目复杂度 |
-
-### 🎯 Orchestrator 管理
-
-| 命令 | 用途 |
-|------|------|
-| `aop orchestrator doctor` | 检测可用的 Orchestrator |
-| `aop orchestrator list` | 列出可用的 Orchestrator |
-| `aop orchestrator use <type>` | 设置项目的 Orchestrator |
+|-----|------|
+| `aop dashboard` | 启动 Web 界面 |
+| `aop doctor` | 检查环境 |
+| `aop project assess` | 分析现有项目 |
 
 ---
 
-## 🔌 支持 Provider
+## 🔌 支持的 Provider
 
-| Provider | 安装命令 |
-|----------|---------|
-| Claude | `npm install -g @anthropic-ai/claude-code` |
-| Codex | `npm install -g @openai/codex` |
-| Gemini | `pip install google-generativeai` |
-| Qwen | `pip install dashscope` |
-| OpenCode | `npm install -g opencode` |
+| Provider | 类型 | 配置 |
+|----------|-----|------|
+| Claude | CLI | `claude auth login` |
+| Codex | CLI | `OPENAI_API_KEY=xxx` |
+| Gemini | API | `GOOGLE_API_KEY=xxx` |
+| Qwen | API | `DASHSCOPE_API_KEY=xxx` |
+| OpenCode | CLI | 无需配置 |
+
+---
+
+## 📊 示例输出
+
+当你运行：
+
+```bash
+aop run "创建一个二手书交易平台"
+```
+
+你会得到：
+
+### 1. 结构化的想法
+```
+目标用户：大学生、读书爱好者
+核心功能：
+  - 书本上架（照片、成色、价格）
+  - 搜索和浏览
+  - 直接消息
+  - 安全支付
+盈利模式：10% 交易佣金
+```
+
+### 2. 假设
+```
+H-001: 学生会在 2 分钟内完成上架
+H-002: 10% 佣金对于便利性是可以接受的
+H-003: 直接消息增加信任和转化率
+```
+
+### 3. MVP 原型
+- 单个 HTML 文件，带模拟数据
+- 可点击流程：浏览 → 详情 → 消息 → 支付
+- 响应式设计
+
+### 4. 验证报告
+```
+如何测试：
+  1. 向 10 个目标用户展示原型
+  2. 测量上架完成时间
+  3. 调查对佣金的接受度
+  4. 追踪消息功能使用情况
+
+成功标准：
+  - 80% 在 2 分钟内完成上架
+  - 70% 接受 10% 佣金
+  - 50% 使用消息功能
+```
 
 ---
 
 ## 🏗 架构
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Automation Layer                          │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
-│  │  Agent      │ │  Hypothesis │ │  Learning   │            │
-│  │  Driver     │ │  Generator  │ │  Extractor  │            │
-│  └─────────────┘ └─────────────┘ └─────────────┘            │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
-│  │   Auto      │ │  Codebase   │ │   Sprint    │            │
-│  │  Validator  │ │   Analyzer  │ │ Persistence │            │
-│  └─────────────┘ └─────────────┘ └─────────────┘            │
-└─────────────────────────────┬───────────────────────────────┘
-                              │
-┌─────────────────────────────┴───────────────────────────────┐
-│                   Orchestrator Layer                         │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
-│  │Claude-Code  │ │  OpenCode   │ │  OpenClaw   │            │
-│  └─────────────┘ └─────────────┘ └─────────────┘            │
-│  ┌─────────────┐                                            │
-│  │  API Mode   │  ← 直接 LLM API 调用                       │
-│  └─────────────┘                                            │
-└─────────────────────────────┬───────────────────────────────┘
-                              │
-┌─────────────────────────────┴───────────────────────────────┐
-│                    Execution Layer                           │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
-│  │  Parallel   │ │   Timeout   │ │   Report    │            │
-│  │  Dispatch   │ │   Manager   │ │  Formatters │            │
-│  └─────────────┘ └─────────────┘ └─────────────┘            │
-└─────────────────────────────┬───────────────────────────────┘
-                              │
-        ┌─────────┬───────────┼───────────┬─────────┐
-        ▼         ▼           ▼           ▼         ▼
-    ┌───────┐ ┌───────┐ ┌───────┐ ┌────────┐ ┌──────┐
-    │ Claude│ │ Codex │ │Gemini │ │OpenCode│ │ Qwen │
-    └───────┘ └───────┘ └───────┘ └────────┘ └──────┘
+┌─────────────────────────────────────────┐
+│          MVP 生成层                      │
+│  想法结构化 | MVP 设计器                  │
+│  原型构建器 | 报告生成器                  │
+└─────────────────┬───────────────────────┘
+                  │
+┌─────────────────┴───────────────────────┐
+│         编排层                           │
+│  Claude-Code | OpenCode | OpenClaw      │
+│  多 Provider 并行调度                   │
+└─────────────────┬───────────────────────┘
+                  │
+┌─────────────────┴───────────────────────┐
+│          执行层                          │
+│  任务调度器 | 超时管理器                 │
+│  结果综合 | 报告格式化                   │
+└─────────────────────────────────────────┘
 ```
 
 ---
@@ -251,17 +256,16 @@ aop dashboard --open-browser
 ## 📊 测试覆盖
 
 | 模块 | 测试数 | 状态 |
-|------|-------|------|
-| TimeoutManager | 13 | ✅ |
-| HypothesisGraph | 14 | ✅ |
+|-----|--------|------|
+| MVP 生成器 | 15+ | ✅ |
+| HypothesisManager | 14 | ✅ |
 | KnowledgeBase | 14 | ✅ |
 | AutoValidator | 15+ | ✅ |
 | LearningExtractor | 12+ | ✅ |
-| CodebaseAnalyzer | 6 | ✅ |
 | TaskScheduler | 7 | ✅ |
 | SprintPersistence | 4 | ✅ |
 
-**总计：288 tests passing**
+**总计：288 个测试通过**
 
 ---
 
@@ -276,174 +280,27 @@ pytest
 
 # 代码检查
 ruff check src/aop/
-mypy src/aop/
 ```
 
 ---
 
 ## 🙏 致谢
 
-AOP 的执行层灵感来自 [MCO (Multi-CLI Orchestrator)](https://github.com/mco-org/mco) 项目的概念。感谢 MCO 团队在多 Agent 编排模式上的优秀工作。
-
-工作流方法论基于 [AAIF (AI Agile Incubation Framework)](https://github.com/xuha233/agent-team-template)，提供假设驱动开发方法。
+- 执行层灵感来自 [MCO](https://github.com/mco-org/mco)
+- 工作流方法论基于 [AAIF](https://github.com/xuha233/agent-team-template)
 
 ---
 
 ## 📚 相关项目
 
-| 项目 | 描述 |
-|------|------|
-| [MCO](https://github.com/mco-org/mco) | Multi-CLI Orchestrator — 执行引擎灵感来源 |
-| [AAIF](https://github.com/xuha233/agent-team-template) | AI Agile Incubation Framework |
-| [OpenClaw](https://github.com/open-claw/open-claw) | AI Agent 桌面客户端 |
+| 项目 | 定位 |
+|-----|------|
+| [MCO](https://github.com/mco-org/mco) | 1→100 规模化（完整开发） |
+| [AAIF](https://github.com/xuha233/agent-team-template) | 方法论基础 |
+| [OpenClaw](https://github.com/open-claw/open-claw) | 桌面客户端 |
 
 ---
 
 ## 📄 许可证
 
 MIT License — 详见 [LICENSE](LICENSE)
-
----
-
-<!--
-░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
-                    🤖 AI AGENT INSTRUCTIONS 🤖
-░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
--->
-
-## 🤖 AI Agent 安装指南
-
-> 这部分是给 AI 助手（Claude, GPT, OpenCode 等）的指导。如果你是人类用户，可以忽略。
-
-### 概述
-
-你正在帮助用户安装 **AOP (Agent Orchestration Platform)** — 一个自动化优先的多 Agent 协作平台。
-
-### 前置检查
-
-**用用户的语言询问：**
-
-1. **Python 3.10+?** → 运行 `python --version`
-2. **Git 已安装?** → 运行 `git --version`
-3. **选择哪个 Provider?** → Claude / Codex / Gemini / Qwen / OpenCode
-4. **安装到哪个目录?**
-
-### 安装步骤
-
-```bash
-# 1. 克隆
-git clone https://github.com/xuha233/agent-orchestration-platform.git aop
-cd aop
-
-# 2. 安装
-pip install -e .
-
-# 3. 验证
-aop doctor
-```
-
-### Provider 配置
-
-| Provider | 配置命令 |
-|----------|---------|
-| Claude | `claude auth login` |
-| Codex | `export OPENAI_API_KEY=xxx` |
-| Gemini | `export GOOGLE_API_KEY=xxx` |
-| Qwen | `export DASHSCOPE_API_KEY=xxx` |
-| OpenCode | 无需配置 |
-
-### 快速开始
-
-```bash
-# 检测可用的 Orchestrator
-aop orchestrator doctor
-
-# 一行命令启动
-aop agent run "你的任务描述"
-```
-
-### 常见问题
-
-- **Git clone 失败** → 检查网络，或手动下载 ZIP
-- **Provider 显示 "Not found"** → 安装对应 CLI，配置 API Key
-- **`aop` 命令找不到** → 确保 pip install 成功，检查 PATH
-
-
-### OpenClaw Skill 安装（可选）
-
-如果用户使用 [OpenClaw](https://github.com/open-claw/open-claw)，可以安装 AOP 敏捷教练 Skill：
-
-**检测操作系统并提供对应命令：**
-
-```bash
-# 检测操作系统
-# Windows: $env:OS 或 ver
-# macOS/Linux: uname -a
-
-# 跨平台安装命令（Python 方式，最通用）
-python -c "
-import shutil
-from pathlib import Path
-
-# 源目录（AOP 项目中的 skill）
-src = Path('skills/aop-coach')
-
-# 目标目录
-if Path.home().name == 'Users' or Path.home().name == 'home':
-    dst = Path.home() / '.openclaw' / 'skills' / 'aop-coach'
-else:
-    dst = Path.home() / '.openclaw' / 'skills' / 'aop-coach'
-
-dst.mkdir(parents=True, exist_ok=True)
-
-for f in ['SKILL.md', 'README.md']:
-    shutil.copy(src / f, dst / f)
-
-(dst / 'references').mkdir(exist_ok=True)
-for f in ['TEAM.md', 'WORKFLOW.md']:
-    shutil.copy(src / 'references' / f, dst / 'references' / f)
-
-print(f'Skill installed to: {dst}')
-"
-```
-
-**或者使用平台原生命令：**
-
-Windows PowerShell:
-```powershell
-$src = "skills\aop-coach"
-$dst = "$env:USERPROFILE\.openclaw\skills\aop-coach"
-New-Item -ItemType Directory -Path $dst -Force | Out-Null
-Copy-Item -Path "$src\SKILL.md", "$src\README.md" -Destination $dst
-New-Item -ItemType Directory -Path "$dst\references" -Force | Out-Null
-Copy-Item -Path "$src\references\TEAM.md", "$src\references\WORKFLOW.md" -Destination "$dst\references"
-Write-Host "Skill installed to: $dst"
-```
-
-macOS/Linux:
-```bash
-src="skills/aop-coach"
-dst="$HOME/.openclaw/skills/aop-coach"
-mkdir -p "$dst/references"
-cp "$src/SKILL.md" "$src/README.md" "$dst/"
-cp "$src/references/TEAM.md" "$src/references/WORKFLOW.md" "$dst/references/"
-echo "Skill installed to: $dst"
-```
-
-**安装后告知用户：**
-- 在 OpenClaw 中输入 `-aop status` 测试
-- 详细使用方法见 `skills/aop-coach/README.md`
-
----
-### 安装完成后
-
-**询问用户：** "安装完成！你想用 AOP 做什么项目？"
-
-**运行 Agent：**
-```bash
-aop agent run "[用户的描述]"
-```
-
----
-
-<!-- End of AI Agent Instructions -->
