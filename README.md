@@ -1,4 +1,4 @@
-<p align="center">
+﻿<p align="center">
   <img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+" />
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT" />
   <img src="https://img.shields.io/badge/providers-5%20built--in-orange" alt="Providers: 5 built-in" />
@@ -227,6 +227,73 @@ Success criteria:
 ```
 
 ---
+
+## 🧩 Skills System
+
+AOP features a composable skill system inspired by [Superpowers](https://github.com/obra/superpowers). Skills are modular capabilities that can be automatically triggered based on context.
+
+### Built-in Skills
+
+| Skill | Trigger | Iron Law |
+|-------|---------|----------|
+| **hypothesis-driven** | "I want to build...", "I have an idea..." | NO MVP DEVELOPMENT WITHOUT IDENTIFIED HYPOTHESES |
+| **mvp-breakdown** | "Start development", "Implement this..." | NO MVP FEATURE WITHOUT HYPOTHESIS VALIDATION PURPOSE |
+| **validation-before-launch** | "Launch MVP", "Deploy..." | NO MVP LAUNCH WITHOUT VALIDATION CRITERIA |
+
+### Skill Components
+
+Each skill defines:
+- **Triggers** - Keywords/phrases that activate the skill
+- **Iron Law** - Hard rules that enforce correct behavior
+- **Red Flags** - Anti-patterns to warn against
+- **Checklist** - Verification items for task completion
+
+### Using Skills Programmatically
+
+```python
+from aop.skills import create_skill_manager, SkillContext
+
+# Create skill manager
+manager = create_skill_manager()
+
+# Find matching skills
+context = SkillContext(task="I want to build an e-commerce system")
+matches = manager.find_matching_skills(context)
+
+# Get iron laws
+iron_laws = manager.get_all_iron_laws()
+
+# Check for red flags
+red_flags = manager.check_all_red_flags("Just build it first, users will like it")
+# Returns: {"hypothesis-driven": ["先做出来再说", "用户会喜欢的"]}
+```
+
+### Adding Custom Skills
+
+```python
+from aop.skills import SkillBase, SkillMeta, SkillPriority
+
+class MyCustomSkill(SkillBase):
+    def get_meta(self) -> SkillMeta:
+        return SkillMeta(
+            name="my-custom-skill",
+            description="Custom skill description",
+            triggers=["trigger phrase"],
+            priority=SkillPriority.HIGH,
+        )
+    
+    def matches(self, context) -> bool:
+        return any(t in context.task for t in self.get_meta().triggers)
+    
+    def get_prompt(self) -> str:
+        return "Skill instructions in Markdown..."
+    
+    def get_iron_law(self) -> str:
+        return "MANDATORY RULE HERE"
+    
+    def get_red_flags(self) -> list:
+        return ["anti-pattern 1", "anti-pattern 2"]
+```
 
 ## 🏗 Architecture
 

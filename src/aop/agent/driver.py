@@ -31,6 +31,7 @@ from .learning_extractor import LearningExtractor
 from .persistence import SprintPersistence
 from .scheduler import TaskScheduler
 from ..core.engine import ExecutionEngine
+from ..skills import SkillManager, SkillContext, create_skill_manager
 
 if TYPE_CHECKING:
     from ..llm import LLMClient, ClaudeClient, LocalLLMClient
@@ -821,3 +822,6 @@ class AgentDriver:
     def _load_context(self, sprint_id: str) -> SprintContext | None:
         """加载冲刺上下文（使用持久化管理器）"""
         return self.persistence.load(sprint_id)
+
+
+
