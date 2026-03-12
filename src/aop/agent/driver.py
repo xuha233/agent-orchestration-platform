@@ -33,6 +33,7 @@ from .scheduler import TaskScheduler
 from ..core.engine import ExecutionEngine
 from ..skills import SkillManager, SkillContext, create_skill_manager
 
+from ..state import StateManager
 if TYPE_CHECKING:
     from ..llm import LLMClient, ClaudeClient, LocalLLMClient
     from ..orchestrator import OrchestratorClient, OrchestratorConfig
@@ -120,6 +121,9 @@ class AgentDriver:
 
         # 存储路径
         self.storage_path = self.config.storage_path or Path(".aop")
+
+        # 初始化状态管理器（STATE.md 跨会话记忆）
+        self.state_manager = StateManager(project_path=self.storage_path)
 
         # 初始化持久化管理器
         self.persistence = SprintPersistence(str(self.storage_path / "sprints"))
@@ -549,6 +553,51 @@ class AgentDriver:
             SprintState.FAILED: ["冲刺失败，检查错误日志"],
         }
         return state_recommendations.get(self.context.state, [])
+
+    def get_system_prompt(self, base_prompt: str = "") -> str:
+        """
+        构建系统提示词，注入 STATE.md 上下文
+        
+        Args:
+            base_prompt: 基础提示词
+            
+        Returns:
+            str: 包含跨会话上下文的系统提示词
+        """
+        state_context = self.state_manager.get_context_summary()
+        
+        if not base_prompt:
+            return f"""## 跨会话上下文
+
+{state_context}
+"""
+        
+        return f"""{base_prompt}
+
+## 跨会话上下文
+
+{state_context}
+"""
+
+    def after_task_complete(self, task: str, result: str, next_step: str = "待用户指示"):
+        """
+        任务完成后更新 STATE.md
+        
+        Args:
+            task: 任务描述
+            result: 任务结果
+            next_step: 下一步计划
+        """
+        # 截断过长的结果
+        action = result[:200] if len(result) > 200 else result
+        
+        self.state_manager.update_task(
+            task=task,
+            action=action,
+            next_step=next_step
+        )
+
+
 
     # ============ 私有方法 ============
 

@@ -1174,6 +1174,177 @@ def dashboard(port: int, host: str, open_browser: bool):
         sys.exit(EXIT_ERROR)
 
 
+
+
+@cli.group()
+def state():
+    """Manage STATE.md cross-session memory."""
+    pass
+
+
+@state.command("show")
+def show_state():
+    """Show current state."""
+    from ..state import StateManager
+    
+    manager = StateManager(project_path=Path.cwd())
+    state_data = manager.load()
+    
+    state_text = (
+        f"[bold cyan]STATE.md[/bold cyan]\n\n"
+        f"[bold]Session:[/bold] {state_data.session_id}\n"
+        f"[bold]Updated:[/bold] {state_data.updated_at.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        f"[bold]Current Task:[/bold] {state_data.current_task}\n"
+        f"[bold]Last Action:[/bold] {state_data.last_action}\n"
+        f"[bold]Next Step:[/bold] {state_data.next_step}"
+    )
+    
+    console.print(Panel.fit(
+        state_text,
+        title="Current State",
+        border_style="blue",
+    ))
+    
+    # Active blockers
+    active_blockers = manager.get_active_blockers()
+    if active_blockers:
+        console.print(f"\n[bold red]Blockers ({len(active_blockers)}):[/bold red]")
+        for b in active_blockers:
+            console.print(f"  - {b['blocker']}")
+    
+    # Active hypotheses
+    active_hypotheses = manager.get_active_hypotheses()
+    if active_hypotheses:
+        console.print(f"\n[bold yellow]Active Hypotheses ({len(active_hypotheses)}):[/bold yellow]")
+        for h in active_hypotheses[:5]:
+            stmt = h['statement'][:50] + "..." if len(h['statement']) > 50 else h['statement']
+            console.print(f"  - [{h['hypothesis_id']}] {stmt}")
+    
+    # Recent decisions
+    if state_data.decisions:
+        console.print(f"\n[bold green]Recent Decisions ({len(state_data.decisions)}):[/bold green]")
+        for d in state_data.decisions[-3:]:
+            console.print(f"  - [{d['date']}] {d['decision']}")
+
+
+@state.command("task")
+@click.argument("task")
+@click.option("--action", "-a", default="", help="Last action")
+@click.option("--next", "-n", default="TBD", help="Next step")
+def update_task(task: str, action: str, next: str):
+    """Update current task."""
+    from ..state import StateManager
+    
+    manager = StateManager(project_path=Path.cwd())
+    manager.update_task(task=task, action=action, next_step=next)
+    
+    console.print(f"[green]Updated task:[/green] {task}")
+    console.print(f"  Last action: {action}")
+    console.print(f"  Next step: {next}")
+
+
+@state.command("decision")
+@click.argument("decision")
+@click.option("--reason", "-r", required=True, help="Reason for the decision")
+def add_decision(decision: str, reason: str):
+    """Record a decision."""
+    from ..state import StateManager
+    
+    manager = StateManager(project_path=Path.cwd())
+    manager.add_decision(decision=decision, reason=reason)
+    
+    console.print(f"[green]Recorded decision:[/green] {decision}")
+    console.print(f"  Reason: {reason}")
+
+
+@state.command("blocker")
+@click.argument("blocker")
+def add_blocker(blocker: str):
+    """Add a blocker."""
+    from ..state import StateManager
+    
+    manager = StateManager(project_path=Path.cwd())
+    manager.add_blocker(blocker=blocker)
+    
+    console.print(f"[yellow]Added blocker:[/yellow] {blocker}")
+
+
+@state.command("resolve")
+@click.argument("blocker")
+def resolve_blocker(blocker: str):
+    """Resolve a blocker."""
+    from ..state import StateManager
+    
+    manager = StateManager(project_path=Path.cwd())
+    manager.resolve_blocker(blocker=blocker)
+    
+    console.print(f"[green]Resolved blocker:[/green] {blocker}")
+
+
+@state.command("learning")
+@click.argument("learning")
+@click.option("--category", "-c", default="General", help="Learning category")
+@click.option("--source", "-s", default="Execution", help="Learning source")
+def add_learning(learning: str, category: str, source: str):
+    """Record a learning."""
+    from ..state import StateManager
+    
+    manager = StateManager(project_path=Path.cwd())
+    manager.add_learning(learning=learning, category=category, source=source)
+    
+    console.print(f"[green]Recorded learning:[/green] {learning}")
+    console.print(f"  Category: {category}")
+    console.print(f"  Source: {source}")
+
+
+@state.command("hypothesis")
+@click.argument("statement")
+@click.option("--validation", "-v", default="", help="Validation method")
+@click.option("--priority", "-p", type=click.Choice(["high", "medium", "low"]), default="medium", help="Priority")
+def add_state_hypothesis(statement: str, validation: str, priority: str):
+    """Add a new hypothesis."""
+    from ..state import StateManager
+    
+    manager = StateManager(project_path=Path.cwd())
+    h_id = manager.add_hypothesis(
+        statement=statement,
+        validation_method=validation,
+        priority=priority
+    )
+    
+    console.print(f"[green]Added hypothesis:[/green] {h_id}")
+    console.print(f"  Statement: {statement}")
+    console.print(f"  Validation: {validation}")
+    console.print(f"  Priority: {priority}")
+
+
+@state.command("context")
+def show_context():
+    """Show context summary for Agent prompt injection."""
+    from ..state import StateManager
+    
+    manager = StateManager(project_path=Path.cwd())
+    summary = manager.get_context_summary()
+    
+    console.print(Panel(
+        summary,
+        title="Context Summary",
+        border_style="cyan",
+    ))
+
+
+@state.command("sync")
+def sync_state():
+    """Sync STATE.md with hypotheses.json."""
+    from ..state import StateManager
+    
+    manager = StateManager(project_path=Path.cwd())
+    manager.sync_with_hypotheses_json()
+    
+    console.print("[green]Synced STATE.md with hypotheses.json[/green]")
+
+
+
 # Register agent command group
 try:
     from .agent import agent as agent_group
