@@ -1651,83 +1651,207 @@ def page_coach():
 
     st.markdown("---")
 
+    # ========== 假设驱动开发流程 ==========
 
-    categories = {
-        "🎯 任务执行": {
-            "desc": "运行开发任务",
-            "commands": [
-                {"label": "实现功能", "cmd": "-aop run 实现以下功能：", "hint": "补充功能描述"},
-                {"label": "修复 Bug", "cmd": "-aop run 修复以下问题：", "hint": "描述 Bug"},
-                {"label": "优化代码", "cmd": "-aop run 优化以下代码：", "hint": "指定优化目标"},
-                {"label": "添加测试", "cmd": "-aop run 为以下模块添加测试：", "hint": "指定模块"},
-            ]
-        },
-        "🔍 代码审查": {
-            "desc": "审查和改进代码",
-            "commands": [
-                {"label": "全面审查", "cmd": "-aop review 全面审查项目代码", "hint": ""},
-                {"label": "安全审查", "cmd": "-aop review 检查安全性问题", "hint": ""},
-                {"label": "性能审查", "cmd": "-aop review 检查性能瓶颈", "hint": ""},
-                {"label": "代码风格", "cmd": "-aop review 检查代码风格和规范", "hint": ""},
-            ]
-        },
-        "💡 假设管理": {
-            "desc": "创建和验证假设",
-            "commands": [
-                {"label": "创建假设", "cmd": '-aop hypothesis create "', "hint": "输入假设陈述"},
-                {"label": "列出假设", "cmd": "-aop hypothesis list", "hint": ""},
-                {"label": "测试假设", "cmd": "-aop hypothesis test ", "hint": "输入假设 ID"},
-            ]
-        },
-        "📊 状态查询": {
-            "desc": "查看项目和 Agent 状态",
-            "commands": [
-                {"label": "项目状态", "cmd": "-aop status", "hint": ""},
-                {"label": "Agent 状态", "cmd": "-aop status --agents", "hint": ""},
-                {"label": "假设状态", "cmd": "-aop status --hypotheses", "hint": ""},
-            ]
-        },
-        "🛠️ 开发工具": {
-            "desc": "常用开发命令",
-            "commands": [
-                {"label": "生成文档", "cmd": "-aop run 生成项目文档", "hint": ""},
-                {"label": "重构代码", "cmd": "-aop run 重构以下代码：", "hint": "指定模块"},
-                {"label": "分析依赖", "cmd": "-aop run 分析项目依赖关系", "hint": ""},
-                {"label": "清理代码", "cmd": "-aop run 清理无用代码和注释", "hint": ""},
-            ]
-        },
-    }
+    # 读取假设数据
+    hypotheses_data = get_hypotheses_data()
 
-    # 当前选中的指令（用于显示在输入框中）
+    # 按状态和优先级分类
+    pending_hypotheses = [h for h in hypotheses_data if h.get("state") == "pending"]
+    testing_hypotheses = [h for h in hypotheses_data if h.get("state") == "testing"]
+    validated_hypotheses = [h for h in hypotheses_data if h.get("state") == "validated"]
+
+    # 优先级排序函数
+    priority_order = {"high": 0, "medium": 1, "quick_win": 2, "low": 3}
+    def sort_by_priority(h):
+        return priority_order.get(h.get("priority", "medium"), 99)
+
+    pending_hypotheses.sort(key=sort_by_priority)
+
+    # 当前选中的指令
     if "_selected_cmd" not in st.session_state:
         st.session_state._selected_cmd = ""
 
-    # 渲染每个分类
-    for category, data in categories.items():
-        with st.expander(f"{category} - {data['desc']}", expanded=False):
-            cols = st.columns(4)
-            for i, cmd_info in enumerate(data["commands"]):
-                col = cols[i % 4]
-                with col:
-                    key = f"cmd_{category}_{i}"
-                    if st.button(cmd_info["label"], key=key, use_container_width=True):
-                        st.session_state._selected_cmd = cmd_info["cmd"]
-                        st.rerun()
+    # === 1. 🚀 快速开始 ===
+    st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">🚀</span> 快速开始</div></div>""", unsafe_allow_html=True)
 
-    # 显示选中的指令（可手动复制）
+    st.markdown("""
+    <div style="padding: 0.5rem 0; color: var(--text-secondary); font-size: 0.85rem;">
+    让教练分析项目状态，告诉你下一步该做什么
+    </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        quick_start_cmd = "-aop run 你好，请分析项目状态并给出下一步建议"
+        st.code(quick_start_cmd, language="bash")
+    with col2:
+        if st.button("📋 复制", use_container_width=True, key="copy_quick_start"):
+            st.session_state._selected_cmd = quick_start_cmd
+            st.toast("已复制命令", icon="✅")
+
+    st.markdown("---")
+
+    # === 2. 📝 我想验证... ===
+    st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">📝</span> 我想验证...</div></div>""", unsafe_allow_html=True)
+
+    st.markdown("""
+    <div style="padding: 0.25rem 0; color: var(--text-muted); font-size: 0.75rem;">
+    格式：我认为如果 <strong>______</strong>，就能 <strong>______</strong>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 假设输入框
+    hypothesis_if = st.text_input(
+        "如果...",
+        placeholder="添加缓存",
+        key="hypothesis_if_input",
+        label_visibility="collapsed"
+    )
+
+    hypothesis_then = st.text_input(
+        "就能...",
+        placeholder="提升页面加载速度50%",
+        key="hypothesis_then_input",
+        label_visibility="collapsed"
+    )
+
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        if hypothesis_if and hypothesis_then:
+            create_cmd = f'-aop hypothesis create "如果{hypothesis_if}，就能{hypothesis_then}"'
+            st.code(create_cmd, language="bash")
+        else:
+            st.caption("示例：如果添加缓存，就能提升页面加载速度50%")
+    with col2:
+        if st.button("创建假设", use_container_width=True, key="create_hypothesis_btn", disabled=not (hypothesis_if and hypothesis_then)):
+            if hypothesis_if and hypothesis_then:
+                st.session_state._selected_cmd = f'-aop hypothesis create "如果{hypothesis_if}，就能{hypothesis_then}"'
+                st.toast("已生成假设命令", icon="✅")
+
+    st.markdown("---")
+
+    # === 3. 🔬 待验证假设 ===
+    st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">🔬</span> 待验证假设</div></div>""", unsafe_allow_html=True)
+
+    total_pending = len(pending_hypotheses) + len(testing_hypotheses)
+    if total_pending == 0:
+        st.info("🎉 暂无待验证假设！")
+    else:
+        st.caption(f"共 {total_pending} 个假设待验证")
+
+        # 测试中的假设
+        if testing_hypotheses:
+            st.markdown("""<div style="font-size: 0.75rem; color: var(--warning); margin-bottom: 0.25rem;">⏳ 测试中</div>""", unsafe_allow_html=True)
+            for h in testing_hypotheses[:3]:
+                h_id = h.get("hypothesis_id", "?")
+                statement = h.get("statement", "")[:50]
+                with st.container():
+                    col1, col2 = st.columns([4, 1])
+                    with col1:
+                        st.markdown(f"□ **{h_id}**: {statement}...")
+                    with col2:
+                        verify_cmd = f"-aop run 验证假设 {h_id}"
+                        if st.button("📋", key=f"copy_testing_{h_id}", help=f"复制: {verify_cmd}"):
+                            st.session_state._selected_cmd = verify_cmd
+                            st.toast("已复制命令", icon="✅")
+                st.markdown("---")
+
+        # 待处理假设（按优先级）
+        if pending_hypotheses:
+            st.markdown("""<div style="font-size: 0.75rem; color: var(--text-muted); margin: 0.25rem 0;">📋 待处理</div>""", unsafe_allow_html=True)
+            for h in pending_hypotheses[:5]:
+                h_id = h.get("hypothesis_id", "?")
+                statement = h.get("statement", "")[:50]
+                priority = h.get("priority", "medium")
+                priority_label = {"high": "高", "medium": "中", "quick_win": "快赢", "low": "低"}.get(priority, priority)
+                priority_color = {"high": "#ef4444", "medium": "#f59e0b", "quick_win": "#22c55e", "low": "#71717a"}.get(priority, "#71717a")
+
+                with st.container():
+                    col1, col2, col3 = st.columns([4, 1, 1])
+                    with col1:
+                        st.markdown(f"□ **{h_id}**: {statement}...")
+                    with col2:
+                        priority_html = f'<span style="color: {priority_color}; font-size: 0.7rem;">{priority_label}</span>'
+                        st.markdown(priority_html, unsafe_allow_html=True)
+                    with col3:
+                        verify_cmd = f"-aop run 验证假设 {h_id}"
+                        if st.button("📋", key=f"copy_pending_{h_id}", help=f"复制: {verify_cmd}"):
+                            st.session_state._selected_cmd = verify_cmd
+                            st.toast("已复制命令", icon="✅")
+                st.markdown("---")
+
+    # === 4. ✅ 已验证假设 ===
+    st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">✅</span> 已验证假设</div></div>""", unsafe_allow_html=True)
+
+    if not validated_hypotheses:
+        st.info("暂无已验证假设")
+    else:
+        st.caption(f"共 {len(validated_hypotheses)} 个假设已验证")
+        for h in validated_hypotheses[:5]:
+            h_id = h.get("hypothesis_id", "?")
+            statement = h.get("statement", "")[:50]
+            st.markdown(f"✓ **{h_id}**: {statement}... (验证成功)")
+            st.markdown("---")
+
+    # === 5. 💡 下一步建议 ===
+    st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">💡</span> 下一步建议</div></div>""", unsafe_allow_html=True)
+
+    suggestions = []
+    if pending_hypotheses:
+        next_h = pending_hypotheses[0]
+        suggestions.append(f"1. 验证假设 {next_h.get('hypothesis_id', '?')}（{next_h.get('priority', '中')}优先级）")
+    if validated_hypotheses:
+        suggestions.append("2. 记录已验证假设的学习经验")
+    if not hypotheses_data:
+        suggestions.append("创建第一个假设，开始假设驱动开发")
+
+    if suggestions:
+        for s in suggestions:
+            st.markdown(f"- {s}")
+
+        # 一键复制建议命令
+        if pending_hypotheses:
+            next_h = pending_hypotheses[0]
+            suggest_cmd = f"-aop run 验证假设 {next_h.get('hypothesis_id', '?')}"
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.code(suggest_cmd, language="bash")
+            with col2:
+                if st.button("📋 复制", use_container_width=True, key="copy_suggestion"):
+                    st.session_state._selected_cmd = suggest_cmd
+                    st.toast("已复制建议命令", icon="✅")
+    else:
+        st.success("✅ 所有假设都已验证！考虑创建新的假设。")
+
+    st.markdown("---")
+
+    # === 显示选中的指令 ===
     if st.session_state._selected_cmd:
-        st.markdown("---")
-        st.markdown("**📋 已选指令（可手动复制）：**")
+        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">📋</span> 已选指令</div></div>""", unsafe_allow_html=True)
         col1, col2 = st.columns([4, 1])
         with col1:
             st.code(st.session_state._selected_cmd, language="bash")
         with col2:
-            if st.button("🗑️ 清除", use_container_width=True):
+            if st.button("🗑️ 清除", use_container_width=True, key="clear_selected_cmd"):
                 st.session_state._selected_cmd = ""
                 st.rerun()
-        if st.button("✅ 已使用，清除", key="clear_after_use"):
-            st.session_state._selected_cmd = ""
-            st.rerun()
+
+    # === AOP 命令参考（折叠）===
+    with st.expander("📖 AOP 命令参考", expanded=False):
+        st.markdown("""
+        **命令格式**：`-aop <command> [args]` 或 `aop <command> [args]`
+
+        | 命令 | 说明 | 示例 |
+        |------|------|------|
+        | `run` | 运行任务 | `-aop run 实现登录功能` |
+        | `review` | 代码审查 | `-aop review 检查安全性` |
+        | `hypothesis` | 假设管理 | `-aop hypothesis create "缓存提升50%"` |
+        | `status` | 查看状态 | `-aop status` |
+        | `dashboard` | Dashboard | `-aop dashboard open` |
+        | `doctor` | 环境检查 | `-aop doctor` |
+        | `init` | 初始化项目 | `-aop init` |
+        """)
 
     # AOP 命令参考
     with st.expander("📖 AOP 命令参考", expanded=False):
