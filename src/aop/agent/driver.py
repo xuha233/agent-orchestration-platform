@@ -38,117 +38,9 @@ from ..review import TwoStageReviewer
 if TYPE_CHECKING:
     from ..llm import LLMClient, ClaudeClient, LocalLLMClient
     from ..orchestrator import OrchestratorClient, OrchestratorConfig
+    from ..review import TwoStageReviewResult
 
-    # =========================================================================
-    # Two-Stage Review Methods
-    # =========================================================================
-
-    def review_mvp(self, content: str, spec: str) -> "TwoStageReviewResult":
-        """
-        审查 MVP
-        
-        使用两阶段审查：
-        1. 规格合规审查
-        2. 质量审查（仅当第一阶段通过）
-        
-        Args:
-            content: MVP 内容（代码或文档）
-            spec: 规格说明文本
-            
-        Returns:
-            TwoStageReviewResult 包含审查结果
-        """
-        if not hasattr(self, "reviewer"):
-            from ..review import TwoStageReviewer
-            self.reviewer = TwoStageReviewer()
-        
-        return self.reviewer.review("mvp", content, spec)
-
-    def review_code(self, content: str, spec: str) -> "TwoStageReviewResult":
-        """
-        审查代码
-        
-        Args:
-            content: 代码内容
-            spec: 规格说明文本
-            
-        Returns:
-            TwoStageReviewResult 包含审查结果
-        """
-        if not hasattr(self, "reviewer"):
-            from ..review import TwoStageReviewer
-            self.reviewer = TwoStageReviewer()
-        
-        return self.reviewer.review("code", content, spec)
-
-    def review_document(self, content: str, spec: str) -> "TwoStageReviewResult":
-        """
-        审查文档
-        
-        Args:
-            content: 文档内容
-            spec: 规格说明文本
-            
-        Returns:
-            TwoStageReviewResult 包含审查结果
-        """
-        if not hasattr(self, "reviewer"):
-            from ..review import TwoStageReviewer
-            self.reviewer = TwoStageReviewer()
-        
-        return self.reviewer.review("doc", content, spec)
-
-    def review_with_auto_fix(
-        self,
-        content: str,
-        spec: str,
-        artifact_type: str = "mvp",
-        max_iterations: int = 3,
-    ) -> "tuple[TwoStageReviewResult, str]":
-        """
-        带自动修复的审查
-        
-        如果审查发现问题，会自动尝试修复并重新审查。
-        
-        Args:
-            content: 内容
-            spec: 规格说明
-            artifact_type: 产物类型 (mvp, code, doc)
-            max_iterations: 最大修复迭代次数
-            
-        Returns:
-            (审查结果, 最终内容)
-        """
-        from typing import Tuple
-        from ..review import ReviewIssue
-        
-        if not hasattr(self, "reviewer"):
-            from ..review import TwoStageReviewer
-            self.reviewer = TwoStageReviewer()
-        
-        current_content = content
-        
-        def fix_callback(issues: list) -> str:
-            """生成修复提示并调用 Agent 修复"""
-            fix_prompt = self._generate_fix_prompt(issues, current_content)
-            
-            # 使用 orchestrator 或 LLM 执行修复
-            if self._orchestrator:
-                result = self._orchestrator.execute(prompt=fix_prompt, cwd=str(self.storage_path))
-                return result.content if result.success else current_content
-            elif self._llm:
-                # 简单的修复提示
-                return self._llm.generate(fix_prompt)
-            
-            return current_content
-        
-        result = self.reviewer.review_with_fix_loop(
-            artifact_type, current_content, spec, fix_callback, max_iterations
-        )
-        
-        return (result, current_content)
-
-    def _generate_fix_prompt(self, issues: list, current_content: str) -> str:
+def _generate_fix_prompt(self, issues: list, current_content: str) -> str:
         """生成修复提示"""
         issue_descriptions = []
         for issue in issues[:10]:  # 限制到10个问题
@@ -1005,6 +897,119 @@ class AgentDriver:
     def _load_context(self, sprint_id: str) -> SprintContext | None:
         """加载冲刺上下文（使用持久化管理器）"""
         return self.persistence.load(sprint_id)
+
+    # =========================================================================
+    # Two-Stage Review Methods
+    # =========================================================================
+
+    def review_mvp(self, content: str, spec: str) -> "TwoStageReviewResult":
+        """
+        审查 MVP
+        
+        使用两阶段审查：
+        1. 规格合规审查
+        2. 质量审查（仅当第一阶段通过）
+        
+        Args:
+            content: MVP 内容（代码或文档）
+            spec: 规格说明文本
+            
+        Returns:
+            TwoStageReviewResult 包含审查结果
+        """
+        return self.reviewer.review("mvp", content, spec)
+
+    def review_code(self, content: str, spec: str) -> "TwoStageReviewResult":
+        """
+        审查代码
+        
+        Args:
+            content: 代码内容
+            spec: 规格说明文本
+            
+        Returns:
+            TwoStageReviewResult 包含审查结果
+        """
+        return self.reviewer.review("code", content, spec)
+
+    def review_document(self, content: str, spec: str) -> "TwoStageReviewResult":
+        """
+        审查文档
+        
+        Args:
+            content: 文档内容
+            spec: 规格说明文本
+            
+        Returns:
+            TwoStageReviewResult 包含审查结果
+        """
+        return self.reviewer.review("doc", content, spec)
+
+    def review_with_auto_fix(
+        self,
+        content: str,
+        spec: str,
+        artifact_type: str = "mvp",
+        max_iterations: int = 3,
+    ) -> "tuple[TwoStageReviewResult, str]":
+        """
+        带自动修复的审查
+        
+        如果审查发现问题，会自动尝试修复并重新审查。
+        
+        Args:
+            content: 内容
+            spec: 规格说明
+            artifact_type: 产物类型 (mvp, code, doc)
+            max_iterations: 最大修复迭代次数
+            
+        Returns:
+            (审查结果, 最终内容)
+        """
+        from ..review import ReviewIssue
+        
+        current_content = content
+        
+        def fix_callback(issues: list) -> str:
+            """生成修复提示并调用 Agent 修复"""
+            fix_prompt = self._generate_fix_prompt(issues, current_content)
+            
+            # 使用 orchestrator 或 LLM 执行修复
+            if self._orchestrator:
+                result = self._orchestrator.execute(prompt=fix_prompt, cwd=str(self.storage_path))
+                return result.content if result.success else current_content
+            elif self._llm:
+                # 简单的修复提示
+                return self._llm.generate(fix_prompt)
+            
+            return current_content
+        
+        result = self.reviewer.review_with_fix_loop(
+            artifact_type, current_content, spec, fix_callback, max_iterations
+        )
+        
+        return (result, current_content)
+
+    def _generate_fix_prompt(self, issues: list, current_content: str) -> str:
+        """生成修复提示"""
+        issue_descriptions = []
+        for issue in issues[:10]:  # 限制到10个问题
+            issue_descriptions.append(f"- [{issue.severity}] {issue.description}")
+            if issue.suggestion:
+                issue_descriptions.append(f"  Suggestion: {issue.suggestion}")
+        
+        return f"""Please fix the following issues in the content:
+
+Issues to fix:
+{chr(10).join(issue_descriptions)}
+
+Current content:
+```
+{current_content[:2000]}
+```
+
+Please provide the fixed content that addresses these issues.
+"""
 
 
 
