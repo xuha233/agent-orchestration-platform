@@ -38,241 +38,228 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS - Modern SaaS Dashboard (Glassmorphism + Dark Mode)
+# Custom CSS - 现代化 SaaS 仪表板（玻璃态 + 橙黄主题）
 st.markdown("""
 <style>
-    /* ========== CSS Variables ========== */
+    /* ========== CSS 变量 ========== */
     :root {
-        --bg-primary: #0a0a0f;
-        --bg-secondary: #12121a;
-        --bg-tertiary: #1a1a24;
-        --bg-glass: rgba(255, 255, 255, 0.03);
-        --bg-glass-hover: rgba(255, 255, 255, 0.06);
-        --border-glass: rgba(255, 255, 255, 0.08);
-        --border-glass-hover: rgba(255, 255, 255, 0.15);
+        --bg-primary: #0c0c0c;
+        --bg-secondary: #141414;
+        --bg-tertiary: #1c1c1c;
+        --bg-glass: rgba(255, 255, 255, 0.02);
+        --bg-glass-hover: rgba(255, 255, 255, 0.05);
+        --border-glass: rgba(255, 255, 255, 0.06);
+        --border-glass-hover: rgba(255, 255, 255, 0.12);
         
-        --text-primary: #f8fafc;
-        --text-secondary: #94a3b8;
-        --text-muted: #64748b;
+        --text-primary: #fafafa;
+        --text-secondary: #a1a1aa;
+        --text-muted: #71717a;
         
-        --accent: #6366f1;
-        --accent-glow: rgba(99, 102, 241, 0.3);
-        --success: #10b981;
-        --success-glow: rgba(16, 185, 129, 0.2);
+        --accent: #f59e0b;
+        --accent-light: #fbbf24;
+        --accent-glow: rgba(245, 158, 11, 0.25);
+        --success: #22c55e;
+        --success-glow: rgba(34, 197, 94, 0.15);
         --warning: #f59e0b;
-        --warning-glow: rgba(245, 158, 11, 0.2);
+        --warning-glow: rgba(245, 158, 11, 0.15);
         --error: #ef4444;
-        --error-glow: rgba(239, 68, 68, 0.2);
+        --error-glow: rgba(239, 68, 68, 0.15);
         --info: #06b6d4;
-        --info-glow: rgba(6, 182, 212, 0.2);
+        --info-glow: rgba(6, 182, 212, 0.15);
         
-        --radius: 12px;
-        --radius-lg: 16px;
-        --blur: 20px;
+        --radius: 10px;
+        --radius-lg: 14px;
+        --blur: 16px;
     }
     
-    /* ========== Global ========== */
-    .main .block-container { padding: 1.5rem 2rem; }
-    section.main > div { padding-top: 1rem; }
+    /* ========== 全局 ========== */
+    .main .block-container { padding: 1.25rem 1.5rem; }
+    section.main > div { padding-top: 0.75rem; }
     
-    /* ========== Glass Card ========== */
+    /* ========== 玻璃卡片 ========== */
     .glass-card {
         background: var(--bg-glass);
         backdrop-filter: blur(var(--blur));
         -webkit-backdrop-filter: blur(var(--blur));
         border: 1px solid var(--border-glass);
         border-radius: var(--radius);
-        padding: 1rem;
+        padding: 0.875rem;
         transition: all 0.2s ease;
     }
     .glass-card:hover {
         background: var(--bg-glass-hover);
         border-color: var(--border-glass-hover);
-        transform: translateY(-2px);
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
     }
     
-    /* ========== Metric Card ========== */
+    /* ========== 指标卡片 ========== */
     .metric-card {
-        background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%);
+        background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(251, 191, 36, 0.04) 100%);
         backdrop-filter: blur(var(--blur));
         border: 1px solid var(--border-glass);
         border-radius: var(--radius);
-        padding: 1.25rem;
+        padding: 1rem;
         text-align: center;
-        transition: all 0.25s ease;
+        transition: all 0.2s ease;
     }
     .metric-card:hover {
-        border-color: rgba(99, 102, 241, 0.3);
-        box-shadow: 0 0 30px var(--accent-glow);
-        transform: translateY(-4px);
+        border-color: rgba(245, 158, 11, 0.25);
+        box-shadow: 0 0 24px var(--accent-glow);
+        transform: translateY(-2px);
     }
     .metric-card .label {
-        color: var(--text-secondary);
-        font-size: 0.7rem;
+        color: var(--text-muted);
+        font-size: 0.65rem;
         text-transform: uppercase;
-        letter-spacing: 0.1em;
-        margin-bottom: 0.5rem;
+        letter-spacing: 0.08em;
+        margin-bottom: 0.35rem;
     }
     .metric-card .value {
         color: var(--text-primary);
-        font-size: 2rem;
+        font-size: 1.75rem;
         font-weight: 700;
         line-height: 1.2;
     }
-    .metric-card.success { border-color: rgba(16, 185, 129, 0.2); }
-    .metric-card.success:hover { box-shadow: 0 0 30px var(--success-glow); }
-    .metric-card.warning { border-color: rgba(245, 158, 11, 0.2); }
-    .metric-card.warning:hover { box-shadow: 0 0 30px var(--warning-glow); }
+    .metric-card.success { border-color: rgba(34, 197, 94, 0.15); }
+    .metric-card.success:hover { box-shadow: 0 0 24px var(--success-glow); }
+    .metric-card.warning { border-color: rgba(245, 158, 11, 0.15); }
+    .metric-card.warning:hover { box-shadow: 0 0 24px var(--warning-glow); }
     
-    /* ========== Status Badge ========== */
+    /* ========== 状态徽章 ========== */
     .status-badge {
         display: inline-flex;
         align-items: center;
-        gap: 0.35rem;
-        padding: 0.25rem 0.6rem;
+        gap: 0.25rem;
+        padding: 0.2rem 0.5rem;
         border-radius: 9999px;
-        font-size: 0.7rem;
+        font-size: 0.65rem;
         font-weight: 500;
-        backdrop-filter: blur(10px);
+        backdrop-filter: blur(8px);
     }
-    .status-online { background: var(--success-glow); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); }
-    .status-offline { background: var(--error-glow); color: var(--error); border: 1px solid rgba(239, 68, 68, 0.3); }
-    .status-busy { background: var(--warning-glow); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.3); }
-    .status-info { background: var(--info-glow); color: var(--info); border: 1px solid rgba(6, 182, 212, 0.3); }
+    .status-online { background: var(--success-glow); color: var(--success); border: 1px solid rgba(34, 197, 94, 0.25); }
+    .status-offline { background: var(--error-glow); color: var(--error); border: 1px solid rgba(239, 68, 68, 0.25); }
+    .status-busy { background: var(--warning-glow); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.25); }
+    .status-info { background: var(--info-glow); color: var(--info); border: 1px solid rgba(6, 182, 212, 0.25); }
     
-    /* ========== Content Section ========== */
+    /* ========== 区块标题 ========== */
     .section-title {
         color: var(--text-primary);
-        font-size: 0.8rem;
+        font-size: 0.75rem;
         font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        margin-bottom: 0.75rem;
-        padding-bottom: 0.5rem;
+        margin-bottom: 0.6rem;
+        padding-bottom: 0.4rem;
         border-bottom: 1px solid var(--border-glass);
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: 0.4rem;
     }
-    .section-title .icon { font-size: 1rem; }
+    .section-title .icon { font-size: 0.9rem; }
     
-    /* ========== Agent Row ========== */
+    /* ========== Agent 行 ========== */
     .agent-row {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 0.6rem 0.8rem;
+        padding: 0.5rem 0.65rem;
         background: var(--bg-glass);
         border: 1px solid var(--border-glass);
-        border-radius: 8px;
-        margin-bottom: 0.4rem;
+        border-radius: 6px;
+        margin-bottom: 0.35rem;
         transition: all 0.15s ease;
     }
-    .agent-row:hover {
-        background: var(--bg-glass-hover);
-        border-color: var(--border-glass-hover);
-    }
-    .agent-row .name { color: var(--text-primary); font-weight: 500; font-size: 0.85rem; }
-    .agent-row .role { color: var(--text-muted); font-size: 0.7rem; }
+    .agent-row:hover { background: var(--bg-glass-hover); border-color: var(--border-glass-hover); }
+    .agent-row .name { color: var(--text-primary); font-weight: 500; font-size: 0.8rem; }
+    .agent-row .role { color: var(--text-muted); font-size: 0.65rem; }
     
-    /* ========== Activity Item ========== */
+    /* ========== 活动项 ========== */
     .activity-item {
         display: flex;
-        gap: 0.6rem;
-        padding: 0.5rem 0;
+        gap: 0.5rem;
+        padding: 0.4rem 0;
         border-bottom: 1px solid var(--border-glass);
-        font-size: 0.8rem;
+        font-size: 0.75rem;
     }
     .activity-item:last-child { border-bottom: none; }
-    .activity-item .icon { width: 20px; text-align: center; }
+    .activity-item .icon { width: 18px; text-align: center; }
     .activity-item .text { color: var(--text-secondary); flex: 1; }
-    .activity-item .time { color: var(--text-muted); font-size: 0.7rem; }
     
-    /* ========== Progress Bar ========== */
+    /* ========== 进度条 ========== */
     .progress-bar {
-        height: 6px;
+        height: 5px;
         background: var(--bg-tertiary);
         border-radius: 3px;
         overflow: hidden;
-        margin-top: 0.5rem;
+        margin-top: 0.4rem;
     }
     .progress-bar .fill {
         height: 100%;
         background: linear-gradient(90deg, var(--accent), var(--success));
         border-radius: 3px;
-        transition: width 0.4s ease;
     }
     
-    /* ========== Issue Badge ========== */
+    /* ========== 问题徽章 ========== */
     .issue-badge {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
-        padding: 0.5rem 0.75rem;
+        gap: 0.4rem;
+        padding: 0.4rem 0.6rem;
         background: var(--warning-glow);
-        border-left: 3px solid var(--warning);
-        border-radius: 0 6px 6px 0;
-        margin-bottom: 0.4rem;
-        font-size: 0.8rem;
+        border-left: 2px solid var(--warning);
+        border-radius: 0 5px 5px 0;
+        margin-bottom: 0.35rem;
+        font-size: 0.75rem;
         color: var(--text-primary);
     }
     .issue-badge.error { background: var(--error-glow); border-left-color: var(--error); }
     .issue-badge.info { background: var(--info-glow); border-left-color: var(--info); }
     
-    /* ========== Feature Grid ========== */
-    .feature-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 0.75rem;
-        margin-bottom: 1rem;
-    }
-    .feature-card {
-        background: var(--bg-glass);
-        border: 1px solid var(--border-glass);
-        border-radius: 8px;
-        padding: 0.75rem;
-        text-align: center;
-        transition: all 0.2s ease;
-    }
-    .feature-card:hover {
-        border-color: var(--accent);
-        background: var(--bg-glass-hover);
-    }
-    .feature-card .icon { font-size: 1.25rem; margin-bottom: 0.25rem; }
-    .feature-card .title { color: var(--text-primary); font-size: 0.8rem; font-weight: 500; }
-    .feature-card .desc { color: var(--text-muted); font-size: 0.7rem; margin-top: 0.25rem; }
-    
-    /* ========== Quick Action ========== */
+    /* ========== 快捷操作 ========== */
     .quick-action {
         background: var(--bg-glass);
         border: 1px solid var(--border-glass);
-        border-radius: 8px;
-        padding: 0.6rem 0.75rem;
+        border-radius: 6px;
+        padding: 0.5rem 0.6rem;
         cursor: pointer;
         transition: all 0.2s ease;
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: 0.4rem;
     }
     .quick-action:hover {
         background: var(--accent);
         border-color: var(--accent);
-        box-shadow: 0 0 20px var(--accent-glow);
+        box-shadow: 0 0 16px var(--accent-glow);
     }
-    .quick-action .icon { font-size: 1rem; }
-    .quick-action .label { color: var(--text-secondary); font-size: 0.8rem; }
+    .quick-action .icon { font-size: 0.9rem; }
+    .quick-action .label { color: var(--text-secondary); font-size: 0.75rem; }
     .quick-action:hover .label { color: white; }
     
-    /* ========== Streamlit Overrides ========== */
+    /* ========== 指令卡片 ========== */
+    .cmd-card {
+        background: var(--bg-glass);
+        border: 1px solid var(--border-glass);
+        border-radius: 6px;
+        padding: 0.6rem 0.75rem;
+        margin-bottom: 0.4rem;
+        transition: all 0.15s ease;
+        cursor: pointer;
+    }
+    .cmd-card:hover {
+        border-color: var(--accent);
+        background: var(--bg-glass-hover);
+    }
+    .cmd-card .cmd-label { color: var(--text-primary); font-weight: 500; font-size: 0.8rem; }
+    .cmd-card .cmd-text { color: var(--accent); font-size: 0.7rem; font-family: monospace; margin-top: 0.2rem; }
+    .cmd-card .cmd-hint { color: var(--text-muted); font-size: 0.65rem; margin-top: 0.15rem; }
+    
+    /* ========== Streamlit 覆盖 ========== */
     [data-testid="stMetric"] {
         background: var(--bg-glass);
         border: 1px solid var(--border-glass);
         border-radius: var(--radius);
-        padding: 0.75rem;
-        backdrop-filter: blur(10px);
+        padding: 0.6rem;
+        backdrop-filter: blur(8px);
     }
-    [data-testid="stMetric"] label { color: var(--text-muted) !important; font-size: 0.7rem !important; }
+    [data-testid="stMetric"] label { color: var(--text-muted) !important; font-size: 0.65rem !important; }
     [data-testid="stMetric"] [data-testid="stMetricValue"] { color: var(--text-primary) !important; }
     
     [data-testid="stSidebar"] { background: var(--bg-primary); }
@@ -282,49 +269,58 @@ st.markdown("""
         background: var(--bg-glass);
         border: 1px solid var(--border-glass);
         color: var(--text-primary);
-        border-radius: 8px;
-        backdrop-filter: blur(10px);
+        border-radius: 6px;
+        backdrop-filter: blur(8px);
         transition: all 0.2s ease;
     }
     .stButton button:hover {
         background: var(--accent);
         border-color: var(--accent);
-        box-shadow: 0 0 15px var(--accent-glow);
+        box-shadow: 0 0 12px var(--accent-glow);
+        color: #000;
     }
     
-    .stProgress > div > div {
-        background: var(--bg-tertiary);
-        border-radius: 4px;
-    }
-    .stProgress > div > div > div {
-        background: linear-gradient(90deg, var(--accent), var(--success));
-    }
+    .stProgress > div > div { background: var(--bg-tertiary); border-radius: 3px; }
+    .stProgress > div > div > div { background: linear-gradient(90deg, var(--accent), var(--success)); }
     
-    /* ========== Header Gradient ========== */
+    /* ========== 头部渐变 ========== */
     .header-gradient {
-        background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4c1d95 100%);
+        background: linear-gradient(135deg, #78350f 0%, #b45309 50%, #d97706 100%);
         border-radius: var(--radius-lg);
-        padding: 1.5rem;
-        margin-bottom: 1.5rem;
-        border: 1px solid rgba(99, 102, 241, 0.2);
-        box-shadow: 0 0 40px rgba(99, 102, 241, 0.15);
+        padding: 1.25rem;
+        margin-bottom: 1.25rem;
+        border: 1px solid rgba(245, 158, 11, 0.15);
+        box-shadow: 0 0 32px rgba(245, 158, 11, 0.1);
     }
     
-    /* ========== Workspace Launcher ========== */
+    /* ========== 工作区卡片 ========== */
     .workspace-card {
         background: var(--bg-glass);
         border: 1px solid var(--border-glass);
-        border-radius: 8px;
-        padding: 0.6rem 0.75rem;
-        margin-bottom: 0.4rem;
+        border-radius: 6px;
+        padding: 0.5rem 0.6rem;
+        margin-bottom: 0.35rem;
         display: flex;
         justify-content: space-between;
         align-items: center;
         transition: all 0.15s ease;
     }
-    .workspace-card:hover {
-        border-color: var(--accent);
-        background: var(--bg-glass-hover);
+    .workspace-card:hover { border-color: var(--accent); background: var(--bg-glass-hover); }
+    
+    /* ========== 分类标题 ========== */
+    .category-title {
+        color: var(--text-primary);
+        font-size: 0.85rem;
+        font-weight: 600;
+        margin-top: 1rem;
+        margin-bottom: 0.5rem;
+        padding-bottom: 0.35rem;
+        border-bottom: 1px solid var(--border-glass);
+    }
+    .category-desc {
+        color: var(--text-muted);
+        font-size: 0.7rem;
+        margin-bottom: 0.5rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -899,7 +895,7 @@ def execute_agent_task(agent, workspace, prompt, session_id, workspace_id, cance
 
 
 def page_home():
-    """首页 - 现代化 SaaS 分析仪表板 (Glassmorphism + Dark Mode)"""
+    """首页 - 现代化 SaaS 分析仪表板（玻璃态 + 橙黄主题）"""
     wm = st.session_state.workspace_manager
     sm = st.session_state.settings_manager
     
@@ -925,31 +921,31 @@ def page_home():
         project_path = "G:/docker/aop"
     progress_data = get_project_progress_data(project_path)
     
-    # ========== HEADER ========== 
-    project_name = st.session_state.current_workspace.name if st.session_state.current_workspace else "AOP Dashboard"
+    # ========== 头部 ========== 
+    project_name = st.session_state.current_workspace.name if st.session_state.current_workspace else "AOP 仪表板"
     
     st.markdown(f"""
     <div class="header-gradient">
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div>
-                <h1 style="margin: 0; font-size: 1.5rem; color: white; font-weight: 600;">{project_name}</h1>
-                <p style="margin: 0.25rem 0 0 0; color: rgba(255,255,255,0.7); font-size: 0.8rem;">Agent Orchestration Platform</p>
+                <h1 style="margin: 0; font-size: 1.35rem; color: white; font-weight: 600;">{project_name}</h1>
+                <p style="margin: 0.2rem 0 0 0; color: rgba(255,255,255,0.75); font-size: 0.75rem;">Agent 编排平台</p>
             </div>
-            <div style="display: flex; gap: 0.5rem; align-items: center;">
-                <span class="status-badge {'status-online' if agents else 'status-offline'}">{'● ' + str(len(agents)) + ' Agents' if agents else '○ No Agents'}</span>
-                <span class="status-badge status-info">📊 {stats['file_count']} files</span>
+            <div style="display: flex; gap: 0.4rem; align-items: center;">
+                <span class="status-badge {'status-online' if agents else 'status-offline'}">{'● ' + str(len(agents)) + ' 个 Agent' if agents else '○ 无 Agent'}</span>
+                <span class="status-badge status-info">📊 {stats['file_count']} 个文件</span>
             </div>
         </div>
     </div>
     """, unsafe_allow_html=True)
     
-    # ========== KEY METRICS (4 Cards) ==========
+    # ========== 核心指标（4 个卡片）==========
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         st.markdown(f"""
         <div class="metric-card">
-            <div class="label">Hypotheses</div>
+            <div class="label">假设验证</div>
             <div class="value">{h_validated}/{h_total}</div>
             <div class="progress-bar"><div class="fill" style="width: {progress_pct}%;"></div></div>
         </div>
@@ -957,11 +953,11 @@ def page_home():
     
     with col2:
         t = progress_data["tests"]
-        test_status = f"{t['passed']}/{t['total']}" if t['total'] > 0 else "N/A"
+        test_status = f"{t['passed']}/{t['total']}" if t['total'] > 0 else "无"
         test_class = "success" if t['passed'] == t['total'] and t['total'] > 0 else "warning"
         st.markdown(f"""
         <div class="metric-card {test_class}">
-            <div class="label">Tests</div>
+            <div class="label">测试通过</div>
             <div class="value">{test_status}</div>
         </div>
         """, unsafe_allow_html=True)
@@ -969,7 +965,7 @@ def page_home():
     with col3:
         st.markdown(f"""
         <div class="metric-card">
-            <div class="label">Lines of Code</div>
+            <div class="label">代码行数</div>
             <div class="value">{stats['line_count']:,}</div>
         </div>
         """, unsafe_allow_html=True)
@@ -984,135 +980,137 @@ def page_home():
         </div>
         """, unsafe_allow_html=True)
     
-    # ========== TWO COLUMN LAYOUT ==========
+    # ========== 两栏布局 ==========
     left_col, right_col = st.columns([2, 1])
     
-    # ========== LEFT COLUMN ==========
+    # ========== 左栏 ==========
     with left_col:
-        # === 1. 项目进度报告 ===
-        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">📈</span> Project Progress</div></div>""", unsafe_allow_html=True)
+        # === 1. 项目进度 ===
+        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">📈</span> 项目进度</div></div>""", unsafe_allow_html=True)
         
         if sprint:
-            st.markdown(f"**Current Sprint**: {sprint.get('original_input', 'N/A')[:70]}")
+            st.markdown(f"**当前冲刺**: {sprint.get('original_input', '无')[:60]}")
             st.caption(f"ID: {sprint.get('sprint_id', '-')}")
         else:
-            st.info("No active sprint")
+            st.info("暂无活跃冲刺")
         
         if h_pending > 0:
             next_h = [h for h in hypotheses if h.get("state") == "pending"][0]
-            st.markdown(f"**Next**: {next_h.get('statement', '-')[:60]}...")
+            st.markdown(f"**下一个假设**: {next_h.get('statement', '-')[:50]}...")
         
         st.markdown("---")
         
         # === 2. 最近活动 ===
-        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">📋</span> Recent Activity</div></div>""", unsafe_allow_html=True)
+        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">📋</span> 最近活动</div></div>""", unsafe_allow_html=True)
         
         activities = []
         for h in hypotheses[:6]:
             state = h.get("state", "pending")
-            statement = h.get("statement", "")[:35]
+            statement = h.get("statement", "")[:30]
             icon = "✅" if state == "validated" else "🔬" if state == "testing" else "📝"
-            activities.append({"icon": icon, "text": statement + "...", "state": state})
+            state_text = "已验证" if state == "validated" else "测试中" if state == "testing" else "待处理"
+            activities.append({"icon": icon, "text": statement + "...", "state": state_text})
         
         if activities:
             for act in activities:
-                st.markdown(f"""<div class="activity-item"><span class="icon">{act['icon']}</span><span class="text">{act['text']}</span></div>""", unsafe_allow_html=True)
+                st.markdown(f"""<div class="activity-item"><span class="icon">{act['icon']}</span><span class="text">{act['text']}</span><span style="color: var(--text-muted); font-size: 0.65rem;">{act['state']}</span></div>""", unsafe_allow_html=True)
         else:
-            st.info("No recent activity")
+            st.info("暂无最近活动")
         
         st.markdown("---")
         
-        # === 3. 当前迭代目标 ===
-        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">🎯</span> Current Iteration</div></div>""", unsafe_allow_html=True)
+        # === 3. 当前迭代 ===
+        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">🎯</span> 当前迭代</div></div>""", unsafe_allow_html=True)
         
         memory_content = read_aop_file("PROJECT_MEMORY.md")
         if memory_content:
             in_progress = parse_md_section(memory_content, "进行中")
             if in_progress:
-                st.markdown(in_progress[:400])
+                st.markdown(in_progress[:350])
             else:
-                st.info("No active iteration goals")
+                st.info("暂无进行中的迭代目标")
         else:
-            st.info("No project memory file")
+            st.info("未找到项目记忆文件")
     
-    # ========== RIGHT COLUMN ==========
+    # ========== 右栏 ==========
     with right_col:
         # === 1. Agent 状态 ===
-        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">🤖</span> Agents</div></div>""", unsafe_allow_html=True)
+        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">🤖</span> Agent 状态</div></div>""", unsafe_allow_html=True)
         
-        # Primary Agent
+        # 主 Agent
         if primary_agent_id:
             agent_names = {"claude_code": "Claude Code", "opencode": "OpenCode", "openclaw": "OpenClaw"}
             agent_name = agent_names.get(primary_agent_id, primary_agent_id)
             is_available = any(a.id == primary_agent_id for a in agents)
             badge = "status-online" if is_available else "status-offline"
             status_icon = "●" if is_available else "○"
+            status_text = "可用" if is_available else "离线"
             st.markdown(f"""
             <div class="agent-row">
-                <div><div class="name">{agent_name}</div><div class="role">Primary Agent</div></div>
+                <div><div class="name">{agent_name}</div><div class="role">主 Agent · {status_text}</div></div>
                 <span class="status-badge {badge}">{status_icon}</span>
             </div>
             """, unsafe_allow_html=True)
         
-        # Sub Agents
+        # 子 Agent
         sub_agents = [
-            {"name": "Developer", "status": "idle"},
-            {"name": "Reviewer", "status": "idle"},
-            {"name": "Tester", "status": "idle"},
+            {"name": "开发者", "role": "实现"},
+            {"name": "审查者", "role": "代码审查"},
+            {"name": "测试者", "role": "验证"},
         ]
         
         for agent in sub_agents:
             active_h = [h for h in hypotheses if h.get("state") == "testing"]
-            status = "busy" if active_h else "idle"
-            badge = "status-busy" if status == "busy" else "status-info"
-            icon = "●" if status == "busy" else "○"
+            status = "忙碌" if active_h else "空闲"
+            badge = "status-busy" if active_h else "status-info"
+            icon = "●" if active_h else "○"
             st.markdown(f"""
             <div class="agent-row">
-                <span class="name">{agent['name']}</span>
-                <span class="status-badge {badge}">{icon}</span>
+                <div><div class="name">{agent['name']}</div><div class="role">{agent['role']}</div></div>
+                <span class="status-badge {badge}">{icon} {status}</span>
             </div>
             """, unsafe_allow_html=True)
         
         st.markdown("---")
         
         # === 2. 待处理问题 ===
-        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">⚠️</span> Issues</div></div>""", unsafe_allow_html=True)
+        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">⚠️</span> 待处理</div></div>""", unsafe_allow_html=True)
         
         issues = []
         if h_pending > 0:
-            issues.append({"text": f"📋 {h_pending} pending hypotheses", "type": ""})
+            issues.append({"text": f"📋 {h_pending} 个假设待验证", "type": ""})
         if h_testing > 0:
-            issues.append({"text": f"🔬 {h_testing} testing", "type": "info"})
+            issues.append({"text": f"🔬 {h_testing} 个假设测试中", "type": "info"})
         if not agents:
-            issues.append({"text": "🔴 No agents available", "type": "error"})
+            issues.append({"text": "🔴 无可用 Agent", "type": "error"})
         
         if issues:
             for issue in issues:
                 st.markdown(f"""<div class="issue-badge {issue['type']}">{issue['text']}</div>""", unsafe_allow_html=True)
         else:
-            st.success("✅ All clear")
+            st.success("✅ 状态良好")
         
         st.markdown("---")
         
         # === 3. 快速操作 ===
-        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">⚡</span> Quick Actions</div></div>""", unsafe_allow_html=True)
+        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">⚡</span> 快速操作</div></div>""", unsafe_allow_html=True)
         
-        if st.button("💬 Start Chat", use_container_width=True):
-            st.info("Go to 「敏捷教练」 page")
+        if st.button("💬 开始对话", use_container_width=True):
+            st.info("请前往「敏捷教练」页面")
         
-        if st.button("📁 Workspaces", use_container_width=True):
-            st.info("Go to 「工作区」 page")
+        if st.button("📁 工作区管理", use_container_width=True):
+            st.info("请前往「工作区」页面")
         
-        if st.button("⚙️ Settings", use_container_width=True):
-            st.info("Go to 「设置」 page")
+        if st.button("⚙️ 系统设置", use_container_width=True):
+            st.info("请前往「设置」页面")
         
         st.markdown("---")
         
         # === 4. 工作区快速启动 ===
-        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">🚀</span> Launch</div></div>""", unsafe_allow_html=True)
+        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">🚀</span> 快速启动</div></div>""", unsafe_allow_html=True)
         
         if not workspaces:
-            st.info("No workspaces yet")
+            st.info("暂无工作区")
         else:
             primary_agent = sm.get_primary_agent()
             agent_id_map = {"openclaw": "main", "claude_code": "claude", "opencode": "opencode", None: "main"}
