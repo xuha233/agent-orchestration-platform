@@ -322,6 +322,68 @@ st.markdown("""
         font-size: 0.7rem;
         margin-bottom: 0.5rem;
     }
+
+/* 紧凑布局 - 提升信息密度 */
+div[data-testid="stVerticalBlock"] > div:has(> div[data-testid="stMetric"]) {
+    gap: 0.25rem;
+}
+
+/* 按钮紧凑 */
+.stButton button {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.85rem;
+}
+
+/* 输入框紧凑 */
+.stTextInput input, .stSelectbox select {
+    padding: 0.35rem 0.5rem;
+    font-size: 0.85rem;
+}
+
+/* expander 紧凑 */
+.streamlit-expanderHeader {
+    font-size: 0.9rem;
+    padding: 0.5rem;
+}
+
+/* 项目切换下拉框 */
+div[data-baseweb="select"] > div {
+    min-height: 32px;
+    font-size: 0.85rem;
+}
+
+/* 侧边栏优化 */
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #0c0c0c 0%, #141414 100%);
+}
+
+[data-testid="stSidebar"] [data-testid="stRadio"] > label {
+    display: none;
+}
+
+[data-testid="stSidebar"] [data-testid="stRadio"] > div {
+    gap: 0.25rem;
+}
+
+[data-testid="stSidebar"] [data-testid="stRadio"] > div > div {
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    background: transparent;
+    border: 1px solid transparent;
+    transition: all 0.2s ease;
+}
+
+[data-testid="stSidebar"] [data-testid="stRadio"] > div > div:hover {
+    background: rgba(245, 158, 11, 0.1);
+    border-color: rgba(245, 158, 11, 0.3);
+}
+
+[data-testid="stSidebar"] [data-testid="stRadio"] > div > div[data-checked="true"] {
+    background: rgba(245, 158, 11, 0.15);
+    border-color: rgba(245, 158, 11, 0.5);
+    color: #fbbf24;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -706,7 +768,15 @@ def get_project_progress_data(project_path: str) -> dict:
 def render_sidebar():
     """渲染侧边栏"""
     with st.sidebar:
-        st.title("🤖 AOP")
+        # Logo 区域
+        st.markdown("""
+        <div style="padding: 0.5rem 0; border-bottom: 1px solid rgba(255,255,255,0.1);">
+            <div style="font-size: 1.25rem; font-weight: 700; color: #f59e0b;">🤖 AOP</div>
+            <div style="font-size: 0.7rem; color: rgba(255,255,255,0.5);">Agent 编排平台</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("<div style='height: 0.75rem;'></div>", unsafe_allow_html=True)
 
         # 获取设置，决定是否显示调试日志
         sm = st.session_state.settings_manager
@@ -722,14 +792,16 @@ def render_sidebar():
             label_visibility="collapsed",
         )
 
-        st.markdown("---")
+        st.markdown("<div style='height: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.1);'></div>", unsafe_allow_html=True)
 
         # 项目快速切换下拉菜单
         wm = st.session_state.workspace_manager
         workspaces = wm.list_workspaces()
 
         if workspaces:
-            st.markdown("**项目切换**")
+            st.markdown("""
+            <div style="font-size: 0.7rem; color: rgba(255,255,255,0.5); margin: 0.5rem 0 0.25rem 0;">项目切换</div>
+            """, unsafe_allow_html=True)
             workspace_options = {ws.name: ws for ws in workspaces}
             current_ws = st.session_state.current_workspace
             current_name = current_ws.name if current_ws else list(workspace_options.keys())[0]
@@ -757,19 +829,25 @@ def render_sidebar():
 
                 st.rerun()
 
-        st.markdown("---")
+        st.markdown("<div style='height: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.1);'></div>", unsafe_allow_html=True)
 
         # 当前 Agent 状态
         if st.session_state.current_agent:
             agent = st.session_state.current_agent
-            st.markdown(f"**Agent**: {agent.name}")
+            st.markdown(f"""
+            <div style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); border-radius: 6px; padding: 0.5rem; margin: 0.5rem 0;">
+                <div style="font-size: 0.65rem; color: rgba(255,255,255,0.5);">当前 Agent</div>
+                <div style="font-size: 0.85rem; color: #fbbf24; font-weight: 500;">{agent.name}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-        st.markdown("---")
+        # 底部版本信息
         st.markdown("""
-**AOP v0.4.0**
-
-[GitHub](https://github.com/xuha233/agent-orchestration-platform)
-""")
+        <div style="position: fixed; bottom: 1rem; left: 1rem; right: 1rem; font-size: 0.65rem; color: rgba(255,255,255,0.3);">
+            <div>AOP v0.4.0</div>
+            <a href="https://github.com/xuha233/agent-orchestration-platform" style="color: rgba(245,158,11,0.6); text-decoration: none;">GitHub</a>
+        </div>
+        """, unsafe_allow_html=True)
 
     return page
 
@@ -1092,17 +1170,7 @@ def page_home():
         
         st.markdown("---")
         
-        # === 3. 快速操作 ===
-        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">⚡</span> 快速操作</div></div>""", unsafe_allow_html=True)
-        
-        if st.button("💬 开始对话", use_container_width=True):
-            st.info("请前往「敏捷教练」页面")
-        
-        if st.button("📁 工作区管理", use_container_width=True):
-            st.info("请前往「工作区」页面")
-        
-        if st.button("⚙️ 系统设置", use_container_width=True):
-            st.info("请前往「设置」页面")
+        # === 3. 快速操作 ===\n        # 技术债：功能重复，已移至其他页面
         
         st.markdown("---")
         
@@ -1142,7 +1210,7 @@ def page_coach():
 
     if project_path:
         # 显示项目信息
-        st.markdown("""<div class="section-title"><span class="icon">📊</span> 项目状态</div>""", unsafe_allow_html=True)
+        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">📊</span> 项目状态</div></div>""", unsafe_allow_html=True)
         col1, col2, col3 = st.columns(3)
 
         # 读取项目记忆
@@ -1187,7 +1255,7 @@ def page_coach():
     st.markdown("---")
     
     # === 启动 CLI 按钮 ===
-    st.markdown("### 🖥️ 启动 CLI")
+    st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">🖥️</span> 启动 CLI</div></div>""", unsafe_allow_html=True)
 
     # 检查是否选择了项目
     if not project_path:
@@ -1531,7 +1599,7 @@ def page_coach():
                 if st.button("🔄 刷新", use_container_width=True, key="refresh_status"):
                     st.rerun()
 
-            st.markdown(f"""<div class="category-desc">💡 请在设置中选择主 Agent（Claude Code / OpenCode / OpenClaw）</div>""", unsafe_allow_html=True)
+            st.caption("💡 请在设置中选择主 Agent（Claude Code / OpenCode / OpenClaw）")
 
     st.markdown("---")
 
@@ -1644,13 +1712,14 @@ def page_workspaces():
 
     # 创建新工作区
     with st.expander("➕ 创建新工作区", expanded=False):
+        st.markdown("""<div style="margin-bottom: 0.5rem;"></div>""", unsafe_allow_html=True)
         name = st.text_input("工作区名称", placeholder="我的项目")
         project_path = st.text_input("项目路径", placeholder="/path/to/project")
 
         # Agent 选择 - 如果设置了主 Agent 则隐藏
         if primary_agent:
             st.markdown(f"**默认 Agent**: `{primary_agent}`")
-            st.markdown(f"""<div class="category-desc">（已由全局设置锁定）</div>""", unsafe_allow_html=True)
+            st.caption("（已由全局设置锁定）")
             selected_agent_id = primary_agent
         else:
             agents = get_available_agents()
@@ -1768,7 +1837,7 @@ def page_workspaces():
                         )
                         
                         st.markdown("---")
-                        st.markdown(f"""<div class="category-desc">💡 查看会话 ID：在 CLI 窗口输入 `/q` 回车即可显示</div>""", unsafe_allow_html=True)
+                        st.caption("💡 查看会话 ID：在 CLI 窗口输入 `/q` 回车即可显示")
                         
                         # 保存按钮
                         col_save, col_close = st.columns(2)
@@ -1820,7 +1889,7 @@ def page_settings():
     sm = st.session_state.settings_manager
 
     # 主 Agent 设置
-    st.markdown("""<div class="section-title"><span class="icon">🤖</span> 主 Agent 设置</div>""", unsafe_allow_html=True)
+    st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">🤖</span> 主 Agent 设置</div></div>""", unsafe_allow_html=True)
 
     agent_options = {
         "未设置（可切换）": None,
@@ -1864,7 +1933,7 @@ def page_settings():
     st.markdown("---")
 
     # 调试日志设置
-    st.markdown("""<div class="section-title"><span class="icon">🖥️</span> 调试日志</div>""", unsafe_allow_html=True)
+    st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">🖥️</span> 调试日志</div></div>""", unsafe_allow_html=True)
     show_dev_console = sm.get_show_dev_console()
     new_show_dev = st.toggle(
         "显示调试日志",
@@ -1880,7 +1949,7 @@ def page_settings():
     st.markdown("---")
 
     # Agent 状态
-    st.markdown("""<div class="section-title"><span class="icon">📊</span> Agent 状态</div>""", unsafe_allow_html=True)
+    st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">📊</span> Agent 状态</div></div>""", unsafe_allow_html=True)
     agents = get_available_agents()
 
     if not agents:
@@ -1890,12 +1959,12 @@ def page_settings():
             st.success(f"✅ {agent.name} - {agent.description}")
 
     # 安装指南
-    st.markdown("""<div class="section-title"><span class="icon">📖</span> 安装指南</div>""", unsafe_allow_html=True)
+    st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">📖</span> 安装指南</div></div>""", unsafe_allow_html=True)
     st.code("Claude Code: npm install -g @anthropic-ai/claude-code", language="bash")
     st.code("OpenCode: npm install -g opencode", language="bash")
 
     # 数据目录
-    st.markdown("""<div class="section-title"><span class="icon">📂</span> 数据目录</div>""", unsafe_allow_html=True)
+    st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">📂</span> 数据目录</div></div>""", unsafe_allow_html=True)
     aop_dir = Path.home() / ".aop"
     st.code(str(aop_dir))
 
@@ -2006,9 +2075,9 @@ def page_memory():
         memory = st.session_state.memory_editing
         st.markdown(f"### 编辑: {memory['name']}")
         if memory["type"] == "global":
-            st.markdown(f"""<div class="category-desc">🌍 全局记忆 - 所有项目共享</div>""", unsafe_allow_html=True)
+            st.caption("🌍 全局记忆 - 所有项目共享")
         else:
-            st.markdown(f"""<div class="category-desc">📁 项目记忆 - 仅当前项目可见</div>""", unsafe_allow_html=True)
+            st.caption("📁 项目记忆 - 仅当前项目可见")
 
         # 预览模式切换
         preview_mode = st.toggle("预览模式", value=st.session_state.memory_preview)
@@ -2070,7 +2139,7 @@ def page_memory():
                     st.rerun()
 
         st.markdown("---")
-        st.markdown("""<div class="section-title"><span class="icon">📄</span> 所有记忆文件</div>""", unsafe_allow_html=True)
+        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">📄</span> 所有记忆文件</div></div>""", unsafe_allow_html=True)
 
     # 显示记忆文件列表
     memories = get_memory_files()
@@ -2093,10 +2162,10 @@ def page_memory():
                     # 名称和类型标签
                     if memory["type"] == "global":
                         st.markdown(f"🌍 **{memory['name']}**")
-                        st.markdown(f"""<div class="category-desc">全局记忆 - 所有项目共享</div>""", unsafe_allow_html=True)
+                        st.caption("全局记忆 - 所有项目共享")
                     else:
                         st.markdown(f"📁 **{memory['name']}**")
-                        st.markdown(f"""<div class="category-desc">项目记忆</div>""", unsafe_allow_html=True)
+                        st.caption("项目记忆")
 
                 with col2:
                     # 修改时间
@@ -2292,7 +2361,7 @@ def page_dev_console():
     
     # 手动添加会话 ID
     st.write("**手动添加会话 ID**")
-    st.markdown(f"""<div class="category-desc">从 CLI 输出中复制会话 ID 粘贴到这里</div>""", unsafe_allow_html=True)
+    st.caption("从 CLI 输出中复制会话 ID 粘贴到这里")
     
     new_session_id = st.text_input(
         "会话 ID",
@@ -2385,6 +2454,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
