@@ -1106,39 +1106,7 @@ def page_home():
         
         st.markdown("---")
         
-        # === 4. 工作区快速启动 ===
-        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">🚀</span> 快速启动</div></div>""", unsafe_allow_html=True)
-        
-        if not workspaces:
-            st.info("暂无工作区")
-        else:
-            primary_agent = sm.get_primary_agent()
-            agent_id_map = {"openclaw": "main", "claude_code": "claude", "opencode": "opencode", None: "main"}
-            webhook_agent_id = agent_id_map.get(primary_agent, "main")
-            
-            for ws in workspaces[:3]:
-                c1, c2 = st.columns([3, 1])
-                with c1:
-                    st.markdown(f"**{ws.name}**")
-                with c2:
-                    if st.button("▶", key=f"launch_{ws.id}", use_container_width=True):
-                        st.session_state.current_workspace = ws
-                        wm.set_current_workspace(ws.id)
-                        try:
-                            import requests
-                            response = requests.post(
-                                "http://127.0.0.1:18789/hooks/agent",
-                                headers={"Authorization": "Bearer 67bf38952e1a0d4c", "Content-Type": "application/json"},
-                                json={"message": "你好，请汇报项目状态", "agentId": webhook_agent_id, "wakeMode": "now"},
-                                timeout=5
-                            )
-                            if response.status_code == 200:
-                                st.toast(f"已启动: {ws.name}", icon="✅")
-                            else:
-                                st.toast(f"启动失败", icon="❌")
-                        except Exception as e:
-                            st.toast(f"启动失败: {e}", icon="❌")
-                        st.rerun()
+        # === 4. 工作区快速启动 ===\n        # 技术债：功能暂不可用，已移至工作区页面\n        # TODO: 重构为在工作区页面提供启动功能
     
     # ========== 刷新控制 ==========
     st.markdown("---")
@@ -1152,14 +1120,20 @@ def page_coach():
     sm = st.session_state.settings_manager
     primary_agent = sm.get_primary_agent()
 
-    st.title("🚀 敏捷教练")
+    # ========== 头部 ==========
+    st.markdown("""
+    <div class="header-gradient">
+        <h1 style="margin: 0; font-size: 1.35rem; color: white; font-weight: 600;">🚀 敏捷教练</h1>
+        <p style="margin: 0.2rem 0 0 0; color: rgba(255,255,255,0.75); font-size: 0.75rem;">任务执行与代码审查</p>
+    </div>
+    """, unsafe_allow_html=True)
 
     # === OpenClaw 状态检测 ===
     openclaw_running, openclaw_status = check_openclaw_status()
     if openclaw_running:
-        st.success(f"✅ OpenClaw Gateway: {openclaw_status}")
+        st.markdown(f"""<div class="issue-badge info">✅ OpenClaw Gateway: {openclaw_status}</div>""", unsafe_allow_html=True)
     else:
-        st.warning(f"⚠️ OpenClaw Gateway: {openclaw_status}")
+        st.markdown(f"""<div class="issue-badge">⚠️ OpenClaw Gateway: {openclaw_status}</div>""", unsafe_allow_html=True)
 
     # === 项目状态概览 ===
     current_workspace = st.session_state.current_workspace
@@ -1168,7 +1142,7 @@ def page_coach():
 
     if project_path:
         # 显示项目信息
-        st.markdown("### 📊 项目状态")
+        st.markdown("""<div class="section-title"><span class="icon">📊</span> 项目状态</div>""", unsafe_allow_html=True)
         col1, col2, col3 = st.columns(3)
 
         # 读取项目记忆
@@ -1557,7 +1531,7 @@ def page_coach():
                 if st.button("🔄 刷新", use_container_width=True, key="refresh_status"):
                     st.rerun()
 
-            st.caption("💡 请在设置中选择主 Agent（Claude Code / OpenCode / OpenClaw）")
+            st.markdown(f"""<div class="category-desc">💡 请在设置中选择主 Agent（Claude Code / OpenCode / OpenClaw）</div>""", unsafe_allow_html=True)
 
     st.markdown("---")
 
@@ -1657,7 +1631,12 @@ def page_coach():
 
 def page_workspaces():
     """工作区管理页面"""
-    st.title("📁 工作区")
+    st.markdown("""
+    <div class="header-gradient">
+        <h1 style="margin: 0; font-size: 1.35rem; color: white; font-weight: 600;">📁 工作区</h1>
+        <p style="margin: 0.2rem 0 0 0; color: rgba(255,255,255,0.75); font-size: 0.75rem;">项目空间管理</p>
+    </div>
+    """, unsafe_allow_html=True)
 
     wm = st.session_state.workspace_manager
     sm = st.session_state.settings_manager
@@ -1671,7 +1650,7 @@ def page_workspaces():
         # Agent 选择 - 如果设置了主 Agent 则隐藏
         if primary_agent:
             st.markdown(f"**默认 Agent**: `{primary_agent}`")
-            st.caption("（已由全局设置锁定）")
+            st.markdown(f"""<div class="category-desc">（已由全局设置锁定）</div>""", unsafe_allow_html=True)
             selected_agent_id = primary_agent
         else:
             agents = get_available_agents()
@@ -1702,7 +1681,7 @@ def page_workspaces():
                 st.error("请填写名称和路径")
 
     # 工作区列表
-    st.markdown("### 我的工作区")
+    st.markdown("""<div class="section-title"><span class="icon">📋</span> 我的工作区</div>""", unsafe_allow_html=True)
     workspaces = wm.list_workspaces()
 
     if not workspaces:
@@ -1789,7 +1768,7 @@ def page_workspaces():
                         )
                         
                         st.markdown("---")
-                        st.caption("💡 查看会话 ID：在 CLI 窗口输入 `/q` 回车即可显示")
+                        st.markdown(f"""<div class="category-desc">💡 查看会话 ID：在 CLI 窗口输入 `/q` 回车即可显示</div>""", unsafe_allow_html=True)
                         
                         # 保存按钮
                         col_save, col_close = st.columns(2)
@@ -1831,12 +1810,17 @@ def page_workspaces():
 
 def page_settings():
     """设置页面"""
-    st.title("⚙️ 设置")
+    st.markdown("""
+    <div class="header-gradient">
+        <h1 style="margin: 0; font-size: 1.35rem; color: white; font-weight: 600;">⚙️ 设置</h1>
+        <p style="margin: 0.2rem 0 0 0; color: rgba(255,255,255,0.75); font-size: 0.75rem;">系统配置与 Agent 管理</p>
+    </div>
+    """, unsafe_allow_html=True)
 
     sm = st.session_state.settings_manager
 
     # 主 Agent 设置
-    st.markdown("### 主 Agent 设置")
+    st.markdown("""<div class="section-title"><span class="icon">🤖</span> 主 Agent 设置</div>""", unsafe_allow_html=True)
 
     agent_options = {
         "未设置（可切换）": None,
@@ -1880,7 +1864,7 @@ def page_settings():
     st.markdown("---")
 
     # 调试日志设置
-    st.markdown("### 调试日志")
+    st.markdown("""<div class="section-title"><span class="icon">🖥️</span> 调试日志</div>""", unsafe_allow_html=True)
     show_dev_console = sm.get_show_dev_console()
     new_show_dev = st.toggle(
         "显示调试日志",
@@ -1896,7 +1880,7 @@ def page_settings():
     st.markdown("---")
 
     # Agent 状态
-    st.markdown("### Agent 状态")
+    st.markdown("""<div class="section-title"><span class="icon">📊</span> Agent 状态</div>""", unsafe_allow_html=True)
     agents = get_available_agents()
 
     if not agents:
@@ -1906,12 +1890,12 @@ def page_settings():
             st.success(f"✅ {agent.name} - {agent.description}")
 
     # 安装指南
-    st.markdown("### 安装指南")
+    st.markdown("""<div class="section-title"><span class="icon">📖</span> 安装指南</div>""", unsafe_allow_html=True)
     st.code("Claude Code: npm install -g @anthropic-ai/claude-code", language="bash")
     st.code("OpenCode: npm install -g opencode", language="bash")
 
     # 数据目录
-    st.markdown("### 数据目录")
+    st.markdown("""<div class="section-title"><span class="icon">📂</span> 数据目录</div>""", unsafe_allow_html=True)
     aop_dir = Path.home() / ".aop"
     st.code(str(aop_dir))
 
@@ -1956,7 +1940,12 @@ def get_memory_files() -> List[Dict]:
 
 def page_memory():
     """项目记忆管理页面"""
-    st.title("📚 项目记忆")
+    st.markdown("""
+    <div class="header-gradient">
+        <h1 style="margin: 0; font-size: 1.35rem; color: white; font-weight: 600;">📚 项目记忆</h1>
+        <p style="margin: 0.2rem 0 0 0; color: rgba(255,255,255,0.75); font-size: 0.75rem;">跨会话知识持久化</p>
+    </div>
+    """, unsafe_allow_html=True)
 
     # 检查是否选择了项目
     if not st.session_state.current_workspace:
@@ -2017,9 +2006,9 @@ def page_memory():
         memory = st.session_state.memory_editing
         st.markdown(f"### 编辑: {memory['name']}")
         if memory["type"] == "global":
-            st.caption("🌍 全局记忆 - 所有项目共享")
+            st.markdown(f"""<div class="category-desc">🌍 全局记忆 - 所有项目共享</div>""", unsafe_allow_html=True)
         else:
-            st.caption("📁 项目记忆 - 仅当前项目可见")
+            st.markdown(f"""<div class="category-desc">📁 项目记忆 - 仅当前项目可见</div>""", unsafe_allow_html=True)
 
         # 预览模式切换
         preview_mode = st.toggle("预览模式", value=st.session_state.memory_preview)
@@ -2081,7 +2070,7 @@ def page_memory():
                     st.rerun()
 
         st.markdown("---")
-        st.markdown("### 所有记忆文件")
+        st.markdown("""<div class="section-title"><span class="icon">📄</span> 所有记忆文件</div>""", unsafe_allow_html=True)
 
     # 显示记忆文件列表
     memories = get_memory_files()
@@ -2104,10 +2093,10 @@ def page_memory():
                     # 名称和类型标签
                     if memory["type"] == "global":
                         st.markdown(f"🌍 **{memory['name']}**")
-                        st.caption("全局记忆 - 所有项目共享")
+                        st.markdown(f"""<div class="category-desc">全局记忆 - 所有项目共享</div>""", unsafe_allow_html=True)
                     else:
                         st.markdown(f"📁 **{memory['name']}**")
-                        st.caption("项目记忆")
+                        st.markdown(f"""<div class="category-desc">项目记忆</div>""", unsafe_allow_html=True)
 
                 with col2:
                     # 修改时间
@@ -2133,7 +2122,12 @@ def page_memory():
 def page_dev_console():
     from datetime import datetime  # 修复局部变量问题
     """开发者控制台页面"""
-    st.title("🖥️ 调试日志")
+    st.markdown("""
+    <div class="header-gradient">
+        <h1 style="margin: 0; font-size: 1.35rem; color: white; font-weight: 600;">🖥️ 调试日志</h1>
+        <p style="margin: 0.2rem 0 0 0; color: rgba(255,255,255,0.75); font-size: 0.75rem;">系统运行日志</p>
+    </div>
+    """, unsafe_allow_html=True)
 
     logger = get_dashboard_logger()
 
@@ -2298,7 +2292,7 @@ def page_dev_console():
     
     # 手动添加会话 ID
     st.write("**手动添加会话 ID**")
-    st.caption("从 CLI 输出中复制会话 ID 粘贴到这里")
+    st.markdown(f"""<div class="category-desc">从 CLI 输出中复制会话 ID 粘贴到这里</div>""", unsafe_allow_html=True)
     
     new_session_id = st.text_input(
         "会话 ID",
@@ -2391,6 +2385,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
