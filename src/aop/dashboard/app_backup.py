@@ -1,4 +1,4 @@
-﻿"""
+"""
 AOP Dashboard - 对话式界面
 
 Run with: streamlit run app.py
@@ -38,151 +38,36 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS - Modern Dark Theme Dashboard
+# Custom CSS
 st.markdown("""
 <style>
-    /* ========== CSS Variables ========== */
-    :root {
-        --bg-primary: #0f172a;
-        --bg-secondary: #1e293b;
-        --bg-tertiary: #334155;
-        --bg-card: #1e293b;
-        --border: #334155;
-        --text-primary: #f1f5f9;
-        --text-secondary: #94a3b8;
-        --accent: #3b82f6;
-        --success: #10b981;
-        --success-bg: rgba(16, 185, 129, 0.15);
-        --warning: #f59e0b;
-        --warning-bg: rgba(245, 158, 11, 0.15);
-        --error: #ef4444;
-        --error-bg: rgba(239, 68, 68, 0.15);
-        --radius: 0.5rem;
+    .welcome-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 1rem;
+        margin: 1rem 0;
     }
-    
-    /* ========== Metric Cards ========== */
-    .metric-card {
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
+    .quick-card {
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 0.5rem;
         padding: 1rem;
+        cursor: pointer;
         transition: all 0.2s;
     }
-    .metric-card:hover {
-        border-color: var(--accent);
-        transform: translateY(-2px);
+    .quick-card:hover {
+        border-color: #667eea;
+        box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
     }
-    .metric-card .label {
-        color: var(--text-secondary);
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        margin-bottom: 0.25rem;
-    }
-    .metric-card .value {
-        color: var(--text-primary);
-        font-size: 1.75rem;
-        font-weight: 700;
-    }
-    
-    /* ========== Status Badge ========== */
     .status-badge {
-        display: inline-flex;
+        display: inline-block;
         padding: 0.25rem 0.5rem;
-        border-radius: 9999px;
-        font-size: 0.75rem;
-        font-weight: 500;
-    }
-    .status-ok { background: var(--success-bg); color: var(--success); border: 1px solid var(--success); }
-    .status-error { background: var(--error-bg); color: var(--error); border: 1px solid var(--error); }
-    .status-warning { background: var(--warning-bg); color: var(--warning); border: 1px solid var(--warning); }
-    
-    /* ========== Content Cards ========== */
-    .content-card {
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        padding: 1rem;
-        margin-bottom: 1rem;
-    }
-    .content-card .card-title {
-        color: var(--text-primary);
-        font-size: 0.875rem;
-        font-weight: 600;
-        margin-bottom: 0.75rem;
-        padding-bottom: 0.5rem;
-        border-bottom: 1px solid var(--border);
-    }
-    
-    /* ========== Agent Row ========== */
-    .agent-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0.75rem;
-        background: var(--bg-secondary);
-        border-radius: var(--radius);
-        margin-bottom: 0.5rem;
-    }
-    .agent-row:hover { background: var(--bg-tertiary); }
-    
-    /* ========== Activity List ========== */
-    .activity-item {
-        display: flex;
-        gap: 0.75rem;
-        padding: 0.5rem 0;
-        border-bottom: 1px solid var(--border);
-    }
-    .activity-item:last-child { border-bottom: none; }
-    
-    /* ========== Progress Bar ========== */
-    .progress-bar {
-        height: 8px;
-        background: var(--bg-tertiary);
-        border-radius: 4px;
-        overflow: hidden;
-    }
-    .progress-bar .fill {
-        height: 100%;
-        background: linear-gradient(90deg, var(--accent), var(--success));
-        border-radius: 4px;
-    }
-    
-    /* ========== Issue Badge ========== */
-    .issue-badge {
-        padding: 0.5rem 0.75rem;
-        background: var(--warning-bg);
-        border-left: 3px solid var(--warning);
-        border-radius: 0 var(--radius) var(--radius) 0;
-        margin-bottom: 0.5rem;
+        border-radius: 0.25rem;
         font-size: 0.875rem;
     }
-    .issue-badge.error { background: var(--error-bg); border-left-color: var(--error); }
-    
-    /* ========== Dark Theme Overrides ========== */
-    [data-testid="stMetric"] {
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        padding: 0.75rem;
-    }
-    [data-testid="stMetric"] label {
-        color: var(--text-secondary) !important;
-        font-size: 0.75rem !important;
-    }
-    [data-testid="stMetric"] [data-testid="stMetricValue"] {
-        color: var(--text-primary) !important;
-    }
-    [data-testid="stSidebar"] { background: var(--bg-primary); }
-    .stButton button {
-        background: var(--bg-tertiary);
-        border: 1px solid var(--border);
-        color: var(--text-primary);
-        border-radius: var(--radius);
-    }
-    .stButton button:hover {
-        background: var(--accent);
-        border-color: var(--accent);
-    }
+    .status-ok { background: #d4edda; color: #155724; }
+    .status-error { background: #f8d7da; color: #721c24; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -756,239 +641,376 @@ def execute_agent_task(agent, workspace, prompt, session_id, workspace_id, cance
 
 
 def page_home():
-    """首页 - 项目概览 (Modern Dark Theme)"""
+    """首页 - 项目概览"""
+    st.title("🏠 项目概览")
+
     wm = st.session_state.workspace_manager
     sm = st.session_state.settings_manager
-    
-    # ========== 数据准备 ==========
+
+    # === 1. 当前主 Agent 板块 ===
+    st.markdown("### 🤖 当前主 Agent")
     primary_agent_id = sm.get_primary_agent()
     agents = get_available_agents()
+
+    if primary_agent_id:
+        # 显示设置的主 Agent
+        agent_names = {
+            "claude_code": "Claude Code",
+            "opencode": "OpenCode",
+            "openclaw": "OpenClaw",
+        }
+        agent_name = agent_names.get(primary_agent_id, primary_agent_id)
+        is_available = any(a.id == primary_agent_id for a in agents)
+
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown(f"**{agent_name}**")
+            st.caption("已锁定为主 Agent")
+        with col2:
+            if is_available:
+                st.markdown('<span class="status-badge status-ok">🟢 可用</span>', unsafe_allow_html=True)
+            else:
+                st.markdown('<span class="status-badge status-error">🔴 不可用</span>', unsafe_allow_html=True)
+    else:
+        # 未设置主 Agent
+        if agents:
+            current = st.session_state.current_agent
+            if current:
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.markdown(f"**{current.name}**")
+                    st.caption(current.description)
+                with col2:
+                    st.markdown('<span class="status-badge status-ok">🟢 使用中</span>', unsafe_allow_html=True)
+            else:
+                st.info("请在「设置」页面设置主 Agent")
+        else:
+            st.warning("未检测到可用 Agent")
+            st.caption("安装：Claude Code 或 OpenCode")
+
+    st.markdown("---")
+
+    # === 2. 子 Agent 状态列表 ===
+    st.markdown("### 👥 子 Agent 状态")
+
+    # 定义子 Agent 角色及其状态
+    sub_agents = [
+        {"name": "Developer", "role": "开发者", "status": "空闲", "progress": "待分配"},
+        {"name": "Reviewer", "role": "审查者", "status": "空闲", "progress": "待分配"},
+        {"name": "Tester", "role": "测试者", "status": "空闲", "progress": "待分配"},
+    ]
+
+    # 从 hypotheses 获取进度信息
     hypotheses = get_hypotheses_data()
+    active_hypotheses = [h for h in hypotheses if h.get("state") == "testing"]
+
+    if active_hypotheses:
+        for h in active_hypotheses[:1]:
+            statement = h.get("statement", "")
+            if "Developer" in statement or "实现" in statement:
+                sub_agents[0]["status"] = "忙碌"
+                sub_agents[0]["progress"] = statement[:30] + "..." if len(statement) > 30 else statement
+            if "Review" in statement or "审查" in statement:
+                sub_agents[1]["status"] = "忙碌"
+                sub_agents[1]["progress"] = statement[:30] + "..." if len(statement) > 30 else statement
+            if "Test" in statement or "测试" in statement:
+                sub_agents[2]["status"] = "忙碌"
+                sub_agents[2]["progress"] = statement[:30] + "..." if len(statement) > 30 else statement
+
+    # 显示子 Agent 列表
+    for agent in sub_agents:
+        status_icon = "🟢" if agent["status"] == "空闲" else "🟡"
+        st.markdown(f"**{agent['name']}** | {status_icon} {agent['status']} | 进度：{agent['progress']}")
+
+    st.markdown("---")
+
+    # === 3. 项目进度报告 ===
+    st.markdown("### 📈 项目进度报告")
+
     sprint = get_sprint_data()
-    stats = get_project_stats()
-    workspaces = wm.list_workspaces()
-    
-    # 假设统计
+    hypotheses = get_hypotheses_data()
+
+    # 计算假设状态统计
     h_pending = len([h for h in hypotheses if h.get("state") == "pending"])
     h_testing = len([h for h in hypotheses if h.get("state") == "testing"])
     h_validated = len([h for h in hypotheses if h.get("state") == "validated"])
     h_total = len(hypotheses)
+
+    # 进度百分比
     progress_pct = int((h_validated / h_total * 100) if h_total > 0 else 0)
+
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        # 当前任务
+        if sprint:
+            st.markdown(f"**当前任务**: {sprint.get('original_input', '无')}")
+            st.caption(f"Sprint ID: {sprint.get('sprint_id', '-')}")
+        else:
+            st.markdown("**当前任务**: 无活动 Sprint")
+
+        # 下一步计划
+        if h_pending > 0:
+            next_h = [h for h in hypotheses if h.get("state") == "pending"][0]
+            st.markdown(f"**下一步计划**: {next_h.get('statement', '-')[:50]}...")
+        else:
+            st.markdown("**下一步计划**: 创建新假设")
+
+    with col2:
+        # 进度条
+        st.metric("验证进度", f"{progress_pct}%")
+        st.progress(progress_pct / 100)
+        st.caption(f"已验证 {h_validated}/{h_total} 假设")
+
+    st.markdown("---")
+
+    # === 4. 项目统计 ===
+    st.markdown("### 📊 项目统计")
+
+    stats = get_project_stats()
+    workspaces = wm.list_workspaces()
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.metric("文件数", stats["file_count"])
+
+    with col2:
+        st.metric("代码行数", f"{stats['line_count']:,}")
+
+    with col3:
+        st.metric("Python 文件", stats["py_files"])
+
+    with col4:
+        st.metric("工作区", len(workspaces))
+
+    st.markdown("---")
+
+    # === 5. 最近活动 ===
+    st.markdown("### 📋 最近活动")
+
+    # 从假设和学习数据构建活动列表
+    activities = []
+
+    # 添加假设相关活动
+    for h in hypotheses[:5]:
+        state = h.get("state", "pending")
+        statement = h.get("statement", "")[:40]
+        if state == "validated":
+            activities.append(f"✅ 假设验证成功: {statement}...")
+        elif state == "testing":
+            activities.append(f"🔬 假设测试中: {statement}...")
+        elif state == "pending":
+            activities.append(f"📝 假设待验证: {statement}...")
+
+    # 添加 Sprint 活动
+    if sprint:
+        sprint_time = sprint.get("created_at", "")
+        if sprint_time:
+            activities.append(f"🚀 Sprint 创建: {sprint.get('original_input', '')[:40]}...")
+
+    if activities:
+        for i, activity in enumerate(activities[:10]):
+            st.markdown(f"{i+1}. {activity}")
+    else:
+        st.info("暂无最近活动")
+
+    st.markdown("---")
+
+    # === 6. 待处理问题 ===
+    st.markdown("### ⚠️ 待处理问题")
+
+    issues = []
+
+    # 待验证假设
+    pending_hypotheses = [h for h in hypotheses if h.get("state") == "pending"]
+    if pending_hypotheses:
+        issues.append(f"📋 {len(pending_hypotheses)} 个待验证假设")
+
+    # 测试中假设
+    testing_hypotheses = [h for h in hypotheses if h.get("state") == "testing"]
+    if testing_hypotheses:
+        issues.append(f"🔬 {len(testing_hypotheses)} 个假设正在测试")
+
+    # Agent 状态检查
+    if not agents:
+        issues.append("🔴 未检测到可用 Agent")
+
+    if issues:
+        for issue in issues:
+            st.warning(issue)
+    else:
+        st.success("✅ 无待处理问题")
+
+    st.markdown("---")
+
+    # === 7. 当前迭代目标 ===
+    st.markdown("### 🎯 当前迭代目标")
+
+    # 从 PROJECT_MEMORY.md 读取进行中的任务
+    memory_content = read_aop_file("PROJECT_MEMORY.md")
+    if memory_content:
+        in_progress = parse_md_section(memory_content, "进行中")
+        if in_progress:
+            st.markdown("**进行中**:")
+            st.markdown(in_progress)
+        else:
+            st.info("暂无进行中的迭代目标")
+    else:
+        st.info("未找到项目记忆文件")
+
+    # === 项目实时状态 ===
+    # 融合说明：移除重复的假设统计（已在"项目进度报告"模块显示），只保留 Git/测试/学习状态
+    st.markdown("---")
+    st.markdown("### 📊 项目实时状态")
     
-    # 项目实时状态
+    # 获取当前工作区路径
     if st.session_state.current_workspace:
         project_path = st.session_state.current_workspace.project_path
     else:
         project_path = "G:/docker/aop"
+    
+    # 获取实时状态数据
     progress_data = get_project_progress_data(project_path)
     
-    # ========== HEADER ========== 
-    project_name = st.session_state.current_workspace.name if st.session_state.current_workspace else "AOP"
-    
-    st.markdown(f"""
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding: 1rem; background: linear-gradient(135deg, #1e40af 0%, #7c3aed 100%); border-radius: 0.75rem;">
-        <div>
-            <h1 style="margin: 0; font-size: 1.5rem; color: white;">{project_name}</h1>
-            <p style="margin: 0; color: rgba(255,255,255,0.8); font-size: 0.875rem;">Agent Orchestration Platform</p>
-        </div>
-        <div style="display: flex; gap: 0.5rem;">
-            <span class="status-badge {'status-ok' if agents else 'status-error'}">{'🟢 ' + str(len(agents)) + ' Agents' if agents else '🔴 No Agents'}</span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # ========== KEY METRICS ROW ==========
-    col1, col2, col3, col4 = st.columns(4)
+    # 显示 3 个指标卡片（Git、学习、测试）
+    col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="label">Hypotheses</div>
-            <div class="value">{h_validated}/{h_total}</div>
-            <div style="margin-top: 0.5rem;">
-                <div class="progress-bar"><div class="fill" style="width: {progress_pct}%;"></div></div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        # Git 状态
+        g = progress_data["git"]
+        st.metric("Git 分支", g['branch'])
+        if g['changes'] > 0:
+            st.caption(f"⚠️ {g['changes']} 个未提交更改")
+        else:
+            st.caption("✅ 工作区干净")
     
     with col2:
-        t = progress_data["tests"]
-        test_status = f"{t['passed']}/{t['total']}" if t['total'] > 0 else "N/A"
-        test_color = "#10b981" if t['passed'] == t['total'] and t['total'] > 0 else "#f59e0b"
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="label">Tests</div>
-            <div class="value" style="color: {test_color};">{test_status}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        # 学习记录
+        l = progress_data["learnings"]
+        st.metric("学习记录", l['total'])
+        if l['latest']:
+            st.caption(f"最新: {l['latest']}...")
     
     with col3:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="label">Lines of Code</div>
-            <div class="value">{stats['line_count']:,}</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col4:
-        g = progress_data["git"]
-        git_status = "✓" if g['changes'] == 0 else f"±{g['changes']}"
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="label">Git: {g['branch']}</div>
-            <div class="value">{git_status}</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # ========== TWO COLUMN LAYOUT ==========
-    left_col, right_col = st.columns([2, 1])
-    
-    # ========== LEFT COLUMN ==========
-    with left_col:
-        # === Project Progress ===
-        st.markdown("""<div class="content-card"><div class="card-title">📈 Project Progress</div></div>""", unsafe_allow_html=True)
-        
-        if sprint:
-            st.markdown(f"**Current Sprint**: {sprint.get('original_input', 'N/A')[:60]}")
-            st.caption(f"ID: {sprint.get('sprint_id', '-')}")
-        else:
-            st.info("No active sprint")
-        
-        if h_pending > 0:
-            next_h = [h for h in hypotheses if h.get("state") == "pending"][0]
-            st.markdown(f"**Next**: {next_h.get('statement', '-')[:50]}...")
-        
-        st.markdown("---")
-        
-        # === Recent Activity ===
-        st.markdown("""<div class="content-card"><div class="card-title">📋 Recent Activity</div></div>""", unsafe_allow_html=True)
-        
-        activities = []
-        for h in hypotheses[:5]:
-            state = h.get("state", "pending")
-            statement = h.get("statement", "")[:40]
-            icon = "✅" if state == "validated" else "🔬" if state == "testing" else "📝"
-            activities.append(f"{icon} {statement}...")
-        
-        if activities:
-            for activity in activities[:6]:
-                st.markdown(f"""<div class="activity-item"><span style="color: #94a3b8;">{activity}</span></div>""", unsafe_allow_html=True)
-        else:
-            st.info("No recent activity")
-        
-        st.markdown("---")
-        
-        # === Current Iteration ===
-        st.markdown("""<div class="content-card"><div class="card-title">🎯 Current Iteration</div></div>""", unsafe_allow_html=True)
-        
-        memory_content = read_aop_file("PROJECT_MEMORY.md")
-        if memory_content:
-            in_progress = parse_md_section(memory_content, "进行中")
-            if in_progress:
-                st.markdown(in_progress[:300])
+        # 测试状态
+        t = progress_data["tests"]
+        if t['total'] > 0:
+            st.metric("测试状态", f"{t['passed']}/{t['total']}")
+            if t['passed'] == t['total']:
+                st.caption("✅ 全部通过")
             else:
-                st.info("No active iteration goals")
+                st.caption(f"❌ {t['total'] - t['passed']} 个失败")
         else:
-            st.info("No project memory file")
-    
-    # ========== RIGHT COLUMN ==========
-    with right_col:
-        # === Agent Status ===
-        st.markdown("""<div class="content-card"><div class="card-title">🤖 Agents</div></div>""", unsafe_allow_html=True)
-        
-        # Primary Agent
-        if primary_agent_id:
-            agent_names = {"claude_code": "Claude Code", "opencode": "OpenCode", "openclaw": "OpenClaw"}
-            agent_name = agent_names.get(primary_agent_id, primary_agent_id)
-            is_available = any(a.id == primary_agent_id for a in agents)
-            badge = "status-ok" if is_available else "status-error"
-            status_text = "●" if is_available else "○"
-            st.markdown(f"""
-            <div class="agent-row">
-                <div>
-                    <div class="agent-name">{agent_name}</div>
-                    <div class="agent-role">Primary Agent</div>
-                </div>
-                <span class="status-badge {badge}">{status_text}</span>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        # Sub Agents
-        sub_agents = [
-            {"name": "Developer", "status": "idle"},
-            {"name": "Reviewer", "status": "idle"},
-            {"name": "Tester", "status": "idle"},
-        ]
-        
-        for agent in sub_agents:
-            active_h = [h for h in hypotheses if h.get("state") == "testing"]
-            status = "busy" if active_h else "idle"
-            badge = "status-warning" if status == "busy" else "status-info"
-            icon = "●" if status == "busy" else "○"
-            st.markdown(f"""
-            <div class="agent-row">
-                <span class="agent-name">{agent['name']}</span>
-                <span class="status-badge {badge}">{icon}</span>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        st.markdown("---")
-        
-        # === Issues ===
-        st.markdown("""<div class="content-card"><div class="card-title">⚠️ Issues</div></div>""", unsafe_allow_html=True)
-        
-        issues = []
-        if h_pending > 0:
-            issues.append(f"📋 {h_pending} pending hypotheses")
-        if h_testing > 0:
-            issues.append(f"🔬 {h_testing} testing")
-        if not agents:
-            issues.append("🔴 No agents available")
-        
-        if issues:
-            for issue in issues:
-                st.markdown(f"""<div class="issue-badge">{issue}</div>""", unsafe_allow_html=True)
-        else:
-            st.success("✅ All clear")
-        
-        st.markdown("---")
-        
-        # === Quick Actions ===
-        st.markdown("""<div class="content-card"><div class="card-title">⚡ Quick Actions</div></div>""", unsafe_allow_html=True)
-        
-        if st.button("💬 Start Chat", use_container_width=True):
-            st.info("Go to 「敏捷教练」 page")
-        
-        if st.button("📁 Workspaces", use_container_width=True):
-            st.info("Go to 「工作区」 page")
-        
-        if st.button("⚙️ Settings", use_container_width=True):
-            st.info("Go to 「设置」 page")
-        
-        st.markdown("---")
-        
-        # === Workspace Launcher ===
-        st.markdown("""<div class="content-card"><div class="card-title">🚀 Launch</div></div>""", unsafe_allow_html=True)
-        
-        if not workspaces:
-            st.info("No workspaces yet")
-        else:
-            for ws in workspaces[:3]:
-                c1, c2 = st.columns([3, 1])
-                with c1:
-                    st.markdown(f"**{ws.name}**")
-                with c2:
-                    if st.button("▶", key=f"launch_{ws.id}", use_container_width=True):
-                        st.session_state.current_workspace = ws
-                        wm.set_current_workspace(ws.id)
-                        st.toast(f"Switched to: {ws.name}", icon="✅")
-    
-    # ========== Refresh Controls ==========
+            st.metric("测试状态", "N/A")
+            st.caption("无测试数据")
+
+    # === 快速操作 ===
+    st.markdown("---")
+    st.markdown("### ⚡ 快速操作")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        if st.button("💬 开始对话", use_container_width=True):
+            st.info("请前往「敏捷教练」页面开始对话")
+
+    with col2:
+        if st.button("📁 管理工作区", use_container_width=True):
+            st.info("请前往「工作区」页面管理")
+
+    with col3:
+        if st.button("⚙️ 系统设置", use_container_width=True):
+            st.info("请前往「设置」页面配置")
+
+    # === 刷新控制 ===
     st.markdown("---")
     refresh_interval, auto_refresh_enabled = render_refresh_controls(default_interval=30)
+    
+    # 自动刷新
     if auto_refresh_enabled:
         auto_refresh(refresh_interval)
+    
 
+    # === 工作区快速启动 ===
+    st.markdown("---")
+    st.markdown("### 🚀 工作区快速启动")
+    
+    # 获取所有工作区
+    workspaces_list = wm.list_workspaces()
+    
+    # 获取主 Agent 设置
+    primary_agent = sm.get_primary_agent()
+    
+    # Agent ID 映射（Webhook agentId）
+    agent_id_map = {
+        "openclaw": "main",
+        "claude_code": "claude",
+        "opencode": "opencode",
+        None: "main",  # 默认使用 main
+    }
+    webhook_agent_id = agent_id_map.get(primary_agent, "main")
+    
+    if not workspaces_list:
+        st.info("还没有工作区，请前往「工作区」页面创建")
+    else:
+        # 显示工作区卡片
+        for ws in workspaces_list:
+            with st.container():
+                col1, col2, col3 = st.columns([3, 2, 1])
+                
+                with col1:
+                    st.markdown(f"**{ws.name}**")
+                    st.caption(f"📂 {ws.project_path}")
+                
+                with col2:
+                    # 检查初始化状态
+                    from pathlib import Path
+                    aop_dir = Path(ws.project_path) / ".aop"
+                    project_memory = aop_dir / "PROJECT_MEMORY.md"
+                    is_initialized = aop_dir.exists() and project_memory.exists()
+                    
+                    if is_initialized:
+                        st.markdown("✅ 已初始化")
+                    else:
+                        st.markdown("⚠️ 未初始化")
+                
+                with col3:
+                    # 启动按钮
+                    if st.button("🚀 启动", key=f"quick_launch_{ws.id}", use_container_width=True):
+                        # 切换到该工作区
+                        st.session_state.current_workspace = ws
+                        wm.set_current_workspace(ws.id)
+                        
+                        # 通过 Webhook 启动 Agent
+                        import requests
+                        try:
+                            response = requests.post(
+                                "http://127.0.0.1:18789/hooks/agent",
+                                headers={
+                                    "Authorization": "Bearer 67bf38952e1a0d4c",
+                                    "Content-Type": "application/json"
+                                },
+                                json={
+                                    "message": "你好，请汇报项目状态",
+                                    "agentId": webhook_agent_id,
+                                    "wakeMode": "now"
+                                },
+                                timeout=5
+                            )
+                            if response.status_code == 200:
+                                result = response.json()
+                                if result.get("ok"):
+                                    st.toast(f"已启动: {ws.name}", icon="✅")
+                                else:
+                                    st.toast(f"启动失败: {result}", icon="❌")
+                            else:
+                                st.toast(f"启动失败: {response.text}", icon="❌")
+                        except Exception as e:
+                            st.toast(f"Webhook 调用失败: {e}", icon="❌")
+                        st.rerun()
+            
+            st.markdown("---")
 
 def page_coach():
     """敏捷教练页面 - 快捷指令面板"""
