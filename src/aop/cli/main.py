@@ -1,4 +1,4 @@
-﻿"""AOP CLI."""
+"""AOP CLI."""
 
 from __future__ import annotations
 
@@ -1042,6 +1042,352 @@ def update_hypothesis(hypothesis_id, state):
     console.print(f"[green]Updated {hypothesis_id}[/green]")
     console.print(f"  New state: {state}")
 
+
+
+@hypothesis.command("prioritize")
+@click.argument("hypotheses_file", type=click.Path(exists=True), required=False)
+@click.option("--json", "json_output", is_flag=True, help="JSON output")
+def prioritize_hypotheses(hypotheses_file: Optional[str], json_output: bool):
+    """Prioritize hypotheses by impact, cost, and uncertainty.
+    
+    Example:
+        aop hypothesis prioritize
+        aop hypothesis prioritize hypotheses.json
+    """
+    from ..hypothesis.prioritizer import HypothesisPrioritizer
+    
+    prioritizer = HypothesisPrioritizer()
+    
+    if hypotheses_file:
+        with open(hypotheses_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        hypotheses = data.get("hypotheses", [])
+    else:
+        default_path = Path.cwd() / ".aop" / "hypotheses.json"
+        if default_path.exists():
+            with open(default_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            hypotheses = data.get("hypotheses", [])
+        else:
+            console.print("[yellow]No hypotheses file found, using sample data[/yellow]")
+            hypotheses = [
+                {"hypothesis_id": "H-001", "statement": "Users will pay for premium features", "type": "business"},
+                {"hypothesis_id": "H-002", "statement": "New users can complete first action in 5 minutes", "type": "usability"},
+                {"hypothesis_id": "H-003", "statement": "System supports 100K concurrent users", "type": "technical"},
+            ]
+    
+    scores = prioritizer.prioritize(hypotheses)
+    
+    if json_output:
+        output = {
+            "hypotheses": [s.to_dict() for s in scores],
+            "explanation": prioritizer.get_ranking_explanation(scores)
+        }
+        console.print_json(data=output)
+        return
+    
+    console.print("\n[bold cyan]Hypothesis Priority Ranking[/bold cyan]\n")
+    
+    table = Table()
+    table.add_column("Rank", style="cyan")
+    table.add_column("ID", style="white")
+    table.add_column("Statement", style="white", max_width=40)
+    table.add_column("Impact", style="green")
+    table.add_column("Cost", style="yellow")
+    table.add_column("Uncertainty", style="blue")
+    table.add_column("Priority", style="magenta")
+    
+    for score in scores:
+        table.add_row(
+            str(score.rank),
+            score.hypothesis_id,
+            score.statement[:40] + "..." if len(score.statement) > 40 else score.statement,
+            f"{score.impact_score:.1f}",
+            f"{score.cost_score:.1f}",
+            f"{score.uncertainty_score:.1f}",
+            f"{score.priority_score:.2f}",
+        )
+    
+    console.print(table)
+    
+    console.print("\n[bold]Reasoning:[/bold]")
+    for score in scores[:3]:
+        console.print(f"\n[cyan]#{score.rank} {score.hypothesis_id}[/cyan]")
+        console.print(f"  {score.reasoning}")
+
+
+@hypothesis.command("path")
+@click.argument("hypotheses_file", type=click.Path(exists=True), required=False)
+@click.option("--max-days", type=int, default=30, help="Maximum days constraint")
+@click.option("--json", "json_output", is_flag=True, help="JSON output")
+def plan_validation_path(hypotheses_file: Optional[str], max_days: int, json_output: bool):
+    """Plan minimal validation path for hypotheses.
+    
+    Example:
+        aop hypothesis path
+        aop hypothesis path hypotheses.json --max-days 14
+    """
+    from ..validation.path_planner import ValidationPathPlanner
+    from ..hypothesis.prioritizer import HypothesisPrioritizer
+    
+    planner = ValidationPathPlanner()
+    prioritizer = HypothesisPrioritizer()
+    
+    if hypotheses_file:
+        with open(hypotheses_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        hypotheses = data.get("hypotheses", [])
+    else:
+        default_path = Path.cwd() / ".aop" / "hypotheses.json"
+        if default_path.exists():
+            with open(default_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            hypotheses = data.get("hypotheses", [])
+        else:
+            console.print("[yellow]No hypotheses file found, using sample data[/yellow]")
+            hypotheses = [
+                {"hypothesis_id": "H-001", "statement": "Users will pay for premium features", "type": "business"},
+                {"hypothesis_id": "H-002", "statement": "New users can complete first action in 5 minutes", "type": "usability"},
+                {"hypothesis_id": "H-003", "statement": "System supports 100K concurrent users", "type": "technical"},
+            ]
+    
+    scores = prioritizer.prioritize(hypotheses)
+    sorted_hypotheses = [s.raw_hypothesis for s in scores]
+    
+    constraints = {"max_days": max_days}
+    path = planner.plan(sorted_hypotheses, constraints)
+    
+    if json_output:
+        console.print_json(data=path.to_dict())
+        return
+    
+    console.print(path.get_summary())
+
+
+@cli.group()
+def knowledge():
+    """Startup knowledge base (patterns and antipatterns)."""
+    pass
+
+
+@knowledge.command("search")
+@click.argument("query")
+@click.option("--tags", "-t", help="Tag filter (comma-separated)")
+@click.option("--json", "json_output", is_flag=True, help="JSON output")
+def search_patterns(query: str, tags: Optional[str], json_output: bool):
+    """Search startup patterns.
+    
+    Example:
+        aop knowledge search "demand validation"
+        aop knowledge search "mvp" --tags validation,low-cost
+    """
+    from ..knowledge.patterns import StartupPatternLibrary
+    
+    library = StartupPatternLibrary()
+    
+    tag_list = [t.strip() for t in tags.split(",")] if tags else None
+    patterns = library.search_patterns(query, tag_list)
+    
+    if not patterns:
+        console.print(f"[yellow]No patterns found for: {query}[/yellow]")
+        return
+    
+    if json_output:
+        output = {
+            "query": query,
+            "count": len(patterns),
+            "patterns": [p.to_dict() for p in patterns]
+        }
+        console.print_json(data=output)
+        return
+    
+    console.print(f"\n[bold]Found {len(patterns)} patterns:[/bold]\n")
+    
+    for i, pattern in enumerate(patterns, 1):
+        console.print(f"[cyan]{i}. {pattern.name}[/cyan]")
+        console.print(f"   {pattern.description}")
+        console.print(f"   [dim]When: {', '.join(pattern.when_to_use[:3])}[/dim]")
+        if pattern.examples:
+            console.print(f"   [dim]Examples: {', '.join(pattern.examples[:2])}[/dim]")
+        console.print()
+
+
+@knowledge.command("suggest")
+@click.option("--stage", "-s", help="Project stage (idea/validation/growth/scale)")
+@click.option("--type", "-t", "project_type", help="Project type (b2b/b2c/marketplace)")
+@click.option("--low-budget", is_flag=True, help="Budget constrained")
+@click.option("--json", "json_output", is_flag=True, help="JSON output")
+def suggest_patterns(stage: Optional[str], project_type: Optional[str], low_budget: bool, json_output: bool):
+    """Suggest patterns based on project context.
+    
+    Example:
+        aop knowledge suggest --stage idea --low-budget
+        aop knowledge suggest --type b2b --stage validation
+    """
+    from ..knowledge.patterns import StartupPatternLibrary
+    
+    library = StartupPatternLibrary()
+    
+    context = {}
+    if stage:
+        context["stage"] = stage
+    if project_type:
+        context["project_type"] = project_type
+    if low_budget:
+        context["constraints"] = {"low_budget": True}
+    
+    patterns = library.suggest_patterns(context)
+    
+    if not patterns:
+        console.print("[yellow]No patterns suggested for current conditions[/yellow]")
+        return
+    
+    if json_output:
+        output = {
+            "context": context,
+            "count": len(patterns),
+            "patterns": [p.to_dict() for p in patterns]
+        }
+        console.print_json(data=output)
+        return
+    
+    console.print(f"\n[bold]Suggested {len(patterns)} patterns:[/bold]\n")
+    
+    for i, pattern in enumerate(patterns, 1):
+        success_rate = f"{pattern.success_rate*100:.0f}%" if pattern.success_rate else "N/A"
+        console.print(f"[cyan]{i}. {pattern.name}[/cyan] (Success: {success_rate})")
+        console.print(f"   {pattern.description}")
+        console.print(f"   [dim]Difficulty: {pattern.difficulty} | Time: {pattern.time_to_value}[/dim]")
+        console.print()
+
+
+@knowledge.command("antipatterns")
+@click.option("--decisions", "-d", multiple=True, help="Decisions made")
+@click.option("--behaviors", "-b", multiple=True, help="Current behaviors")
+@click.option("--json", "json_output", is_flag=True, help="JSON output")
+def check_antipatterns(decisions: tuple, behaviors: tuple, json_output: bool):
+    """Check for antipatterns in current project.
+    
+    Example:
+        aop knowledge antipatterns --decisions "build full product first" --behaviors "haven't talked to users"
+    """
+    from ..knowledge.anti_patterns import AntiPatternLibrary
+    
+    library = AntiPatternLibrary()
+    
+    context = {
+        "decisions": list(decisions),
+        "behaviors": list(behaviors),
+    }
+    
+    warnings = library.check_for_antipatterns(context)
+    
+    if not warnings:
+        console.print("[green]No obvious antipatterns detected[/green]")
+        return
+    
+    if json_output:
+        output = {
+            "warnings": [
+                {
+                    "antipattern": w.anti_pattern.to_dict(),
+                    "matched_symptoms": w.matched_symptoms,
+                    "risk_level": w.risk_level,
+                    "recommendation": w.recommendation,
+                }
+                for w in warnings
+            ]
+        }
+        console.print_json(data=output)
+        return
+    
+    severity_colors = {
+        "critical": "red",
+        "high": "yellow",
+        "medium": "blue",
+        "low": "dim",
+    }
+    
+    console.print(f"\n[bold]Detected {len(warnings)} potential antipatterns:[/bold]\n")
+    
+    for warning in warnings:
+        color = severity_colors.get(warning.risk_level, "white")
+        
+        console.print(f"[{color}]⚠ {warning.anti_pattern.name}[/{color}]")
+        console.print(f"   Risk: [{color}]{warning.risk_level.upper()}[/{color}]")
+        console.print(f"   {warning.anti_pattern.description}")
+        
+        if warning.matched_symptoms:
+            console.print(f"   [dim]Matched: {', '.join(warning.matched_symptoms[:3])}[/dim]")
+        
+        console.print(f"   [green]Suggestion: {warning.recommendation}[/green]")
+        console.print()
+
+
+@knowledge.command("list")
+@click.option("--type", "-t", "entry_type", type=click.Choice(["patterns", "antipatterns", "all"]), default="all", help="Entry type to list")
+@click.option("--json", "json_output", is_flag=True, help="JSON output")
+def list_knowledge(entry_type: str, json_output: bool):
+    """List all knowledge base entries."""
+    if entry_type in ("patterns", "all"):
+        from ..knowledge.patterns import StartupPatternLibrary
+        pattern_lib = StartupPatternLibrary()
+        patterns = pattern_lib.list_all()
+        
+        if json_output:
+            console.print_json(data={
+                "type": "patterns",
+                "count": len(patterns),
+                "entries": [p.to_dict() for p in patterns]
+            })
+        else:
+            console.print(f"\n[bold cyan]Startup Patterns ({len(patterns)})[/bold cyan]\n")
+            
+            table = Table()
+            table.add_column("ID", style="cyan")
+            table.add_column("Name", style="white")
+            table.add_column("Difficulty", style="yellow")
+            table.add_column("Tags", style="dim")
+            
+            for p in patterns:
+                table.add_row(
+                    p.id,
+                    p.name,
+                    p.difficulty,
+                    ", ".join(p.tags[:3])
+                )
+            
+            console.print(table)
+    
+    if entry_type in ("antipatterns", "all"):
+        from ..knowledge.anti_patterns import AntiPatternLibrary
+        antipattern_lib = AntiPatternLibrary()
+        antipatterns = antipattern_lib.list_all()
+        
+        if json_output:
+            console.print_json(data={
+                "type": "antipatterns",
+                "count": len(antipatterns),
+                "entries": [a.to_dict() for a in antipatterns]
+            })
+        else:
+            console.print(f"\n[bold red]Antipatterns ({len(antipatterns)})[/bold red]\n")
+            
+            table = Table()
+            table.add_column("ID", style="cyan")
+            table.add_column("Name", style="white")
+            table.add_column("Severity", style="red")
+            table.add_column("Tags", style="dim")
+            
+            for a in antipatterns:
+                table.add_row(
+                    a.id,
+                    a.name,
+                    a.severity,
+                    ", ".join(a.tags[:3])
+                )
+            
+            console.print(table)
 
 @cli.group()
 def learning():
