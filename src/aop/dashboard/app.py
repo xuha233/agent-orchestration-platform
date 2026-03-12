@@ -38,150 +38,293 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS - Modern Dark Theme Dashboard
+# Custom CSS - Modern SaaS Dashboard (Glassmorphism + Dark Mode)
 st.markdown("""
 <style>
     /* ========== CSS Variables ========== */
     :root {
-        --bg-primary: #0f172a;
-        --bg-secondary: #1e293b;
-        --bg-tertiary: #334155;
-        --bg-card: #1e293b;
-        --border: #334155;
-        --text-primary: #f1f5f9;
+        --bg-primary: #0a0a0f;
+        --bg-secondary: #12121a;
+        --bg-tertiary: #1a1a24;
+        --bg-glass: rgba(255, 255, 255, 0.03);
+        --bg-glass-hover: rgba(255, 255, 255, 0.06);
+        --border-glass: rgba(255, 255, 255, 0.08);
+        --border-glass-hover: rgba(255, 255, 255, 0.15);
+        
+        --text-primary: #f8fafc;
         --text-secondary: #94a3b8;
-        --accent: #3b82f6;
+        --text-muted: #64748b;
+        
+        --accent: #6366f1;
+        --accent-glow: rgba(99, 102, 241, 0.3);
         --success: #10b981;
-        --success-bg: rgba(16, 185, 129, 0.15);
+        --success-glow: rgba(16, 185, 129, 0.2);
         --warning: #f59e0b;
-        --warning-bg: rgba(245, 158, 11, 0.15);
+        --warning-glow: rgba(245, 158, 11, 0.2);
         --error: #ef4444;
-        --error-bg: rgba(239, 68, 68, 0.15);
-        --radius: 0.5rem;
+        --error-glow: rgba(239, 68, 68, 0.2);
+        --info: #06b6d4;
+        --info-glow: rgba(6, 182, 212, 0.2);
+        
+        --radius: 12px;
+        --radius-lg: 16px;
+        --blur: 20px;
     }
     
-    /* ========== Metric Cards ========== */
-    .metric-card {
-        background: var(--bg-card);
-        border: 1px solid var(--border);
+    /* ========== Global ========== */
+    .main .block-container { padding: 1.5rem 2rem; }
+    section.main > div { padding-top: 1rem; }
+    
+    /* ========== Glass Card ========== */
+    .glass-card {
+        background: var(--bg-glass);
+        backdrop-filter: blur(var(--blur));
+        -webkit-backdrop-filter: blur(var(--blur));
+        border: 1px solid var(--border-glass);
         border-radius: var(--radius);
         padding: 1rem;
-        transition: all 0.2s;
+        transition: all 0.2s ease;
+    }
+    .glass-card:hover {
+        background: var(--bg-glass-hover);
+        border-color: var(--border-glass-hover);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+    
+    /* ========== Metric Card ========== */
+    .metric-card {
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%);
+        backdrop-filter: blur(var(--blur));
+        border: 1px solid var(--border-glass);
+        border-radius: var(--radius);
+        padding: 1.25rem;
+        text-align: center;
+        transition: all 0.25s ease;
     }
     .metric-card:hover {
-        border-color: var(--accent);
-        transform: translateY(-2px);
+        border-color: rgba(99, 102, 241, 0.3);
+        box-shadow: 0 0 30px var(--accent-glow);
+        transform: translateY(-4px);
     }
     .metric-card .label {
         color: var(--text-secondary);
-        font-size: 0.75rem;
+        font-size: 0.7rem;
         text-transform: uppercase;
-        margin-bottom: 0.25rem;
+        letter-spacing: 0.1em;
+        margin-bottom: 0.5rem;
     }
     .metric-card .value {
         color: var(--text-primary);
-        font-size: 1.75rem;
+        font-size: 2rem;
         font-weight: 700;
+        line-height: 1.2;
     }
+    .metric-card.success { border-color: rgba(16, 185, 129, 0.2); }
+    .metric-card.success:hover { box-shadow: 0 0 30px var(--success-glow); }
+    .metric-card.warning { border-color: rgba(245, 158, 11, 0.2); }
+    .metric-card.warning:hover { box-shadow: 0 0 30px var(--warning-glow); }
     
     /* ========== Status Badge ========== */
     .status-badge {
         display: inline-flex;
-        padding: 0.25rem 0.5rem;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.25rem 0.6rem;
         border-radius: 9999px;
-        font-size: 0.75rem;
+        font-size: 0.7rem;
         font-weight: 500;
+        backdrop-filter: blur(10px);
     }
-    .status-ok { background: var(--success-bg); color: var(--success); border: 1px solid var(--success); }
-    .status-error { background: var(--error-bg); color: var(--error); border: 1px solid var(--error); }
-    .status-warning { background: var(--warning-bg); color: var(--warning); border: 1px solid var(--warning); }
+    .status-online { background: var(--success-glow); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); }
+    .status-offline { background: var(--error-glow); color: var(--error); border: 1px solid rgba(239, 68, 68, 0.3); }
+    .status-busy { background: var(--warning-glow); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.3); }
+    .status-info { background: var(--info-glow); color: var(--info); border: 1px solid rgba(6, 182, 212, 0.3); }
     
-    /* ========== Content Cards ========== */
-    .content-card {
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        padding: 1rem;
-        margin-bottom: 1rem;
-    }
-    .content-card .card-title {
+    /* ========== Content Section ========== */
+    .section-title {
         color: var(--text-primary);
-        font-size: 0.875rem;
+        font-size: 0.8rem;
         font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
         margin-bottom: 0.75rem;
         padding-bottom: 0.5rem;
-        border-bottom: 1px solid var(--border);
+        border-bottom: 1px solid var(--border-glass);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
     }
+    .section-title .icon { font-size: 1rem; }
     
     /* ========== Agent Row ========== */
     .agent-row {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 0.75rem;
-        background: var(--bg-secondary);
-        border-radius: var(--radius);
-        margin-bottom: 0.5rem;
+        padding: 0.6rem 0.8rem;
+        background: var(--bg-glass);
+        border: 1px solid var(--border-glass);
+        border-radius: 8px;
+        margin-bottom: 0.4rem;
+        transition: all 0.15s ease;
     }
-    .agent-row:hover { background: var(--bg-tertiary); }
+    .agent-row:hover {
+        background: var(--bg-glass-hover);
+        border-color: var(--border-glass-hover);
+    }
+    .agent-row .name { color: var(--text-primary); font-weight: 500; font-size: 0.85rem; }
+    .agent-row .role { color: var(--text-muted); font-size: 0.7rem; }
     
-    /* ========== Activity List ========== */
+    /* ========== Activity Item ========== */
     .activity-item {
         display: flex;
-        gap: 0.75rem;
+        gap: 0.6rem;
         padding: 0.5rem 0;
-        border-bottom: 1px solid var(--border);
+        border-bottom: 1px solid var(--border-glass);
+        font-size: 0.8rem;
     }
     .activity-item:last-child { border-bottom: none; }
+    .activity-item .icon { width: 20px; text-align: center; }
+    .activity-item .text { color: var(--text-secondary); flex: 1; }
+    .activity-item .time { color: var(--text-muted); font-size: 0.7rem; }
     
     /* ========== Progress Bar ========== */
     .progress-bar {
-        height: 8px;
+        height: 6px;
         background: var(--bg-tertiary);
-        border-radius: 4px;
+        border-radius: 3px;
         overflow: hidden;
+        margin-top: 0.5rem;
     }
     .progress-bar .fill {
         height: 100%;
         background: linear-gradient(90deg, var(--accent), var(--success));
-        border-radius: 4px;
+        border-radius: 3px;
+        transition: width 0.4s ease;
     }
     
     /* ========== Issue Badge ========== */
     .issue-badge {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
         padding: 0.5rem 0.75rem;
-        background: var(--warning-bg);
+        background: var(--warning-glow);
         border-left: 3px solid var(--warning);
-        border-radius: 0 var(--radius) var(--radius) 0;
-        margin-bottom: 0.5rem;
-        font-size: 0.875rem;
+        border-radius: 0 6px 6px 0;
+        margin-bottom: 0.4rem;
+        font-size: 0.8rem;
+        color: var(--text-primary);
     }
-    .issue-badge.error { background: var(--error-bg); border-left-color: var(--error); }
+    .issue-badge.error { background: var(--error-glow); border-left-color: var(--error); }
+    .issue-badge.info { background: var(--info-glow); border-left-color: var(--info); }
     
-    /* ========== Dark Theme Overrides ========== */
+    /* ========== Feature Grid ========== */
+    .feature-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+    }
+    .feature-card {
+        background: var(--bg-glass);
+        border: 1px solid var(--border-glass);
+        border-radius: 8px;
+        padding: 0.75rem;
+        text-align: center;
+        transition: all 0.2s ease;
+    }
+    .feature-card:hover {
+        border-color: var(--accent);
+        background: var(--bg-glass-hover);
+    }
+    .feature-card .icon { font-size: 1.25rem; margin-bottom: 0.25rem; }
+    .feature-card .title { color: var(--text-primary); font-size: 0.8rem; font-weight: 500; }
+    .feature-card .desc { color: var(--text-muted); font-size: 0.7rem; margin-top: 0.25rem; }
+    
+    /* ========== Quick Action ========== */
+    .quick-action {
+        background: var(--bg-glass);
+        border: 1px solid var(--border-glass);
+        border-radius: 8px;
+        padding: 0.6rem 0.75rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .quick-action:hover {
+        background: var(--accent);
+        border-color: var(--accent);
+        box-shadow: 0 0 20px var(--accent-glow);
+    }
+    .quick-action .icon { font-size: 1rem; }
+    .quick-action .label { color: var(--text-secondary); font-size: 0.8rem; }
+    .quick-action:hover .label { color: white; }
+    
+    /* ========== Streamlit Overrides ========== */
     [data-testid="stMetric"] {
-        background: var(--bg-card);
-        border: 1px solid var(--border);
+        background: var(--bg-glass);
+        border: 1px solid var(--border-glass);
         border-radius: var(--radius);
         padding: 0.75rem;
+        backdrop-filter: blur(10px);
     }
-    [data-testid="stMetric"] label {
-        color: var(--text-secondary) !important;
-        font-size: 0.75rem !important;
-    }
-    [data-testid="stMetric"] [data-testid="stMetricValue"] {
-        color: var(--text-primary) !important;
-    }
+    [data-testid="stMetric"] label { color: var(--text-muted) !important; font-size: 0.7rem !important; }
+    [data-testid="stMetric"] [data-testid="stMetricValue"] { color: var(--text-primary) !important; }
+    
     [data-testid="stSidebar"] { background: var(--bg-primary); }
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { color: var(--text-secondary); }
+    
     .stButton button {
-        background: var(--bg-tertiary);
-        border: 1px solid var(--border);
+        background: var(--bg-glass);
+        border: 1px solid var(--border-glass);
         color: var(--text-primary);
-        border-radius: var(--radius);
+        border-radius: 8px;
+        backdrop-filter: blur(10px);
+        transition: all 0.2s ease;
     }
     .stButton button:hover {
         background: var(--accent);
         border-color: var(--accent);
+        box-shadow: 0 0 15px var(--accent-glow);
+    }
+    
+    .stProgress > div > div {
+        background: var(--bg-tertiary);
+        border-radius: 4px;
+    }
+    .stProgress > div > div > div {
+        background: linear-gradient(90deg, var(--accent), var(--success));
+    }
+    
+    /* ========== Header Gradient ========== */
+    .header-gradient {
+        background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4c1d95 100%);
+        border-radius: var(--radius-lg);
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        border: 1px solid rgba(99, 102, 241, 0.2);
+        box-shadow: 0 0 40px rgba(99, 102, 241, 0.15);
+    }
+    
+    /* ========== Workspace Launcher ========== */
+    .workspace-card {
+        background: var(--bg-glass);
+        border: 1px solid var(--border-glass);
+        border-radius: 8px;
+        padding: 0.6rem 0.75rem;
+        margin-bottom: 0.4rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        transition: all 0.15s ease;
+    }
+    .workspace-card:hover {
+        border-color: var(--accent);
+        background: var(--bg-glass-hover);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -756,7 +899,7 @@ def execute_agent_task(agent, workspace, prompt, session_id, workspace_id, cance
 
 
 def page_home():
-    """首页 - 项目概览 (Modern Dark Theme)"""
+    """首页 - 现代化 SaaS 分析仪表板 (Glassmorphism + Dark Mode)"""
     wm = st.session_state.workspace_manager
     sm = st.session_state.settings_manager
     
@@ -783,21 +926,24 @@ def page_home():
     progress_data = get_project_progress_data(project_path)
     
     # ========== HEADER ========== 
-    project_name = st.session_state.current_workspace.name if st.session_state.current_workspace else "AOP"
+    project_name = st.session_state.current_workspace.name if st.session_state.current_workspace else "AOP Dashboard"
     
     st.markdown(f"""
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding: 1rem; background: linear-gradient(135deg, #1e40af 0%, #7c3aed 100%); border-radius: 0.75rem;">
-        <div>
-            <h1 style="margin: 0; font-size: 1.5rem; color: white;">{project_name}</h1>
-            <p style="margin: 0; color: rgba(255,255,255,0.8); font-size: 0.875rem;">Agent Orchestration Platform</p>
-        </div>
-        <div style="display: flex; gap: 0.5rem;">
-            <span class="status-badge {'status-ok' if agents else 'status-error'}">{'🟢 ' + str(len(agents)) + ' Agents' if agents else '🔴 No Agents'}</span>
+    <div class="header-gradient">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h1 style="margin: 0; font-size: 1.5rem; color: white; font-weight: 600;">{project_name}</h1>
+                <p style="margin: 0.25rem 0 0 0; color: rgba(255,255,255,0.7); font-size: 0.8rem;">Agent Orchestration Platform</p>
+            </div>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <span class="status-badge {'status-online' if agents else 'status-offline'}">{'● ' + str(len(agents)) + ' Agents' if agents else '○ No Agents'}</span>
+                <span class="status-badge status-info">📊 {stats['file_count']} files</span>
+            </div>
         </div>
     </div>
     """, unsafe_allow_html=True)
     
-    # ========== KEY METRICS ROW ==========
+    # ========== KEY METRICS (4 Cards) ==========
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
@@ -805,20 +951,18 @@ def page_home():
         <div class="metric-card">
             <div class="label">Hypotheses</div>
             <div class="value">{h_validated}/{h_total}</div>
-            <div style="margin-top: 0.5rem;">
-                <div class="progress-bar"><div class="fill" style="width: {progress_pct}%;"></div></div>
-            </div>
+            <div class="progress-bar"><div class="fill" style="width: {progress_pct}%;"></div></div>
         </div>
         """, unsafe_allow_html=True)
     
     with col2:
         t = progress_data["tests"]
         test_status = f"{t['passed']}/{t['total']}" if t['total'] > 0 else "N/A"
-        test_color = "#10b981" if t['passed'] == t['total'] and t['total'] > 0 else "#f59e0b"
+        test_class = "success" if t['passed'] == t['total'] and t['total'] > 0 else "warning"
         st.markdown(f"""
-        <div class="metric-card">
+        <div class="metric-card {test_class}">
             <div class="label">Tests</div>
-            <div class="value" style="color: {test_color};">{test_status}</div>
+            <div class="value">{test_status}</div>
         </div>
         """, unsafe_allow_html=True)
     
@@ -834,7 +978,7 @@ def page_home():
         g = progress_data["git"]
         git_status = "✓" if g['changes'] == 0 else f"±{g['changes']}"
         st.markdown(f"""
-        <div class="metric-card">
+        <div class="metric-card {'success' if g['changes'] == 0 else 'warning'}">
             <div class="label">Git: {g['branch']}</div>
             <div class="value">{git_status}</div>
         </div>
@@ -845,47 +989,47 @@ def page_home():
     
     # ========== LEFT COLUMN ==========
     with left_col:
-        # === Project Progress ===
-        st.markdown("""<div class="content-card"><div class="card-title">📈 Project Progress</div></div>""", unsafe_allow_html=True)
+        # === 1. 项目进度报告 ===
+        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">📈</span> Project Progress</div></div>""", unsafe_allow_html=True)
         
         if sprint:
-            st.markdown(f"**Current Sprint**: {sprint.get('original_input', 'N/A')[:60]}")
+            st.markdown(f"**Current Sprint**: {sprint.get('original_input', 'N/A')[:70]}")
             st.caption(f"ID: {sprint.get('sprint_id', '-')}")
         else:
             st.info("No active sprint")
         
         if h_pending > 0:
             next_h = [h for h in hypotheses if h.get("state") == "pending"][0]
-            st.markdown(f"**Next**: {next_h.get('statement', '-')[:50]}...")
+            st.markdown(f"**Next**: {next_h.get('statement', '-')[:60]}...")
         
         st.markdown("---")
         
-        # === Recent Activity ===
-        st.markdown("""<div class="content-card"><div class="card-title">📋 Recent Activity</div></div>""", unsafe_allow_html=True)
+        # === 2. 最近活动 ===
+        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">📋</span> Recent Activity</div></div>""", unsafe_allow_html=True)
         
         activities = []
-        for h in hypotheses[:5]:
+        for h in hypotheses[:6]:
             state = h.get("state", "pending")
-            statement = h.get("statement", "")[:40]
+            statement = h.get("statement", "")[:35]
             icon = "✅" if state == "validated" else "🔬" if state == "testing" else "📝"
-            activities.append(f"{icon} {statement}...")
+            activities.append({"icon": icon, "text": statement + "...", "state": state})
         
         if activities:
-            for activity in activities[:6]:
-                st.markdown(f"""<div class="activity-item"><span style="color: #94a3b8;">{activity}</span></div>""", unsafe_allow_html=True)
+            for act in activities:
+                st.markdown(f"""<div class="activity-item"><span class="icon">{act['icon']}</span><span class="text">{act['text']}</span></div>""", unsafe_allow_html=True)
         else:
             st.info("No recent activity")
         
         st.markdown("---")
         
-        # === Current Iteration ===
-        st.markdown("""<div class="content-card"><div class="card-title">🎯 Current Iteration</div></div>""", unsafe_allow_html=True)
+        # === 3. 当前迭代目标 ===
+        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">🎯</span> Current Iteration</div></div>""", unsafe_allow_html=True)
         
         memory_content = read_aop_file("PROJECT_MEMORY.md")
         if memory_content:
             in_progress = parse_md_section(memory_content, "进行中")
             if in_progress:
-                st.markdown(in_progress[:300])
+                st.markdown(in_progress[:400])
             else:
                 st.info("No active iteration goals")
         else:
@@ -893,23 +1037,20 @@ def page_home():
     
     # ========== RIGHT COLUMN ==========
     with right_col:
-        # === Agent Status ===
-        st.markdown("""<div class="content-card"><div class="card-title">🤖 Agents</div></div>""", unsafe_allow_html=True)
+        # === 1. Agent 状态 ===
+        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">🤖</span> Agents</div></div>""", unsafe_allow_html=True)
         
         # Primary Agent
         if primary_agent_id:
             agent_names = {"claude_code": "Claude Code", "opencode": "OpenCode", "openclaw": "OpenClaw"}
             agent_name = agent_names.get(primary_agent_id, primary_agent_id)
             is_available = any(a.id == primary_agent_id for a in agents)
-            badge = "status-ok" if is_available else "status-error"
-            status_text = "●" if is_available else "○"
+            badge = "status-online" if is_available else "status-offline"
+            status_icon = "●" if is_available else "○"
             st.markdown(f"""
             <div class="agent-row">
-                <div>
-                    <div class="agent-name">{agent_name}</div>
-                    <div class="agent-role">Primary Agent</div>
-                </div>
-                <span class="status-badge {badge}">{status_text}</span>
+                <div><div class="name">{agent_name}</div><div class="role">Primary Agent</div></div>
+                <span class="status-badge {badge}">{status_icon}</span>
             </div>
             """, unsafe_allow_html=True)
         
@@ -923,38 +1064,38 @@ def page_home():
         for agent in sub_agents:
             active_h = [h for h in hypotheses if h.get("state") == "testing"]
             status = "busy" if active_h else "idle"
-            badge = "status-warning" if status == "busy" else "status-info"
+            badge = "status-busy" if status == "busy" else "status-info"
             icon = "●" if status == "busy" else "○"
             st.markdown(f"""
             <div class="agent-row">
-                <span class="agent-name">{agent['name']}</span>
+                <span class="name">{agent['name']}</span>
                 <span class="status-badge {badge}">{icon}</span>
             </div>
             """, unsafe_allow_html=True)
         
         st.markdown("---")
         
-        # === Issues ===
-        st.markdown("""<div class="content-card"><div class="card-title">⚠️ Issues</div></div>""", unsafe_allow_html=True)
+        # === 2. 待处理问题 ===
+        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">⚠️</span> Issues</div></div>""", unsafe_allow_html=True)
         
         issues = []
         if h_pending > 0:
-            issues.append(f"📋 {h_pending} pending hypotheses")
+            issues.append({"text": f"📋 {h_pending} pending hypotheses", "type": ""})
         if h_testing > 0:
-            issues.append(f"🔬 {h_testing} testing")
+            issues.append({"text": f"🔬 {h_testing} testing", "type": "info"})
         if not agents:
-            issues.append("🔴 No agents available")
+            issues.append({"text": "🔴 No agents available", "type": "error"})
         
         if issues:
             for issue in issues:
-                st.markdown(f"""<div class="issue-badge">{issue}</div>""", unsafe_allow_html=True)
+                st.markdown(f"""<div class="issue-badge {issue['type']}">{issue['text']}</div>""", unsafe_allow_html=True)
         else:
             st.success("✅ All clear")
         
         st.markdown("---")
         
-        # === Quick Actions ===
-        st.markdown("""<div class="content-card"><div class="card-title">⚡ Quick Actions</div></div>""", unsafe_allow_html=True)
+        # === 3. 快速操作 ===
+        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">⚡</span> Quick Actions</div></div>""", unsafe_allow_html=True)
         
         if st.button("💬 Start Chat", use_container_width=True):
             st.info("Go to 「敏捷教练」 page")
@@ -967,12 +1108,16 @@ def page_home():
         
         st.markdown("---")
         
-        # === Workspace Launcher ===
-        st.markdown("""<div class="content-card"><div class="card-title">🚀 Launch</div></div>""", unsafe_allow_html=True)
+        # === 4. 工作区快速启动 ===
+        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">🚀</span> Launch</div></div>""", unsafe_allow_html=True)
         
         if not workspaces:
             st.info("No workspaces yet")
         else:
+            primary_agent = sm.get_primary_agent()
+            agent_id_map = {"openclaw": "main", "claude_code": "claude", "opencode": "opencode", None: "main"}
+            webhook_agent_id = agent_id_map.get(primary_agent, "main")
+            
             for ws in workspaces[:3]:
                 c1, c2 = st.columns([3, 1])
                 with c1:
@@ -981,9 +1126,23 @@ def page_home():
                     if st.button("▶", key=f"launch_{ws.id}", use_container_width=True):
                         st.session_state.current_workspace = ws
                         wm.set_current_workspace(ws.id)
-                        st.toast(f"Switched to: {ws.name}", icon="✅")
+                        try:
+                            import requests
+                            response = requests.post(
+                                "http://127.0.0.1:18789/hooks/agent",
+                                headers={"Authorization": "Bearer 67bf38952e1a0d4c", "Content-Type": "application/json"},
+                                json={"message": "你好，请汇报项目状态", "agentId": webhook_agent_id, "wakeMode": "now"},
+                                timeout=5
+                            )
+                            if response.status_code == 200:
+                                st.toast(f"已启动: {ws.name}", icon="✅")
+                            else:
+                                st.toast(f"启动失败", icon="❌")
+                        except Exception as e:
+                            st.toast(f"启动失败: {e}", icon="❌")
+                        st.rerun()
     
-    # ========== Refresh Controls ==========
+    # ========== 刷新控制 ==========
     st.markdown("---")
     refresh_interval, auto_refresh_enabled = render_refresh_controls(default_interval=30)
     if auto_refresh_enabled:
