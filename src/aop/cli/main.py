@@ -1,4 +1,4 @@
-"""AOP CLI."""
+﻿"""AOP CLI."""
 
 from __future__ import annotations
 
@@ -1356,5 +1356,12 @@ except ImportError:
 try:
     from .orchestrator import orchestrator as orchestrator_group
     cli.add_command(orchestrator_group, name="orchestrator")
+except ImportError:
+    pass
+
+# Register two-stage review command group
+try:
+    from .review import review as review_group
+    cli.add_command(review_group, name="review")
 except ImportError:
     pass
