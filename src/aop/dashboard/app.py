@@ -1853,22 +1853,6 @@ def page_coach():
         | `init` | 初始化项目 | `-aop init` |
         """)
 
-    # AOP 命令参考
-    with st.expander("📖 AOP 命令参考", expanded=False):
-        st.markdown("""
-        **命令格式**：`-aop <command> [args]` 或 `aop <command> [args]`
-
-        | 命令 | 说明 | 示例 |
-        |------|------|------|
-        | `run` | 运行任务 | `-aop run 实现登录功能` |
-        | `review` | 代码审查 | `-aop review 检查安全性` |
-        | `hypothesis` | 假设管理 | `-aop hypothesis create "缓存提升50%"` |
-        | `status` | 查看状态 | `-aop status` |
-        | `dashboard` | Dashboard | `-aop dashboard open` |
-        | `doctor` | 环境检查 | `-aop doctor` |
-        | `init` | 初始化项目 | `-aop init` |
-        """)
-
 def page_workspaces():
     """工作区管理页面"""
     st.markdown("""
