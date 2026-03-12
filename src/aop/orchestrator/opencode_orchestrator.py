@@ -213,11 +213,29 @@ class OpenCodeOrchestrator(OrchestratorClient):
         prompt: str,
         repo_root: str = ".",
         target_paths: Optional[List[str]] = None,
+        session_id: Optional[str] = None,
         **kwargs
     ) -> OrchestratorResponse:
-        """使用 OpenCode CLI 执行任务"""
+        """
+        使用 OpenCode CLI 执行任务
+
+        Args:
+            prompt: 任务提示
+            repo_root: 仓库根目录
+            target_paths: 目标路径限制
+            session_id: 会话 ID，用于恢复之前的会话
+            **kwargs: 其他参数
+        """
         binary = self._binary_path or self.BINARY_NAME
+
+        # 优先使用传入的 session_id，否则使用配置中的
+        effective_session_id = session_id or self.config.session_id
+
         cmd = [binary]
+
+        # 添加会话恢复
+        if effective_session_id:
+            cmd.extend(["--resume", effective_session_id])
 
         result = subprocess.run(
             cmd,

@@ -422,6 +422,7 @@ def _add_common_execution_options(f):
     f = click.option("--enforcement-mode", type=click.Choice(["strict", "best_effort"]), default=DEFAULT_POLICY.enforcement_mode, help="Enforcement mode")(f)
     f = click.option("--provider-permissions-json", default="", help="Provider permissions JSON")(f)
     f = click.option("--strict-contract", is_flag=True, help="Enforce strict findings contract")(f)
+    f = click.option("--session", "-s", default="", help="Session ID to resume (provider-specific format)")(f)
     return f
 
 
@@ -451,6 +452,7 @@ def review(
     enforcement_mode: str,
     provider_permissions_json: str,
     strict_contract: bool,
+    session: str,
 ):
     """Run multi-agent code review."""
     config = load_config()
@@ -582,6 +584,7 @@ def run_command(
     provider: str,
     parallel: bool,
     agents: str,
+    session: str,
 ):
     """Run general multi-provider task execution.
     
@@ -670,6 +673,7 @@ def run_command(
                     repo_root=repo,
                     target_paths=_parse_paths(target_paths),
                     timeout=timeout,
+                    session_id=session,
                 )
                 
         except ImportError as e:
@@ -758,15 +762,30 @@ def run_command(
     sys.exit(EXIT_SUCCESS if result.success else EXIT_ERROR)
 
 
-def _run_with_orchestrator(orchestrator, prompt: str, repo_root: str, target_paths: List[str], timeout: int):
-    """Run task using an orchestrator provider."""
+def _run_with_orchestrator(orchestrator, prompt: str, repo_root: str, target_paths: List[str], timeout: int, session_id: str = ""):
+    """Run task using an orchestrator provider.
+    
+    Args:
+        orchestrator: Orchestrator 实例
+        prompt: 任务提示
+        repo_root: 仓库根目录
+        target_paths: 目标路径
+        timeout: 超时时间
+        session_id: 会话 ID，用于恢复之前的会话
+    """
     from ..core.types import TaskResult
     import time
     
     start_time = time.time()
     
     try:
-        response = orchestrator.execute(prompt=prompt, cwd=repo_root, timeout=timeout)
+        # 传递 session_id 用于会话恢复
+        response = orchestrator.execute(
+            prompt=prompt,
+            cwd=repo_root,
+            timeout=timeout,
+            session_id=session_id if session_id else None
+        )
         
         duration = time.time() - start_time
         task_id = f"task-{int(start_time)}"

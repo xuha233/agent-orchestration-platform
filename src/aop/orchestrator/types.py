@@ -94,6 +94,9 @@ class OrchestratorConfig:
     temperature: float = 0.7
     max_tokens: int = 4096
 
+    # 会话恢复
+    session_id: Optional[str] = None
+
     # 多 Agent 调度配置
     sub_agents: List[str] = field(default_factory=lambda: ["claude", "codex"])
     parallel_execution: bool = True

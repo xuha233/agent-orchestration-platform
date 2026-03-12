@@ -480,20 +480,68 @@ def get_current_workspace_id() -> Optional[str]:
     return None
 
 
+# ============ 会话持久化 ============
+
+MESSAGES_DIR = Path.home() / ".aop" / "projects"
+
+
+def _get_messages_file_path(workspace_id: str) -> Path:
+    """获取工作区消息文件的路径"""
+    messages_dir = MESSAGES_DIR / workspace_id / "sessions"
+    messages_dir.mkdir(parents=True, exist_ok=True)
+    return messages_dir / "messages.json"
+
+
+def _load_messages_from_file(workspace_id: str) -> list:
+    """从文件加载消息历史"""
+    messages_file = _get_messages_file_path(workspace_id)
+    if messages_file.exists():
+        try:
+            with open(messages_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            _logger.warning(f"Failed to load messages for {workspace_id}: {e}")
+    return []
+
+
+def _save_messages_to_file(workspace_id: str, messages: list) -> None:
+    """保存消息历史到文件"""
+    messages_file = _get_messages_file_path(workspace_id)
+    try:
+        with open(messages_file, 'w', encoding='utf-8') as f:
+            json.dump(messages, f, ensure_ascii=False, indent=2)
+    except IOError as e:
+        _logger.error(f"Failed to save messages for {workspace_id}: {e}")
+
+
 def get_messages_for_workspace(workspace_id: Optional[str]) -> list:
-    """获取指定工作区的对话历史"""
+    """获取指定工作区的对话历史（支持持久化恢复）"""
     if not workspace_id:
         return []
+    
+    # 如果内存中有，直接返回
     if 'workspace_messages' not in st.session_state:
         st.session_state.workspace_messages = {}
-    return st.session_state.workspace_messages.get(workspace_id, [])
+    
+    if workspace_id in st.session_state.workspace_messages:
+        return st.session_state.workspace_messages[workspace_id]
+    
+    # 否则从文件加载
+    messages = _load_messages_from_file(workspace_id)
+    st.session_state.workspace_messages[workspace_id] = messages
+    return messages
 
 
 def save_messages_for_workspace(workspace_id: Optional[str], messages: list) -> None:
-    """保存指定工作区的对话历史"""
+    """保存指定工作区的对话历史（持久化到文件）"""
     if not workspace_id:
         return
+    
+    # 保存到内存
     st.session_state.workspace_messages[workspace_id] = messages
+    
+    # 持久化到文件
+    _save_messages_to_file(workspace_id, messages)
 
 
 def get_session_id_for_workspace(workspace_id: Optional[str]) -> Optional[str]:

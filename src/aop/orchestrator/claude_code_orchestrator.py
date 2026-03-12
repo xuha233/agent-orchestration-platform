@@ -187,21 +187,36 @@ class ClaudeCodeOrchestrator(OrchestratorClient):
         prompt: str,
         repo_root: str = ".",
         target_paths: Optional[List[str]] = None,
+        session_id: Optional[str] = None,
         **kwargs
     ) -> OrchestratorResponse:
         """
         使用 Claude Code CLI 执行任务
 
         允许 Claude Code 修改文件系统
+
+        Args:
+            prompt: 任务提示
+            repo_root: 仓库根目录
+            target_paths: 目标路径限制
+            session_id: 会话 ID，用于恢复之前的会话
+            **kwargs: 其他参数
         """
         binary = self._binary_path or get_claude_binary()
         subcmd = get_claude_subcmd()
+
+        # 优先使用传入的 session_id，否则使用配置中的
+        effective_session_id = session_id or self.config.session_id
         
         # 构建命令
         if subcmd:
             cmd = [binary, subcmd, "--output-format", "json"]
         else:
             cmd = [binary, "--output-format", "json"]
+
+        # 添加会话恢复
+        if effective_session_id:
+            cmd.extend(["--resume", effective_session_id])
 
         # 添加权限配置
         if kwargs.get("permission_mode"):
