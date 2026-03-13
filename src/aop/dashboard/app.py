@@ -1723,8 +1723,8 @@ def page_coach():
     pending_hypotheses.sort(key=sort_by_priority)
 
     # 当前选中的指令
-    if "_selected_cmd" not in st.session_state:
-        st.session_state._selected_cmd = ""
+    if "_selected_cmds" not in st.session_state:
+        st.session_state._selected_cmds = []
 
     # === 1. 🚀 快速开始 ===
     st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">🚀</span> 快速开始</div></div>""", unsafe_allow_html=True)
@@ -1740,9 +1740,10 @@ def page_coach():
         quick_start_cmd = "-aop run 你好，请分析项目状态并给出下一步建议"
         st.code(quick_start_cmd, language="bash")
     with col2:
-        if st.button("📋 复制", use_container_width=True, key="copy_quick_start"):
-            st.session_state._selected_cmd = quick_start_cmd
-            st.toast("已复制命令", icon="✅")
+        if st.button("☑️ 选择", use_container_width=True, key="copy_quick_start"):
+            if quick_start_cmd not in st.session_state._selected_cmds:
+                st.session_state._selected_cmds.append(quick_start_cmd)
+            st.toast("已添加到选择篮", icon="✅")
 
     st.markdown("---")
 
@@ -1780,8 +1781,10 @@ def page_coach():
     with col2:
         if st.button("创建假设", use_container_width=True, key="create_hypothesis_btn", disabled=not (hypothesis_if and hypothesis_then)):
             if hypothesis_if and hypothesis_then:
-                st.session_state._selected_cmd = f'-aop hypothesis create "如果{hypothesis_if}，就能{hypothesis_then}"'
-                st.toast("已生成假设命令", icon="✅")
+                cmd = f'-aop hypothesis create "如果{hypothesis_if}，就能{hypothesis_then}"'
+                if cmd not in st.session_state._selected_cmds:
+                    st.session_state._selected_cmds.append(cmd)
+                st.toast("已添加到选择篮", icon="✅")
 
     st.markdown("---")
 
@@ -1806,9 +1809,10 @@ def page_coach():
                         st.markdown(f"□ **{h_id}**: {statement}...")
                     with col2:
                         verify_cmd = f"-aop run 验证假设 {h_id}"
-                        if st.button("📋", key=f"copy_testing_{h_id}", help=f"复制: {verify_cmd}"):
-                            st.session_state._selected_cmd = verify_cmd
-                            st.toast("已复制命令", icon="✅")
+                        if st.button("☑️", key=f"select_testing_{h_id}", help=f"复制: {verify_cmd}"):
+                            if verify_cmd not in st.session_state._selected_cmds:
+                                st.session_state._selected_cmds.append(verify_cmd)
+                            st.toast("已添加到选择篮", icon="✅")
                 st.markdown("---")
 
         # 待处理假设（按优先级）
@@ -1830,9 +1834,10 @@ def page_coach():
                         st.markdown(priority_html, unsafe_allow_html=True)
                     with col3:
                         verify_cmd = f"-aop run 验证假设 {h_id}"
-                        if st.button("📋", key=f"copy_pending_{h_id}", help=f"复制: {verify_cmd}"):
-                            st.session_state._selected_cmd = verify_cmd
-                            st.toast("已复制命令", icon="✅")
+                        if st.button("☑️", key=f"select_pending_{h_id}", help=f"复制: {verify_cmd}"):
+                            if verify_cmd not in st.session_state._selected_cmds:
+                                st.session_state._selected_cmds.append(verify_cmd)
+                            st.toast("已添加到选择篮", icon="✅")
                 st.markdown("---")
 
     # === 4. ✅ 已验证假设 ===
@@ -1872,24 +1877,29 @@ def page_coach():
             with col1:
                 st.code(suggest_cmd, language="bash")
             with col2:
-                if st.button("📋 复制", use_container_width=True, key="copy_suggestion"):
-                    st.session_state._selected_cmd = suggest_cmd
-                    st.toast("已复制建议命令", icon="✅")
-    else:
+                if st.button("☑️ 选择", use_container_width=True, key="copy_suggestion"):
+                    if suggest_cmd not in st.session_state._selected_cmds:
+                        st.session_state._selected_cmds.append(suggest_cmd)
+                    st.toast("已添加到选择篮", icon="✅")
         st.success("✅ 所有假设都已验证！考虑创建新的假设。")
 
     st.markdown("---")
 
     # === 显示选中的指令 ===
-    if st.session_state._selected_cmd:
+    if st.session_state._selected_cmds:
         st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">📋</span> 已选指令</div></div>""", unsafe_allow_html=True)
-        col1, col2 = st.columns([4, 1])
-        with col1:
-            st.code(st.session_state._selected_cmd, language="bash")
-        with col2:
-            if st.button("🗑️ 清除", use_container_width=True, key="clear_selected_cmd"):
-                st.session_state._selected_cmd = ""
-                st.rerun()
+        st.caption(f"已选择 {len(st.session_state._selected_cmds)} 条指令（可自行复制文字）")
+        for i, cmd in enumerate(st.session_state._selected_cmds):
+            col1, col2 = st.columns([5, 1])
+            with col1:
+                st.code(cmd, language="bash")
+            with col2:
+                if st.button("🗑️", key=f"remove_cmd_{i}", help="移除"):
+                    st.session_state._selected_cmds.pop(i)
+                    st.rerun()
+        if st.button("🗑️ 清空全部", key="clear_all_cmds"):
+            st.session_state._selected_cmds = []
+            st.rerun()
 
     # === AOP 命令参考（折叠）===
     with st.expander("📖 AOP 命令参考", expanded=False):
@@ -2430,7 +2440,7 @@ def page_dev_console():
 
     with col3:
         # 一键复制按钮
-        if st.button("📋 复制", use_container_width=True, key="copy_logs_btn"):
+        if st.button("☑️ 选择", use_container_width=True, key="copy_logs_btn"):
             entries_all = logger.get_entries(level=None if level_filter == "ALL" else level_filter, search=search or None)
             log_text = "\n".join([
                 f"[{e.timestamp.strftime('%H:%M:%S')}] {e.level}: {e.message}"
