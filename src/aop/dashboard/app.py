@@ -1332,6 +1332,7 @@ def page_coach():
             # OpenClaw 模式 - TUI + session 隔离
             import subprocess
             import shutil
+            import os
             import tempfile
             import uuid
             from pathlib import Path
