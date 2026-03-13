@@ -1,4 +1,4 @@
-"""
+﻿"""
 AOP Dashboard - 对话式界面
 
 Run with: streamlit run app.py
@@ -1388,6 +1388,19 @@ def page_coach():
                         
                         with open(system_md_path, "w", encoding="utf-8") as f:
                             f.write(system_prompt)
+                        
+                        # 创建 PROJECT_LOCK.json 锁定项目路径（防止全局记忆中的旧路径误导）
+                        from datetime import datetime
+                        import json
+                        project_lock_path = os.path.join(openclaw_system_dir, "PROJECT_LOCK.json")
+                        project_lock_data = {
+                            "locked_path": project_path,
+                            "locked_at": datetime.now().isoformat(timespec='seconds'),
+                            "workspace_id": session_name,
+                            "project_name": project_name_safe
+                        }
+                        with open(project_lock_path, "w", encoding="utf-8") as f:
+                            json.dump(project_lock_data, f, ensure_ascii=False, indent=2)
                         
                         # 安全处理：移除可能导致问题的字符
                         safe_project_name = project_name_safe.replace('"', '').replace("'", "")
