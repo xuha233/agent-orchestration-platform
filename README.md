@@ -1,4 +1,4 @@
-<p align="center">
+﻿<p align="center">
   <img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+" />
   <img src="https://img.shields.io/badge/License-LGPL--3.0-blue.svg" alt="License: LGPL-3.0" />
   <img src="https://img.shields.io/badge/providers-5%20built--in-orange" alt="Providers: 5 built-in" />
@@ -367,6 +367,7 @@ ruff check src/aop/
 
 - Execution layer inspired by [MCO](https://github.com/mco-org/mco)
 - Workflow methodology based on [AAIF](https://github.com/xuha233/agent-team-template)
+- Memory system powered by [mem0](https://github.com/mem0ai/mem0)
 
 ---
 

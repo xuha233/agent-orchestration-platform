@@ -1,4 +1,4 @@
-<p align="center">
+﻿<p align="center">
   <img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+" />
   <img src="https://img.shields.io/badge/License-LGPL--3.0-blue.svg" alt="License: LGPL-3.0" />
   <img src="https://img.shields.io/badge/providers-5%20built--in-orange" alt="Providers: 5 built-in" />
@@ -301,6 +301,7 @@ ruff check src/aop/
 
 - 执行层灵感来自 [MCO](https://github.com/mco-org/mco)
 - 工作流方法论基于 [AAIF](https://github.com/xuha233/agent-team-template)
+- 记忆系统由 [mem0](https://github.com/mem0ai/mem0) 提供
 
 ---
 
