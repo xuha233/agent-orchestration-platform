@@ -22,7 +22,6 @@ from aop.primary.base import PrimaryAgent
 from aop.primary.workspace import WorkspaceManager, Workspace, SettingsManager
 from aop.primary.listener import start_listener, submit_command
 from aop.dashboard.logger import get_dashboard_logger, setup_dashboard_logging
-from aop.dashboard.refresh import render_refresh_controls, auto_refresh
 
 import logging
 _logger = logging.getLogger(__name__)
@@ -588,9 +587,23 @@ def get_aop_dir() -> Path:
 
 
 def read_aop_file(filename: str) -> Optional[str]:
-    """读取 .aop 目录下的文件内容（带文件锁处理）"""
+    """读取 .aop 目录下的文件内容（带文件锁处理）
+    
+    支持两种存储格式：
+    1. 文件格式: .aop/hypotheses.json
+    2. 目录格式: .aop/hypotheses.json/hypotheses.json (CLI PersistenceManager)
+    """
     aop_dir = get_aop_dir()
     file_path = aop_dir / filename
+    
+    # 如果是目录，尝试读取目录内的同名文件
+    if file_path.is_dir():
+        inner_file = file_path / filename
+        if inner_file.exists():
+            file_path = inner_file
+        else:
+            return None
+    
     if file_path.exists():
         try:
             return file_path.read_text(encoding="utf-8")
@@ -1232,10 +1245,6 @@ def page_home():
     
     # ========== 刷新控制 ==========
     st.markdown("---")
-    refresh_interval, auto_refresh_enabled = render_refresh_controls(default_interval=30)
-    if auto_refresh_enabled:
-        auto_refresh(refresh_interval)
-
 
 def page_coach():
     """敏捷教练页面 - 快捷指令面板"""
@@ -1323,6 +1332,8 @@ def page_coach():
             # OpenClaw 模式 - TUI + session 隔离
             import subprocess
             import shutil
+            import tempfile
+            import uuid
             from pathlib import Path
             
             # 项目名称作为 session 标识（处理边缘情况）
@@ -1337,32 +1348,41 @@ def page_coach():
                     if not shutil.which("openclaw"):
                         st.error("openclaw 未安装或不在 PATH 中")
                     else:
-                        # 初始化消息（加载 AOP 敏捷教练身份）
+                        # 构建 AOP 敏捷教练系统提示（复用 Claude Code 模式的逻辑）
+                        system_prompt = build_agent_system_prompt(Path(project_path))
+                        
+                        # 将系统提示词写入项目的 .openclaw/SYSTEM.md（OpenClaw 会自动加载）
+                        openclaw_system_dir = os.path.join(project_path, ".openclaw")
+                        os.makedirs(openclaw_system_dir, exist_ok=True)
+                        system_md_path = os.path.join(openclaw_system_dir, "SYSTEM.md")
+                        
+                        with open(system_md_path, "w", encoding="utf-8") as f:
+                            f.write(system_prompt)
+                        
                         # 安全处理：移除可能导致问题的字符
                         safe_project_name = project_name_safe.replace('"', '').replace("'", "")
                         safe_project_path = project_path.replace('"', '').replace("'", "")
+                        
+                        # 初始化消息（简洁的启动指令）
                         init_message = f"""当前项目：{safe_project_name}
 路径：{safe_project_path}
 
-请只分析当前项目（{safe_project_name}）的状态：
-1. 读取 .aop/hypotheses.json 获取假设状态
-2. 读取 .aop/learning.json 获取学习记录
-3. 分析项目阶段并给出下一步建议
+请自我介绍为「AOP 敏捷教练」，并汇报当前项目状态和下一步建议。
 
-注意：不要读取全局记忆或其他项目，只关注当前项目。"""
+注意：你已获得完整的 AOP 敏捷教练提示词（在 .openclaw/SYSTEM.md 中），请根据其中的假设状态和学习记录给出针对性建议。"""
                         
                         if sys.platform == "win32":
                             safe_title = project_name_safe.replace('"', '""')
                             safe_msg = init_message.replace('"', '""')
                             cmd = f'openclaw tui --session {session_name} --message "{safe_msg}"'
                             subprocess.Popen(
-                                f'start "AOP 敏捷教练 - {safe_title}" cmd /k "{cmd}"',
+                                f'start "AOP 敏捷教练 - {safe_title}" cmd /k "cd /d {safe_project_path} && {cmd}"',
                                 shell=True
                             )
                         elif sys.platform == "darwin":
                             # macOS: AppleScript 转义
                             safe_msg = init_message.replace('\\', '\\\\').replace('"', '\\"')
-                            apple_script = f'tell application "Terminal" to do script "openclaw tui --session {session_name} --message \\"{safe_msg}\\""'
+                            apple_script = f'tell application "Terminal" to do script "cd \"{project_path}\" && openclaw tui --session {session_name} --message \"{safe_msg}\""'
                             subprocess.Popen(["osascript", "-e", apple_script])
                         else:
                             # Linux: 尝试多种终端
@@ -1371,7 +1391,7 @@ def page_coach():
                             if terminal:
                                 subprocess.Popen([
                                     terminal, "--", "bash", "-c",
-                                    f'openclaw tui --session {session_name} --message "{safe_msg}"; exec bash'
+                                    f'cd "{project_path}" && openclaw tui --session {session_name} --message "{safe_msg}"; exec bash'
                                 ])
                             else:
                                 st.warning("未找到支持的终端模拟器 (gnome-terminal/konsole/xterm)")
@@ -1578,6 +1598,16 @@ def page_coach():
                             )
                         elif sys.platform == "darwin":
                             # macOS: 使用 Terminal
+                            # 将系统提示词写入项目的 CLAUDE.md（Claude Code 和 OpenCode 都会自动加载）
+                            claude_md_path = os.path.join(project_path, ".claude", "CLAUDE.md")
+                            os.makedirs(os.path.dirname(claude_md_path), exist_ok=True)
+                            
+                            with open(prompt_file, 'r', encoding='utf-8') as pf:
+                                system_prompt_content = pf.read()
+                            
+                            with open(claude_md_path, 'w', encoding='utf-8') as cf:
+                                cf.write(system_prompt_content)
+                            
                             # 检查是否有保存的会话 ID
                             saved_session_id = None
                             try:
@@ -1598,11 +1628,21 @@ def page_coach():
                                 if saved_session_id:
                                     full_cmd = 'opencode --resume ' + saved_session_id
                                 else:
-                                    full_cmd = 'opencode "' + project_path + '" --prompt "$(cat \"' + prompt_file + '\")"'
+                                    full_cmd = 'opencode'
                             apple_script = 'tell application "Terminal" to do script "cd \"' + project_path + '\" && ' + full_cmd + '"'
                             subprocess.Popen(["osascript", "-e", apple_script])
                         else:
                             # Linux: 尝试 gnome-terminal 或 xterm
+                            # 将系统提示词写入项目的 CLAUDE.md（Claude Code 和 OpenCode 都会自动加载）
+                            claude_md_path = os.path.join(project_path, ".claude", "CLAUDE.md")
+                            os.makedirs(os.path.dirname(claude_md_path), exist_ok=True)
+                            
+                            with open(prompt_file, 'r', encoding='utf-8') as pf:
+                                system_prompt_content = pf.read()
+                            
+                            with open(claude_md_path, 'w', encoding='utf-8') as cf:
+                                cf.write(system_prompt_content)
+                            
                             # 检查是否有保存的会话 ID
                             saved_session_id = None
                             try:
@@ -1623,7 +1663,7 @@ def page_coach():
                                 if saved_session_id:
                                     full_cmd = 'opencode --resume ' + saved_session_id
                                 else:
-                                    full_cmd = 'opencode "' + project_path + '" --prompt "$(cat ' + prompt_file + ')"'
+                                    full_cmd = 'opencode'
                             
                             if shutil.which("gnome-terminal"):
                                 subprocess.Popen(
