@@ -1577,21 +1577,6 @@ def page_coach():
                                     else:
                                         f.write('opencode\n')
                                 
-                                # 会话结束后提示用户保存
-                                f.write('\n')
-                                f.write('Write-Host "\n"\n')
-                                f.write('Write-Host "========================================" -ForegroundColor Yellow\n')
-                                f.write('Write-Host "  Session ended" -ForegroundColor Yellow\n')
-                                f.write('Write-Host "========================================" -ForegroundColor Yellow\n')
-                                f.write('\n')
-                                f.write('# Save session ID\n')
-                                f.write('$SessionId = Read-Host "Enter session ID to save (or press Enter to skip)"\n')
-                                f.write('if ($SessionId) {\n')
-                                f.write('    python "' + save_session_script.replace('\\', '/') + '" $SessionId $ProjectId $Workspace\n')
-                                f.write('    Write-Host "Session saved to AOP!" -ForegroundColor Green\n')
-                                f.write('}\n')
-                            
-                            # 使用 PowerShell 启动（新窗口）
                             project_name = Path(project_path).name
                             subprocess.Popen(
                                 'start "AOP 敏捷教练 - ' + project_name + '" powershell -NoExit -ExecutionPolicy Bypass -File "' + ps1_file + '"',
