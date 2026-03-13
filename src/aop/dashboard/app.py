@@ -588,11 +588,17 @@ def get_aop_dir() -> Path:
 
 
 def read_aop_file(filename: str) -> Optional[str]:
-    """读取 .aop 目录下的文件内容"""
+    """读取 .aop 目录下的文件内容（带文件锁处理）"""
     aop_dir = get_aop_dir()
     file_path = aop_dir / filename
     if file_path.exists():
-        return file_path.read_text(encoding="utf-8")
+        try:
+            return file_path.read_text(encoding="utf-8")
+        except PermissionError:
+            # 文件被其他进程锁定，返回 None
+            return None
+        except Exception:
+            return None
     return None
 
 
