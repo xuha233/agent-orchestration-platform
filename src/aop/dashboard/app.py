@@ -2221,17 +2221,112 @@ def page_settings():
             st.success("已关闭 mem0 记忆，将使用文件存储")
         st.rerun()
 
+    # ========== 嵌入模型配置（仅在 mem0 启用时显示）==========
+    if new_enable_mem0 and mem0_installed:
+        st.markdown("""<div style='margin-top: 0.75rem; padding: 0.5rem 0; border-top: 1px solid rgba(255,255,255,0.06);'></div>""", unsafe_allow_html=True)
+        st.markdown("**🔧 嵌入模型配置**")
+        st.caption("配置 mem0 使用的嵌入模型和向量维度")
+        
+        # 加载当前项目的记忆配置
+        from aop.memory import MemoryConfig
+        
+        current_ws = st.session_state.current_workspace
+        if current_ws:
+            project_path = Path(current_ws.project_path)
+            config_path = project_path / ".aop" / "memory_config.yaml"
+            
+            # 加载或创建默认配置
+            if config_path.exists():
+                memory_config = MemoryConfig.from_yaml(config_path)
+            else:
+                memory_config = MemoryConfig()
+            
+            # 常用嵌入模型选项
+            embedding_options = {
+                "OpenAI text-embedding-ada-002 (1536维)": ("text-embedding-ada-002", 1536),
+                "OpenAI text-embedding-3-small (1536维)": ("text-embedding-3-small", 1536),
+                "OpenAI text-embedding-3-large (3072维)": ("text-embedding-3-large", 3072),
+                "自定义模型": (None, None),
+            }
+            
+            # 当前模型匹配
+            current_model_key = "自定义模型"
+            for key, (model, dims) in embedding_options.items():
+                if model == memory_config.embedding_model and dims == memory_config.embedding_dims:
+                    current_model_key = key
+                    break
+            
+            selected_model = st.selectbox(
+                "嵌入模型",
+                options=list(embedding_options.keys()),
+                index=list(embedding_options.keys()).index(current_model_key),
+                help="选择 mem0 用于向量化的嵌入模型",
+            )
+            
+            # 显示或编辑详细配置
+            if selected_model == "自定义模型":
+                col1, col2 = st.columns(2)
+                with col1:
+                    custom_model = st.text_input(
+                        "模型名称",
+                        value=memory_config.embedding_model,
+                        help="嵌入模型的完整名称，如 text-embedding-ada-002",
+                    )
+                with col2:
+                    custom_dims = st.number_input(
+                        "向量维度",
+                        min_value=128,
+                        max_value=4096,
+                        value=memory_config.embedding_dims,
+                        step=64,
+                        help="嵌入向量的维度",
+                    )
+                new_model = custom_model
+                new_dims = custom_dims
+            else:
+                new_model, new_dims = embedding_options[selected_model]
+                st.caption(f"📐 向量维度: {new_dims}")
+            
+            # 搜索配置
+            col1, col2 = st.columns(2)
+            with col1:
+                new_top_k = st.number_input(
+                    "搜索数量 (top_k)",
+                    min_value=1,
+                    max_value=20,
+                    value=memory_config.search_top_k,
+                    help="搜索时返回的最大记忆数量",
+                )
+            with col2:
+                new_threshold = st.slider(
+                    "相似度阈值",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=memory_config.search_threshold,
+                    step=0.05,
+                    help="相似度低于此阈值的记忆将被过滤",
+                )
+            
+            # 保存按钮
+            if st.button("💾 保存配置", use_container_width=True):
+                # 更新配置
+                memory_config.embedding_model = new_model
+                memory_config.embedding_dims = new_dims
+                memory_config.search_top_k = new_top_k
+                memory_config.search_threshold = new_threshold
+                memory_config.enabled = True  # 确保启用
+                
+                # 保存到 YAML
+                config_path.parent.mkdir(parents=True, exist_ok=True)
+                memory_config.to_yaml(config_path)
+                
+                st.success(f"✅ 配置已保存到 {config_path.relative_to(project_path)}")
+        else:
+            st.info("💡 请先选择一个工作区以配置嵌入模型")
+
     st.markdown("---")
 
     # Agent 状态
-
-    if new_enable_mem0 != enable_mem0:
-        sm.set_enable_mem0_memory(new_enable_mem0)
-        if new_enable_mem0:
-            st.success("✅ mem0 记忆已启用")
-        else:
-            st.success("已关闭 mem0 记忆，将使用文件存储")
-        st.rerun()
     st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">📊</span> Agent 状态</div></div>""", unsafe_allow_html=True)
     agents = get_available_agents()
 
