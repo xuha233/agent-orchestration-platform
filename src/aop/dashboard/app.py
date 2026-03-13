@@ -1362,10 +1362,12 @@ def page_coach():
             import uuid
             from pathlib import Path
             
-            # 项目名称作为 session 标识（处理边缘情况）
+            # 项目名称 + 路径哈希作为 session 标识（确保不同路径的 session 隔离）
+            import hashlib
             project_name_safe = Path(project_path).name
             sanitized = "".join(c if c.isalnum() else "_" for c in project_name_safe).strip("_")
-            session_name = f"aop_{sanitized}" if sanitized else "aop_default"
+            path_hash = hashlib.md5(project_path.encode()).hexdigest()[:6]
+            session_name = f"aop_{sanitized}_{path_hash}" if sanitized else "aop_default"
             
             col1, col2, col3 = st.columns([2, 2, 1])
             
