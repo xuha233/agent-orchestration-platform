@@ -1,4 +1,4 @@
-﻿"""
+"""
 AOP Dashboard - 对话式界面
 
 Run with: streamlit run app.py
@@ -1335,7 +1335,7 @@ def page_coach():
                         # 安全处理：移除可能导致问题的字符
                         safe_project_name = project_name_safe.replace('"', '').replace("'", "")
                         safe_project_path = project_path.replace('"', '').replace("'", "")
-                        init_message = f"你好，我是 AOP 敏捷教练。当前项目: {safe_project_name}，路径: {safe_project_path}。请读取项目记忆并汇报状态。"
+                        init_message = "你好，请分析项目状态并给出下一步建议"
                         
                         if sys.platform == "win32":
                             # Windows: 转义引号
