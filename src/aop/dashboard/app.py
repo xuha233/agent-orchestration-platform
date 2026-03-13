@@ -1335,10 +1335,17 @@ def page_coach():
                         # 安全处理：移除可能导致问题的字符
                         safe_project_name = project_name_safe.replace('"', '').replace("'", "")
                         safe_project_path = project_path.replace('"', '').replace("'", "")
-                        init_message = "你好，请分析项目状态并给出下一步建议"
+                        init_message = f"""当前项目：{safe_project_name}
+路径：{safe_project_path}
+
+请只分析当前项目（{safe_project_name}）的状态：
+1. 读取 .aop/hypotheses.json 获取假设状态
+2. 读取 .aop/learning.json 获取学习记录
+3. 分析项目阶段并给出下一步建议
+
+注意：不要读取全局记忆或其他项目，只关注当前项目。"""
                         
                         if sys.platform == "win32":
-                            # Windows: 转义引号
                             safe_title = project_name_safe.replace('"', '""')
                             safe_msg = init_message.replace('"', '""')
                             cmd = f'openclaw tui --session {session_name} --message "{safe_msg}"'
