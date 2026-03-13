@@ -8,6 +8,16 @@ from typing import Dict, List, Optional
 
 import yaml
 
+# Network configuration exports
+from .network import (
+    GATEWAY_HOST,
+    GATEWAY_PORT,
+    GATEWAY_BASE_URL,
+    DASHBOARD_HOST,
+    DASHBOARD_PORT,
+    DASHBOARD_URL,
+)
+
 
 @dataclass(frozen=True)
 class ReviewPolicy:

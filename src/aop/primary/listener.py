@@ -246,7 +246,7 @@ class CommandListener:
         
         if action == "open":
             import webbrowser
-            webbrowser.open("http://localhost:8501")
+            webbrowser.open(f"http://{DASHBOARD_HOST}:{DASHBOARD_PORT}")
             return CommandResult(
                 command_id=cmd.id,
                 success=True,
@@ -256,7 +256,7 @@ class CommandListener:
             return CommandResult(
                 command_id=cmd.id,
                 success=True,
-                output="Dashboard is running at http://localhost:8501",
+                output=f"Dashboard is running at http://{DASHBOARD_HOST}:{DASHBOARD_PORT}",
             )
     
     def _handle_status(self, cmd: AOPCommand) -> CommandResult:
@@ -329,3 +329,6 @@ def submit_command(command: str, args: Dict[str, Any] = None, source: str = "ext
         json.dump(cmd_data, f, ensure_ascii=False, indent=2)
     
     return cmd_id
+
+
+

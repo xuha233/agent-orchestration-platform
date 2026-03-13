@@ -1,4 +1,4 @@
-"""
+﻿"""
 AOP Dashboard - 对话式界面
 
 Run with: streamlit run app.py
@@ -514,7 +514,7 @@ def render_sidebar():
         st.markdown("""
 **AOP v0.4.0**
 
-[GitHub](https://github.com/xuha233/agent-orchestration-platform)
+[GitHub](https://github.com/openclaw/aop)
 """)
 
     return page
@@ -2256,6 +2256,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 

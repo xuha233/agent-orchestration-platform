@@ -20,6 +20,7 @@ from typing import List, Dict, Any, Optional
 from enum import Enum
 
 from ..llm import LLMClient, LLMMessage
+from ..config.models import DEFAULT_LLM_MODEL
 from .prompts import VALIDATION_SYSTEM_PROMPT
 
 
@@ -99,7 +100,7 @@ class LLMEvaluator:
     def __init__(
         self,
         llm_client: LLMClient | None = None,
-        model: str = "claude-sonnet-4-20250514",
+        model: str = DEFAULT_LLM_MODEL,
     ):
         self.llm = llm_client
         self.model = model

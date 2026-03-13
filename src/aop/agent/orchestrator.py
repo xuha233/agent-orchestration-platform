@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Callable, Dict, Any
 
+from ..config.models import DEFAULT_LLM_MODEL
 from .types import (
     SprintContext,
     SprintState,
@@ -48,7 +49,7 @@ class OrchestrationConfig:
     """Orchestration configuration"""
     # LLM configuration
     llm_provider: str = "claude"
-    llm_model: str = "claude-sonnet-4-20250514"
+    llm_model: str = DEFAULT_LLM_MODEL
 
     # Executor configuration
     executor: ExecutorType = ExecutorType.CLAUDE_CODE

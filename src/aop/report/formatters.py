@@ -379,7 +379,7 @@ def format_sarif(result: "ReviewResult") -> Dict[str, object]:
                 "tool": {
                     "driver": {
                         "name": "AOP",
-                        "informationUri": "https://github.com/xuha233/agent-orchestration-platform",
+                        "informationUri": "https://github.com/openclaw/aop",
                         "rules": list(rules_by_id.values()),
                     }
                 },
@@ -474,4 +474,5 @@ __all__ = [
     "format_json",
     "format_summary",
 ]
+
 

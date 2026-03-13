@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import List, Dict, Any, Callable, Literal
 from enum import Enum
 
+from ..config.models import DEFAULT_LLM_MODEL
+
 
 class SprintState(Enum):
     """冲刺状态"""
@@ -185,7 +187,7 @@ class AgentDriverConfig:
     """AgentDriver 配置"""
     # LLM 配置
     llm_provider: Literal["claude", "openai", "local"] = "claude"
-    llm_model: str = "claude-sonnet-4-20250514"
+    llm_model: str = DEFAULT_LLM_MODEL
     llm_api_key: str | None = None
 
     # Orchestrator 配置（新增）

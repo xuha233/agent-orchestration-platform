@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, TypedDict
 
 from .base import OrchestratorClient
+from ..config.models import DEFAULT_LLM_MODEL
 from .types import (
     OrchestratorConfig,
     OrchestratorPresence,

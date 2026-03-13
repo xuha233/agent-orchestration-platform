@@ -1,4 +1,4 @@
-"""
+﻿"""
 OpenClaw 作为中枢 Agent
 
 通过 OpenClaw 客户端实现决策和执行。
@@ -24,6 +24,7 @@ from .types import (
     OrchestratorMode,
     OrchestratorCapability,
 )
+from ..config.ports import GATEWAY_PORT, CDP_PORT
 
 
 # Windows 上常见的 npm 全局安装路径
@@ -46,8 +47,6 @@ def _get_npm_global_paths():
 NPM_GLOBAL_PATHS = _get_npm_global_paths()
 
 # OpenClaw 默认配置
-DEFAULT_GATEWAY_PORT = 18789  # OpenClaw Gateway 默认端口
-DEFAULT_CDP_PORT = 18792     # Chrome CDP 默认端口
 
 
 def _find_binary(binary_name: str) -> Optional[str]:
@@ -89,8 +88,8 @@ class OpenClawOrchestrator(OrchestratorClient):
     def __init__(self, config: Optional[OrchestratorConfig] = None):
         self.config = config or OrchestratorConfig()
         self._binary_path: Optional[str] = None
-        self._gateway_port = DEFAULT_GATEWAY_PORT
-        self._cdp_port = DEFAULT_CDP_PORT
+        self._gateway_port = GATEWAY_PORT
+        self._cdp_port = CDP_PORT
 
     @property
     def orchestrator_type(self) -> str:
@@ -154,7 +153,7 @@ class OpenClawOrchestrator(OrchestratorClient):
         import httpx
         
         # 构建请求
-        url = f"http://localhost:{self._gateway_port}/api/chat"
+        url = f"http://{GATEWAY_HOST}:{GATEWAY_PORT}/api/chat"
         
         # 合并消息
         full_prompt = ""
@@ -199,7 +198,7 @@ class OpenClawOrchestrator(OrchestratorClient):
         """通过 OpenClaw Gateway API 执行任务"""
         import httpx
         
-        url = f"http://localhost:{self._gateway_port}/api/chat"
+        url = f"http://{GATEWAY_HOST}:{GATEWAY_PORT}/api/chat"
         
         # 构建完整提示
         full_prompt = prompt
@@ -238,7 +237,7 @@ class OpenClawOrchestrator(OrchestratorClient):
         """OpenClaw 调度多 Agent（通过 Gateway）"""
         import httpx
         
-        url = f"http://localhost:{self._gateway_port}/api/chat"
+        url = f"http://{GATEWAY_HOST}:{GATEWAY_PORT}/api/chat"
         
         # 构建调度提示
         agent_list = ", ".join(agents)
@@ -288,3 +287,6 @@ class OpenClawOrchestrator(OrchestratorClient):
 __all__ = [
     "OpenClawOrchestrator",
 ]
+
+
+

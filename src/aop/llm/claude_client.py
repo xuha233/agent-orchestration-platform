@@ -2,6 +2,7 @@
 
 import os
 from typing import List
+from ..config.models import DEFAULT_LLM_MODEL
 from . import LLMClient, LLMProvider, LLMMessage, LLMResponse
 
 
@@ -11,7 +12,7 @@ class ClaudeClient(LLMClient):
     def __init__(
         self,
         api_key: str | None = None,
-        model: str = "claude-sonnet-4-20250514",
+        model: str = DEFAULT_LLM_MODEL,
     ):
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
         self.model = model

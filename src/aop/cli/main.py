@@ -1,6 +1,8 @@
-"""AOP CLI."""
+﻿"""AOP CLI."""
 
 from __future__ import annotations
+
+from aop import __version__
 
 import json
 import sys
@@ -199,13 +201,13 @@ def _show_next_steps():
   3. Run [blue]aop doctor[/blue] to check provider availability
   4. Run [blue]aop review -p "your prompt"[/blue] to start a review
 
-[dim]Documentation: https://github.com/your-org/aop[/dim]
+[dim]Documentation: https://github.com/openclaw/aop[/dim]
 """
     console.print(steps)
 
 
 @click.group(invoke_without_command=True)
-@click.version_option(version="0.3.0", prog_name="aop")
+@click.version_option(version=__version__, prog_name="aop")
 @click.option("--port", "-p", default=8501, help="Dashboard port (default: 8501)")
 @click.option("--host", "-h", default="localhost", help="Dashboard host (default: localhost)")
 @click.option("--no-browser", is_flag=True, help="Don't open browser automatically")
@@ -1736,3 +1738,4 @@ try:
     cli.add_command(memory_group, name="memory")
 except ImportError:
     pass
+

@@ -21,6 +21,7 @@ from aop.primary import get_registry
 from aop.primary.base import PrimaryAgent
 from aop.primary.workspace import WorkspaceManager, Workspace, SettingsManager
 from aop.primary.listener import start_listener, submit_command
+from aop.config.network import GATEWAY_HOST, GATEWAY_PORT
 from aop.dashboard.logger import get_dashboard_logger, setup_dashboard_logging
 
 import logging
@@ -30,6 +31,7 @@ _logger = logging.getLogger(__name__)
 from aop.memory import build_agent_system_prompt
 from aop.session import get_session_manager
 from aop.utils.claude_config import get_claude_full_cmd, get_claude_cmd_prefix
+from aop import __version__
 
 
 # 依赖检测函数
@@ -424,11 +426,11 @@ def check_openclaw_status() -> tuple:
     检测 Gateway WebSocket 端口 (18789)，而非 Chrome CDP 端口 (18792)
     """
     import socket
-    GATEWAY_PORT = 18789  # Gateway WebSocket 端口
+    # Gateway port from config (imported above)
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(2)
-        result = sock.connect_ex(("127.0.0.1", GATEWAY_PORT))
+        result = sock.connect_ex((GATEWAY_HOST, GATEWAY_PORT))
         sock.close()
         if result == 0:
             return True, "运行中"
@@ -936,8 +938,8 @@ def render_sidebar():
         # 底部版本信息
         st.markdown("""
         <div style="position: fixed; bottom: 1rem; left: 1rem; right: 1rem; font-size: 0.65rem; color: rgba(255,255,255,0.3);">
-            <div>AOP v0.4.0</div>
-            <a href="https://github.com/xuha233/agent-orchestration-platform" style="color: rgba(245,158,11,0.6); text-decoration: none;">GitHub</a>
+            <div>AOP v{__version__}</div>
+            <a href="https://github.com/openclaw/aop" style="color: rgba(245,158,11,0.6); text-decoration: none;">GitHub</a>
         </div>
         """, unsafe_allow_html=True)
 
@@ -1439,7 +1441,7 @@ def page_coach():
             with col2:
                 if st.button("🌐 打开 Web", use_container_width=True, key="launch_openclaw_web"):
                     import webbrowser
-                    webbrowser.open("http://127.0.0.1:18789/")
+                    webbrowser.open(f"http://{GATEWAY_HOST}:{GATEWAY_PORT}/")
                     st.toast("已打开 Web 对话", icon="✅")
             
             with col3:
@@ -2735,6 +2737,11 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
 
 
 

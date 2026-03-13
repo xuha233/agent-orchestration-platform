@@ -14,6 +14,8 @@ from typing import Any, Dict, Optional
 
 import yaml
 
+from ..config.models import DEFAULT_EMBEDDING_MODEL
+
 
 class MemoryBackend(Enum):
     """记忆后端类型"""
@@ -46,7 +48,7 @@ class MemoryConfig:
     vector_store_path: Optional[Path] = None
     
     # 嵌入模型配置
-    embedding_model: str = "text-embedding-ada-002"
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL
     embedding_dims: int = 1536
     
     # 搜索配置

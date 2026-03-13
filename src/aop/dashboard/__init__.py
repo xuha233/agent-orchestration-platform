@@ -7,13 +7,15 @@ import time
 import webbrowser
 import socket
 
+from aop.config.network import DASHBOARD_HOST
+
 __version__ = "0.1.0"
 
 
 def _is_port_in_use(port: int) -> bool:
     """Check if a port is already in use."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    result = sock.connect_ex(('localhost', port))
+    result = sock.connect_ex((DASHBOARD_HOST, port))
     sock.close()
     return result == 0
 
@@ -99,3 +101,4 @@ def run_dashboard(port: int = 8501, host: str = "localhost", foreground: bool = 
     except Exception as e:
         print(f"Error starting dashboard: {e}")
         sys.exit(1)
+

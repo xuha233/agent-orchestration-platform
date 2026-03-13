@@ -11,6 +11,8 @@ import socket
 from pathlib import Path
 from typing import AsyncIterator, Optional, Callable
 
+from aop.config.network import GATEWAY_HOST, GATEWAY_PORT
+
 from .base import AgentContext, PrimaryAgent
 
 
@@ -26,7 +28,7 @@ class OpenClawAgent(PrimaryAgent):
     name = "OpenClaw"
     description = "OpenClaw AI Assistant (TUI/Gateway)"
 
-    GATEWAY_PORT = 18789  # Gateway WebSocket port
+    # Gateway port from config (imported above)
 
     def __init__(self) -> None:
         """Initialize the OpenClaw agent."""
@@ -50,7 +52,7 @@ class OpenClawAgent(PrimaryAgent):
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(2)
-            result = sock.connect_ex(("127.0.0.1", self.GATEWAY_PORT))
+            result = sock.connect_ex((GATEWAY_HOST, GATEWAY_PORT))
             sock.close()
             return result == 0
         except Exception:
@@ -125,3 +127,6 @@ class OpenClawAgent(PrimaryAgent):
     def clear_session(self) -> None:
         """Clear the current session."""
         self._session_id = None
+
+
+
