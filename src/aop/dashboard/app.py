@@ -2148,7 +2148,28 @@ def page_settings():
 
     if new_show_dev != show_dev_console:
         sm.set_show_dev_console(new_show_dev)
-        st.success(f"已{"开启" if new_show_dev else "关闭"}调试日志")
+        status_text = "开启" if new_show_dev else "关闭"
+        st.success(f"已{status_text}调试日志")
+
+    # 实验性功能
+    st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">🧪</span> 实验性功能</div></div>""", unsafe_allow_html=True)
+    st.caption("⚠️ 以下功能仍在开发中，可能不稳定")
+
+    enable_mem0 = sm.get_enable_mem0_memory()
+    new_enable_mem0 = st.toggle(
+        "mem0 智能记忆",
+        value=enable_mem0,
+        help="启用 mem0 记忆系统，支持语义搜索和智能记忆管理。需要安装 mem0ai 和 faiss-cpu。",
+    )
+
+    if new_enable_mem0 != enable_mem0:
+        sm.set_enable_mem0_memory(new_enable_mem0)
+        if new_enable_mem0:
+            st.success("✅ mem0 记忆已启用")
+            st.info("💡 运行 ``pip install mem0ai faiss-cpu`` 安装依赖")
+        else:
+            st.success("已关闭 mem0 记忆，将使用文件存储")
+        st.rerun()
         st.rerun()
 
     st.markdown("---")
