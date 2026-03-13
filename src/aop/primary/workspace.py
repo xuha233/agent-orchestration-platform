@@ -20,6 +20,7 @@ class SettingsManager:
     DEFAULT_SETTINGS = {
         "primary_agent": None,  # None 表示未锁定，可选 "openclaw" | "claude_code" | "opencode"
         "show_dev_console": False,  # 是否显示开发者控制台
+        "enable_mem0_memory": False,  # 是否启用 mem0 记忆系统（实验性）
     }
 
     def __init__(self, base_dir: Path = None):
@@ -66,6 +67,15 @@ class SettingsManager:
         """设置是否显示开发者控制台"""
         settings = self.load()
         settings["show_dev_console"] = show
+        self.save(settings)
+    def get_enable_mem0_memory(self) -> bool:
+        """获取是否启用 mem0 记忆系统"""
+        return self.load().get("enable_mem0_memory", False)
+
+    def set_enable_mem0_memory(self, enable: bool) -> None:
+        """设置是否启用 mem0 记忆系统"""
+        settings = self.load()
+        settings["enable_mem0_memory"] = enable
         self.save(settings)
 
 

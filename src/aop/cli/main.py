@@ -1730,3 +1730,9 @@ try:
     cli.add_command(review_group, name="review")
 except ImportError:
     pass
+# 添加到 main.py 末尾，注册 memory 命令组
+try:
+    from .memory import memory as memory_group
+    cli.add_command(memory_group, name="memory")
+except ImportError:
+    pass

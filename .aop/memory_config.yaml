@@ -1,0 +1,34 @@
+# AOP 记忆配置
+# 启用 mem0 后将获得语义搜索能力
+
+# 是否启用 mem0（默认 false，保持向后兼容）
+enabled: false
+
+# 后端类型: file, mem0_local, mem0_qdrant, mem0_chroma
+backend: mem0_local
+
+# 项目 ID（用于隔离不同项目的记忆）
+project_id: default
+
+# Agent 命名空间（可选，用于同一项目内不同 Agent 隔离）
+agent_namespace: ""
+
+# 向量存储路径（本地模式）
+vector_store_path: .aop/memory/vectors
+
+# 嵌入模型配置
+embedding_model: text-embedding-ada-002
+embedding_dims: 1536
+
+# 搜索配置
+search_top_k: 5
+search_threshold: 0.7
+
+# mem0 高级配置（可选）
+# mem0_config:
+#   llm:
+#     provider: openai
+#     model: gpt-4
+#   embedder:
+#     provider: openai
+#     model: text-embedding-ada-002
