@@ -1389,8 +1389,19 @@ def page_coach():
                         safe_project_name = project_name_safe.replace('"', '').replace("'", "")
                         safe_project_path = project_path.replace('"', '').replace("'", "")
                         
-                        # 初始化消息（简洁的启动指令）
-                        init_message = f"""当前项目：{safe_project_name}
+                        # 检测是否为未初始化项目
+                        is_uninitialized = "检测到当前项目未初始化" in system_prompt
+                        
+                        # 根据初始化状态设置启动消息
+                        if is_uninitialized:
+                            init_message = f"""当前项目：{safe_project_name}
+路径：{safe_project_path}
+
+检测到这是新项目，尚未初始化 AOP 环境。
+
+请阅读 .openclaw/SYSTEM.md 中的指引，并询问用户是否需要初始化 AOP 环境。"""
+                        else:
+                            init_message = f"""当前项目：{safe_project_name}
 路径：{safe_project_path}
 
 请自我介绍为「AOP 敏捷教练」，并汇报当前项目状态和下一步建议。
