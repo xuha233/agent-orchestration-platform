@@ -24,7 +24,7 @@ from .types import (
     OrchestratorMode,
     OrchestratorCapability,
 )
-from ..config.ports import GATEWAY_PORT, CDP_PORT
+from ..config.network import GATEWAY_HOST, GATEWAY_PORT, CDP_PORT
 
 
 # Windows 上常见的 npm 全局安装路径

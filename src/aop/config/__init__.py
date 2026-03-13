@@ -16,6 +16,7 @@ from .network import (
     DASHBOARD_HOST,
     DASHBOARD_PORT,
     DASHBOARD_URL,
+    CDP_PORT,
 )
 
 

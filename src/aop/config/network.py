@@ -23,3 +23,6 @@ DASHBOARD_HOST = os.environ.get("AOP_DASHBOARD_HOST", "localhost")
 
 # Dashboard URL
 DASHBOARD_URL = f"http://{DASHBOARD_HOST}:{DASHBOARD_PORT}"
+
+# CDP (Chrome DevTools Protocol) port for browser automation
+CDP_PORT = int(os.environ.get("AOP_CDP_PORT", "18792"))
