@@ -30,6 +30,31 @@ _logger = logging.getLogger(__name__)
 from aop.memory import build_agent_system_prompt
 from aop.session import get_session_manager
 from aop.utils.claude_config import get_claude_full_cmd, get_claude_cmd_prefix
+
+
+# 依赖检测函数
+def check_mem0_dependencies() -> tuple[bool, str]:
+    """检测 mem0 依赖是否已安装"""
+    try:
+        import mem0
+        import faiss
+        return True, "mem0 依赖已安装"
+    except ImportError:
+        missing = []
+        try:
+            import mem0
+        except ImportError:
+            missing.append("mem0ai")
+        try:
+            import faiss
+        except ImportError:
+            missing.append("faiss-cpu")
+        
+        if missing:
+            return False, "缺少依赖: " + ", ".join(missing)
+        return False, "依赖检测失败"
+
+
 st.set_page_config(
     page_title="AOP Dashboard",
     page_icon="🤖",
@@ -2155,26 +2180,43 @@ def page_settings():
     st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">🧪</span> 实验性功能</div></div>""", unsafe_allow_html=True)
     st.caption("⚠️ 以下功能仍在开发中，可能不稳定")
 
+    # mem0 依赖检测
+    mem0_installed, mem0_status = check_mem0_dependencies()
+
     enable_mem0 = sm.get_enable_mem0_memory()
     new_enable_mem0 = st.toggle(
         "mem0 智能记忆",
         value=enable_mem0,
-        help="启用 mem0 记忆系统，支持语义搜索和智能记忆管理。需要安装 mem0ai 和 faiss-cpu。",
+        help="启用 mem0 记忆系统，支持语义搜索和智能记忆管理。" if mem0_installed else f"❌ {mem0_status}",
+        disabled=not mem0_installed,
     )
+
+    # 显示安装提示
+    if not mem0_installed:
+        st.warning(f"📦 {mem0_status}")
+        st.code("pip install mem0ai faiss-cpu", language="bash")
+    elif new_enable_mem0:
+        st.caption("✅ 依赖已安装，功能可用")
 
     if new_enable_mem0 != enable_mem0:
         sm.set_enable_mem0_memory(new_enable_mem0)
         if new_enable_mem0:
             st.success("✅ mem0 记忆已启用")
-            st.info("💡 运行 ``pip install mem0ai faiss-cpu`` 安装依赖")
         else:
             st.success("已关闭 mem0 记忆，将使用文件存储")
-        st.rerun()
         st.rerun()
 
     st.markdown("---")
 
     # Agent 状态
+
+    if new_enable_mem0 != enable_mem0:
+        sm.set_enable_mem0_memory(new_enable_mem0)
+        if new_enable_mem0:
+            st.success("✅ mem0 记忆已启用")
+        else:
+            st.success("已关闭 mem0 记忆，将使用文件存储")
+        st.rerun()
     st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">📊</span> Agent 状态</div></div>""", unsafe_allow_html=True)
     agents = get_available_agents()
 

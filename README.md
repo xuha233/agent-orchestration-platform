@@ -65,6 +65,19 @@ AOP will:
 pip install git+https://github.com/xuha233/agent-orchestration-platform.git
 ```
 
+
+### Optional Features
+
+#### 🧪 mem0 Smart Memory (Experimental)
+
+Enable semantic search and intelligent memory management:
+
+```bash
+pip install mem0ai faiss-cpu
+```
+
+After installation, enable the "mem0 Smart Memory" toggle in Dashboard settings.
+
 ### Validate Your First Idea
 
 ```bash

@@ -65,6 +65,19 @@ AOP 会：
 pip install git+https://github.com/xuha233/agent-orchestration-platform.git
 ```
 
+
+### 可选功能
+
+#### 🧪 mem0 智能记忆（实验性）
+
+启用语义搜索和智能记忆管理：
+
+```bash
+pip install mem0ai faiss-cpu
+```
+
+安装后，在 Dashboard 设置页面开启「mem0 智能记忆」开关即可使用。
+
 ### 验证你的第一个想法
 
 ```bash
