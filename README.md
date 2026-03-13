@@ -1,6 +1,6 @@
-﻿<p align="center">
+<p align="center">
   <img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+" />
-  <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT" />
+  <img src="https://img.shields.io/badge/License-LGPL--3.0-blue.svg" alt="License: LGPL-3.0" />
   <img src="https://img.shields.io/badge/providers-5%20built--in-orange" alt="Providers: 5 built-in" />
   <img src="https://img.shields.io/badge/platform-windows%20%7C%20macos%20%7C%20linux-lightgrey" alt="Platform: Windows | macOS | Linux" />
   <img src="https://img.shields.io/badge/version-v0.5.0-blueviolet" alt="Version: v0.5.0" />
@@ -369,7 +369,7 @@ ruff check src/aop/
 
 ## 📄 License
 
-MIT License — See [LICENSE](LICENSE)
+LGPL-3.0 License — See [LICENSE](LICENSE)
 
 ---
 
