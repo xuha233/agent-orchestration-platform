@@ -1088,7 +1088,7 @@ def page_home():
     if st.session_state.current_workspace:
         project_path = st.session_state.current_workspace.project_path
     else:
-        project_path = "G:/docker/aop"
+        project_path = str(Path.home())  # 使用用户主目录，避免硬编码
     progress_data = get_project_progress_data(project_path)
     
     # ========== 头部 ========== 
