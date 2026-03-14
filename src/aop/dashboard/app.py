@@ -1721,7 +1721,7 @@ def page_coach():
                                     if saved_session_id:
                                         f.write('opencode --resume ' + saved_session_id + '\n')
                                     else:
-                                        f.write('opencode\n')
+                                        f.write('opencode --agent aop-coach\n')
                                 
                             project_name = Path(project_path).name
                             subprocess.Popen(
@@ -1760,7 +1760,7 @@ def page_coach():
                                 if saved_session_id:
                                     full_cmd = 'opencode --resume ' + saved_session_id
                                 else:
-                                    full_cmd = 'opencode'
+                                    full_cmd = 'opencode --agent aop-coach'
                             apple_script = 'tell application "Terminal" to do script "cd \"' + project_path + '\" && ' + full_cmd + '"'
                             subprocess.Popen(["osascript", "-e", apple_script])
                         else:
@@ -1795,7 +1795,7 @@ def page_coach():
                                 if saved_session_id:
                                     full_cmd = 'opencode --resume ' + saved_session_id
                                 else:
-                                    full_cmd = 'opencode'
+                                    full_cmd = 'opencode --agent aop-coach'
                             
                             if shutil.which("gnome-terminal"):
                                 subprocess.Popen(
