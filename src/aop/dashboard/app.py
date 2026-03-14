@@ -98,73 +98,6 @@ st.markdown("""
         --blur: 16px;
     }
 
-    /* ========== 浅色主题 ========== */
-    @media (prefers-color-scheme: light) {
-        :root {
-            --bg-primary: #ffffff;
-            --bg-secondary: #f8f8f8;
-            --bg-tertiary: #f0f0f0;
-            --bg-glass: rgba(0, 0, 0, 0.03);
-            --bg-glass-hover: rgba(0, 0, 0, 0.06);
-            --border-glass: rgba(0, 0, 0, 0.08);
-            --border-glass-hover: rgba(0, 0, 0, 0.15);
-            --text-primary: #18181b;
-            --text-secondary: #52525b;
-            --text-muted: #71717a;
-        }
-        
-        /* 主内容区背景 */
-        section.main, .main, .block-container {
-            background-color: #ffffff !important;
-        }
-        
-        /* 侧边栏浅色背景 */
-        [data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #f8f8f8 0%, #ffffff 100%) !important;
-        }
-        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
-            color: var(--text-secondary) !important;
-        }
-        [data-testid="stSidebar"] .element-container {
-            color: var(--text-primary) !important;
-        }
-        
-        /* 深色头部渐变在浅色主题下用深色 */
-        .header-gradient {
-            background: linear-gradient(135deg, #92400e 0%, #b45309 50%, #d97706 100%);
-        }
-        
-        /* 玻璃卡片浅色主题 */
-        .glass-card {
-            background: rgba(0, 0, 0, 0.02);
-            border-color: rgba(0, 0, 0, 0.08);
-        }
-        .glass-card:hover {
-            background: rgba(0, 0, 0, 0.04);
-            border-color: rgba(0, 0, 0, 0.12);
-        }
-        
-        /* 按钮悬停时文字用白色保持对比 */
-        .stButton button:hover {
-            color: #fff;
-        }
-        
-        /* 侧边栏 Radio 按钮浅色主题 */
-        [data-testid="stSidebar"] [data-testid="stRadio"] > div > div:hover {
-            background: rgba(245, 158, 11, 0.15);
-            border-color: rgba(245, 158, 11, 0.4);
-        }
-        [data-testid="stSidebar"] [data-testid="stRadio"] > div > div[data-checked="true"] {
-            background: rgba(245, 158, 11, 0.2);
-            border-color: rgba(245, 158, 11, 0.6);
-        }
-        
-        /* 进度条浅色主题 */
-        .stProgress > div > div {
-            background: #e5e5e5;
-        }
-    }
-    
     /* ========== 全局 ========== */
     .main .block-container { padding: 1.25rem 1.5rem; }
     section.main > div { padding-top: 0.75rem; }
@@ -477,6 +410,72 @@ div[data-baseweb="select"] > div {
     color: #fbbf24;
 }
 
+    /* ========== 浅色主题 ========== */
+    @media (prefers-color-scheme: light) {
+        :root {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8f8f8;
+            --bg-tertiary: #f0f0f0;
+            --bg-glass: rgba(0, 0, 0, 0.03);
+            --bg-glass-hover: rgba(0, 0, 0, 0.06);
+            --border-glass: rgba(0, 0, 0, 0.08);
+            --border-glass-hover: rgba(0, 0, 0, 0.15);
+            --text-primary: #18181b;
+            --text-secondary: #52525b;
+            --text-muted: #71717a;
+        }
+        
+        /* 主内容区背景 */
+        section.main, .main, .block-container {
+            background-color: #ffffff !important;
+        }
+        
+        /* 侧边栏浅色背景 */
+        [data-testid="stSidebar"] {
+            background: linear-gradient(180deg, #f8f8f8 0%, #ffffff 100%) !important;
+        }
+        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
+            color: var(--text-secondary) !important;
+        }
+        [data-testid="stSidebar"] .element-container {
+            color: var(--text-primary) !important;
+        }
+        
+        /* 深色头部渐变在浅色主题下用深色 */
+        .header-gradient {
+            background: linear-gradient(135deg, #92400e 0%, #b45309 50%, #d97706 100%);
+        }
+        
+        /* 玻璃卡片浅色主题 */
+        .glass-card {
+            background: rgba(0, 0, 0, 0.02);
+            border-color: rgba(0, 0, 0, 0.08);
+        }
+        .glass-card:hover {
+            background: rgba(0, 0, 0, 0.04);
+            border-color: rgba(0, 0, 0, 0.12);
+        }
+        
+        /* 按钮悬停时文字用白色保持对比 */
+        .stButton button:hover {
+            color: #fff;
+        }
+        
+        /* 侧边栏 Radio 按钮浅色主题 */
+        [data-testid="stSidebar"] [data-testid="stRadio"] > div > div:hover {
+            background: rgba(245, 158, 11, 0.15);
+            border-color: rgba(245, 158, 11, 0.4);
+        }
+        [data-testid="stSidebar"] [data-testid="stRadio"] > div > div[data-checked="true"] {
+            background: rgba(245, 158, 11, 0.2);
+            border-color: rgba(245, 158, 11, 0.6);
+        }
+        
+        /* 进度条浅色主题 */
+        .stProgress > div > div {
+            background: #e5e5e5;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
 
