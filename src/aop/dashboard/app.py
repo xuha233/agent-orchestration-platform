@@ -1,4 +1,4 @@
-﻿"""
+"""
 AOP Dashboard - 对话式界面
 
 Run with: streamlit run app.py
@@ -96,6 +96,30 @@ st.markdown("""
         --radius: 10px;
         --radius-lg: 14px;
         --blur: 16px;
+    }
+
+    /* ========== 浅色主题 ========== */
+    @media (prefers-color-scheme: light) {
+        :root {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8f8f8;
+            --bg-tertiary: #f0f0f0;
+            --bg-glass: rgba(0, 0, 0, 0.03);
+            --bg-glass-hover: rgba(0, 0, 0, 0.06);
+            --border-glass: rgba(0, 0, 0, 0.08);
+            --border-glass-hover: rgba(0, 0, 0, 0.15);
+            --text-primary: #18181b;
+            --text-secondary: #52525b;
+            --text-muted: #71717a;
+        }
+        /* 深色头部渐变在浅色主题下用深色 */
+        .header-gradient {
+            background: linear-gradient(135deg, #92400e 0%, #b45309 50%, #d97706 100%);
+        }
+        /* 按钮悬停时文字用白色保持对比 */
+        .stButton button:hover {
+            color: #fff;
+        }
     }
     
     /* ========== 全局 ========== */
@@ -2845,6 +2869,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
