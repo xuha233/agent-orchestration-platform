@@ -1,4 +1,4 @@
-"""Executor discovery and management."""
+﻿"""Executor discovery and management."""
 
 from __future__ import annotations
 
@@ -69,14 +69,37 @@ def check_executor(executor_type: ExecutorType) -> ExecutorInfo:
     # Try to get version
     version = None
     try:
+        # On Windows, .cmd/.bat files need shell=True or full path execution
+        # Check if this is a .cmd/.bat file on Windows
+        use_shell = binary_path.lower().endswith(('.cmd', '.bat'))
+        
         result = subprocess.run(
-            [binary_name, "--version"],
+            [binary_name, "--version"] if not use_shell else f'"{binary_name}" --version',
             capture_output=True,
             text=True,
             timeout=5,
+            shell=use_shell,
+            encoding='utf-8',
+            errors='replace',  # Handle any encoding issues gracefully
         )
         if result.returncode == 0:
             version = result.stdout.strip().split('\n')[0][:50]
+    except FileNotFoundError:
+        # Fallback: try with shell=True using full path
+        try:
+            result = subprocess.run(
+                f'"{binary_path}" --version',
+                capture_output=True,
+                text=True,
+                timeout=5,
+                shell=True,
+                encoding='utf-8',
+                errors='replace',
+            )
+            if result.returncode == 0:
+                version = result.stdout.strip().split('\n')[0][:50]
+        except Exception:
+            pass
     except Exception:
         pass
 
