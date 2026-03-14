@@ -150,7 +150,8 @@ class ProjectInitializer:
         for fname in ["hypotheses.json", "learning.json"]:
             fpath = aop_dir / fname
             if not fpath.exists() or force:
-                fpath.write_text('{"' + fname.split('.')[0] + '": []}', encoding="utf-8")
+                data = {fname.split('.')[0]: []}
+                fpath.write_text(json.dumps(data, indent=2), encoding="utf-8")
                 result.created_files.append(str(fpath))
         
         # .aop.yaml
