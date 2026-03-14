@@ -1,4 +1,4 @@
-﻿"""
+"""
 OpenClaw 作为中枢 Agent
 
 通过 OpenClaw 客户端实现决策和执行。
@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 from .base import OrchestratorClient
+from ..utils.subprocess_compat import run_command, find_binary
 from .types import (
     OrchestratorConfig,
     OrchestratorPresence,

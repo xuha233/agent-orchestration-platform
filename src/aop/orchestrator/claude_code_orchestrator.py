@@ -1,4 +1,4 @@
-﻿"""
+"""
 Claude Code CLI 作为中枢 Agent
 
 通过 Claude Code CLI 实现决策和执行：
@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 from .base import OrchestratorClient
+from ..utils.subprocess_compat import run_command, find_binary
 from .types import (
     OrchestratorConfig,
     OrchestratorPresence,
@@ -353,7 +354,7 @@ class ClaudeCodeOrchestrator(OrchestratorClient):
                 return True, "authenticated"
 
             # 检查是否是认证相关的错误
-            stderr_lower = result.stderr.lower()
+            stderr_lower = stderr.lower()
             stdout_lower = result.stdout.lower()
 
             # 明确的认证错误模式

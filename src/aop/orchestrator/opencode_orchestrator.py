@@ -1,4 +1,4 @@
-﻿"""
+"""
 OpenCode CLI 作为中枢 Agent
 
 通过 OpenCode CLI 实现决策和执行
@@ -18,6 +18,7 @@ from typing import List, Dict, Any, Optional, TypedDict
 
 from .base import OrchestratorClient
 from ..config.models import DEFAULT_LLM_MODEL
+from ..utils.subprocess_compat import run_command, find_binary
 from .types import (
     OrchestratorConfig,
     OrchestratorPresence,
@@ -596,8 +597,8 @@ class OpenCodeOrchestrator(OrchestratorClient):
                 return True, "authenticated"
 
             # 检查是否是认证相关的错误
-            stderr_lower = result.stderr.lower()
-            stdout_lower = result.stdout.lower()
+            stderr_lower = stderr.lower()
+            stdout_lower = stdout.lower()
 
             # 明确的认证错误模式
             auth_error_patterns = [
