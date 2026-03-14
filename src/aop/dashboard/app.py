@@ -20,6 +20,7 @@ from datetime import datetime
 from aop.primary import get_registry
 from aop.primary.base import PrimaryAgent
 from aop.primary.workspace import WorkspaceManager, Workspace, SettingsManager
+from aop.primary.initializer import ProjectInitializer
 from aop.primary.listener import start_listener, submit_command
 from aop.config.network import GATEWAY_HOST, GATEWAY_PORT
 from aop.dashboard.logger import get_dashboard_logger, setup_dashboard_logging
@@ -2083,6 +2084,9 @@ def page_workspaces():
             )
             selected_agent_id = agent_options[primary_agent_name]
 
+        # 自动初始化选项
+        auto_init = st.checkbox("自动初始化 AOP 配置", value=True, help="自动创建 OpenCode/Claude Code 敏捷教练配置文件")
+
         if st.button("创建"):
             if name and project_path:
                 path = Path(project_path)
@@ -2092,7 +2096,34 @@ def page_workspaces():
                         project_path=project_path,
                         primary_agent=selected_agent_id,
                     )
-                    st.success(f"创建成功！ID: {workspace.id}")
+                    st.success(f"创建工作区成功！ID: {workspace.id}")
+
+                    # 自动初始化 AOP 配置
+                    if auto_init:
+                        with st.spinner("正在初始化 AOP 配置..."):
+                            initializer = ProjectInitializer(path)
+
+                            # 分析项目
+                            analysis = initializer.analyze()
+                            st.info(f"项目类型: **{analysis.project_type}** | 包管理器: **{analysis.package_manager or '未知'}** | 测试: **{'有' if analysis.has_tests else '无'}**")
+
+                            # 执行初始化
+                            result = initializer.initialize(name, force=False)
+
+                            if result.success:
+                                st.success(f"✅ 初始化完成，创建了 {len(result.created_files)} 个文件")
+
+                                with st.expander("查看创建的文件", expanded=False):
+                                    for f in result.created_files:
+                                        st.code(str(Path(f).relative_to(path)))
+
+                                if result.warnings:
+                                    st.warning("⚠️ " + " | ".join(result.warnings))
+                            else:
+                                st.error("初始化失败")
+                                for e in result.errors:
+                                    st.error(f"- {e}")
+
                     st.rerun()
                 else:
                     st.error("项目路径不存在")
