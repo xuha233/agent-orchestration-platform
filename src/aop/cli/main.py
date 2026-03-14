@@ -191,6 +191,134 @@ def _resolve_provider(provider: str) -> str:
     return provider
 
 
+def _create_opencode_config(project_name: str, force: bool = False):
+    """创建 OpenCode 配置文件"""
+    # opencode.json
+    opencode_json = Path("opencode.json")
+    if not opencode_json.exists() or force:
+        config_content = """{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "myprovider/qianfan-code-latest",
+  "agent": {
+    "aop-coach": {
+      "description": "AOP 敏捷教练 - 多 Agent 编排、假设驱动开发",
+      "mode": "primary",
+      "prompt": "{file:./AGENTS.md}",
+      "temperature": 0.3
+    }
+  }
+}"""
+        opencode_json.write_text(config_content, encoding="utf-8")
+        console.print(f"[green]Created {opencode_json}[/green]")
+    
+    # AGENTS.md
+    agents_md = Path("AGENTS.md")
+    if not agents_md.exists() or force:
+        agents_content = """# AOP 敏捷教练
+
+你是 AOP 敏捷教练，负责协调多 Agent 团队完成复杂开发任务。
+
+## 核心命令
+- `aop run <任务>` - 运行任务
+- `aop review` - 代码审查
+- `aop status` - 查看状态
+- `aop init` - 初始化项目
+- `aop hypothesis` - 假设管理
+
+## 工作模式
+1. **探索** - 分析需求、评估复杂度
+2. **构建** - 分解任务、调度子 Agent
+3. **验证** - 代码审查、测试验证
+4. **学习** - 记录经验、更新记忆
+
+## 子 Agent 类型
+- `general` - 通用任务
+- `explore` - 探索/研究
+- `coder` - 编码
+- `reviewer` - 审查
+
+## 调度方式
+使用 task 工具启动 sub-agent，完成后自动销毁。
+
+简洁直接，假设驱动，并行执行，持续学习。
+"""
+        agents_md.write_text(agents_content, encoding="utf-8")
+        console.print(f"[green]Created {agents_md}[/green]")
+    
+    # .opencode/agents/aop-coach.md
+    opencode_agents_dir = Path(".opencode/agents")
+    opencode_agents_dir.mkdir(parents=True, exist_ok=True)
+    aop_coach_md = opencode_agents_dir / "aop-coach.md"
+    if not aop_coach_md.exists() or force:
+        coach_content = """---
+description: AOP 敏捷教练 - 多 Agent 编排、假设驱动开发
+mode: primary
+temperature: 0.3
+---
+
+你是 AOP 敏捷教练，负责协调多 Agent 团队完成复杂开发任务。
+
+## 核心命令
+- aop run <任务> - 运行任务
+- aop review - 代码审查
+- aop status - 查看状态
+- aop hypothesis - 假设管理
+
+## 子 Agent 类型
+- general - 通用任务
+- explore - 探索/研究
+- coder - 编码
+- reviewer - 审查
+
+简洁直接，假设驱动，并行执行，持续学习。
+"""
+        aop_coach_md.write_text(coach_content, encoding="utf-8")
+        console.print(f"[green]Created {aop_coach_md}[/green]")
+
+
+def _create_claude_config(project_name: str, force: bool = False):
+    """创建 Claude Code 配置文件"""
+    claude_dir = Path(".claude")
+    claude_dir.mkdir(exist_ok=True)
+    
+    claude_md = claude_dir / "CLAUDE.md"
+    if not claude_md.exists() or force:
+        claude_content = """# AOP 敏捷教练
+
+你是 AOP 敏捷教练，负责协调多 Agent 团队完成复杂开发任务。
+
+## 核心命令
+- `aop run <任务>` - 运行任务
+- `aop review` - 代码审查
+- `aop status` - 查看状态
+- `aop init` - 初始化项目
+- `aop hypothesis` - 假设管理
+
+## 工作模式
+1. **探索** - 分析需求、评估复杂度
+2. **构建** - 分解任务、调度子 Agent
+3. **验证** - 代码审查、测试验证
+4. **学习** - 记录经验、更新记忆
+
+## 子 Agent 调度
+使用 Claude Code 的 Team 功能：
+- TeamCreate 创建团队
+- Task 分配任务
+- TaskOutput 获取结果
+
+简洁直接，假设驱动，并行执行，持续学习。
+
+## ⛔ 核心约束
+
+**主会话只能由用户关闭。**
+
+禁止操作（除非用户明确说"关闭"、"结束"、"退出"）：
+- ❌ Shutdown / TeamDelete / SendMessage(shutdown_request)
+"""
+        claude_md.write_text(claude_content, encoding="utf-8")
+        console.print(f"[green]Created {claude_md}[/green]")
+
+
 def _show_next_steps():
     """Show next steps after init."""
     steps = """
@@ -1006,6 +1134,12 @@ Run `aop hypothesis create "your statement"` to add new hypotheses.
 """
             hypotheses_path.write_text(hypotheses_content, encoding="utf-8")
             console.print(f"[green]Created {hypotheses_path} template[/green]")
+        
+        # 创建 OpenCode 配置文件
+        _create_opencode_config(name, force)
+        
+        # 创建 Claude Code 配置文件
+        _create_claude_config(name, force)
         
         console.print(f"\n[bold green]Project '{name}' initialized![/bold green]")
         _show_next_steps()
