@@ -243,6 +243,18 @@ timeout: 300
         if not aop_coach_md.exists() or force:
             aop_coach_md.write_text(f"---\ndescription: AOP 敏捷教练\nmode: primary\ntemperature: 0.3\n---\n\n{self.AOP_COACH_PROMPT}", encoding="utf-8")
             result.created_files.append(str(aop_coach_md))
+        
+        # 创建启动脚本 (Windows)
+        start_bat = self.project_path / "start-aop.bat"
+        if not start_bat.exists() or force:
+            bat_lines = [
+                "@echo off",
+                "echo Starting AOP Coach...",
+                "opencode --agent aop-coach",
+                ""
+            ]
+            start_bat.write_text("\n".join(bat_lines), encoding="utf-8")
+            result.created_files.append(str(start_bat))
     
     def _create_claude_config(self, force: bool, result: InitResult) -> None:
         """创建 Claude Code 配置"""
