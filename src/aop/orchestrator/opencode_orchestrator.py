@@ -12,6 +12,7 @@ import sys
 import platform
 import subprocess
 import shutil
+from enum import Enum
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Dict, Any, Optional, TypedDict
@@ -28,8 +29,18 @@ from .types import (
 )
 
 
+
+
+class AgentType(Enum):
+    """OpenCode 支持的 sub-agent 类型"""
+    GENERAL = "general"      # 通用任务
+    EXPLORE = "explore"      # 探索/研究
+    CODER = "coder"          # 编码
+    REVIEWER = "reviewer"    # 审查
+
 class AgentProfile(TypedDict, total=False):
     """Agent 配置文件"""
+    agent_type: str          # Agent 类型: general, explore, coder, reviewer
     model: str  # 模型名称，如 "deepseek/deepseek-chat"
     system_prompt: str  # 系统提示
     temperature: float  # 温度参数
@@ -257,6 +268,65 @@ class OpenCodeOrchestrator(OrchestratorClient):
             model="opencode",
             orchestrator_type=self.orchestrator_type,
             mode=OrchestratorMode.EXECUTION,
+        )
+
+
+    def dispatch_native(
+        self,
+        prompt: str,
+        agents: List[str],
+        repo_root: str = ".",
+        parallel: bool = True,
+        agent_profiles: Optional[Dict[str, AgentProfile]] = None,
+        **kwargs
+    ) -> OrchestratorResponse:
+        """
+        使用 OpenCode 内置的 task 工具调度 sub-agent
+        
+        OpenCode 的 Agent Team 模式：
+        - 单 Agent 主控 + 多 Sub-Agent（按需并行）
+        - 使用 task 工具启动 sub-agent
+        - sub-agent 类型：general, explore, coder, reviewer
+        - sub-agent 完成后返回结果并销毁
+        
+        Args:
+            prompt: 任务描述
+            agents: Agent 名称列表（会映射到 agent_type）
+            repo_root: 仓库根目录
+            parallel: 是否并行执行
+            agent_profiles: Agent 配置（可选）
+            
+        Returns:
+            OrchestratorResponse: 汇总结果
+        """
+        # 构建 agent 配置
+        agent_configs = []
+        for agent in agents:
+            profile = agent_profiles.get(agent, {}) if agent_profiles else {}
+            agent_type = profile.get("agent_type", "general")
+            agent_configs.append(f"- {agent}: type={agent_type}")
+        
+        agent_list = "\n".join(agent_configs)
+        
+        # 构建调度 Prompt
+        dispatch_prompt = f"""你需要使用 task 工具调度多个 sub-agent 来完成以下任务：
+
+{prompt}
+
+可用的 sub-agent：
+{agent_list}
+
+执行模式：{'并行执行' if parallel else '顺序执行'}
+
+请使用 task 工具启动这些 sub-agent，收集结果后汇总返回。
+每个 sub-agent 完成后会自动销毁。
+"""
+        
+        # 执行
+        return self.execute(
+            prompt=dispatch_prompt,
+            repo_root=repo_root,
+            **kwargs
         )
 
     async def dispatch_async(
@@ -634,6 +704,7 @@ class OpenCodeOrchestrator(OrchestratorClient):
 
 __all__ = [
     "OpenCodeOrchestrator",
+    "AgentType",
     "AgentProfile",
     "DispatchResult",
 ]
