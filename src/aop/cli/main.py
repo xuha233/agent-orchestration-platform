@@ -382,7 +382,7 @@ def doctor(json_output: bool, show_fix: bool, show_all: bool):
     acpx_version = None
     try:
         import subprocess
-        result = subprocess.run(["acpx", "--version"], capture_output=True, text=True, timeout=5)
+        result = subprocess.run(["acpx", "--version"], capture_output=True, text=True, timeout=5, shell=True)
         if result.returncode == 0:
             acpx_installed = True
             acpx_version = result.stdout.strip().split()[-1] if result.stdout.strip() else None

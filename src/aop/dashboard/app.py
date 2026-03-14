@@ -64,7 +64,8 @@ def check_acpx_installed() -> tuple[bool, str]:
             ["acpx", "--version"],
             capture_output=True,
             text=True,
-            timeout=5
+            timeout=5,
+            shell=True  # Windows 需要 shell=True 才能找到 npm 全局命令
         )
         if result.returncode == 0:
             version = result.stdout.strip().split()[-1] if result.stdout.strip() else "unknown"
