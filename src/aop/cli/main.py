@@ -1649,6 +1649,103 @@ def project():
     pass
 
 
+
+
+@project.command("add")
+@click.argument("path", type=click.Path(exists=True))
+@click.option("--name", "-n", help="Project name (default: directory name)")
+@click.option("--agent", "-a", "primary_agent", 
+              type=click.Choice(["openclaw", "claude_code", "opencode"]),
+              default="opencode", help="Primary agent")
+@click.option("--auto-init", is_flag=True, help="Auto-initialize AOP config")
+@click.option("--force", "-f", is_flag=True, help="Force overwrite existing config")
+def add_project(path: str, name: Optional[str], primary_agent: str, auto_init: bool, force: bool):
+    """Add a project to AOP workspace.
+    
+    This command:
+    1. Creates a workspace entry in ~/.aop/workspaces/
+    2. Optionally initializes AOP config files in the project
+    
+    Example:
+        aop project add /path/to/project --name "My Project" --auto-init
+    """
+    from ..primary.workspace import WorkspaceManager
+    from ..primary.initializer import ProjectInitializer
+    
+    project_path = Path(path).resolve()
+    project_name = name or project_path.name
+    
+    # 创建工作区
+    workspace_manager = WorkspaceManager()
+    
+    # 检查是否已存在
+    existing = None
+    for ws in workspace_manager.list_workspaces():
+        if ws.project_path == str(project_path):
+            existing = ws
+            break
+    
+    if existing and not force:
+        console.print(f"[yellow]Workspace already exists: {existing.name} ({existing.id})[/yellow]")
+        console.print("Use --force to reinitialize")
+        return
+    
+    # 创建或更新工作区
+    if existing:
+        workspace = existing
+    else:
+        workspace = workspace_manager.create_workspace(
+            name=project_name,
+            project_path=str(project_path),
+            primary_agent=primary_agent,
+        )
+    
+    console.print(f"[green]Created workspace: {workspace.name} ({workspace.id})[/green]")
+    console.print(f"  Path: {workspace.project_path}")
+    console.print(f"  Agent: {workspace.primary_agent}")
+    
+    # 自动初始化
+    if auto_init or force:
+        console.print("\n[cyan]Initializing AOP config...[/cyan]")
+        
+        initializer = ProjectInitializer(project_path)
+        
+        # 分析项目
+        analysis = initializer.analyze()
+        console.print(f"  Project type: {analysis.project_type}")
+        console.print(f"  Package manager: {analysis.package_manager or 'unknown'}")
+        console.print(f"  Has tests: {analysis.has_tests}")
+        
+        # 执行初始化
+        result = initializer.initialize(project_name, force=force)
+        
+        if result.success:
+            console.print(f"\n[green]Created {len(result.created_files)} files:[/green]")
+            for f in result.created_files:
+                console.print(f"  + {Path(f).relative_to(project_path)}")
+            
+            if result.warnings:
+                console.print(f"\n[yellow]Warnings:[/yellow]")
+                for w in result.warnings:
+                    console.print(f"  - {w}")
+        else:
+            console.print(f"\n[red]Initialization failed:[/red]")
+            for e in result.errors:
+                console.print(f"  - {e}")
+    
+    # 验证
+    if auto_init or force:
+        initializer = ProjectInitializer(project_path)
+        if initializer.verify():
+            console.print("\n[green]✅ AOP initialization complete[/green]")
+        else:
+            console.print("\n[yellow]⚠️ Some config files may be missing[/yellow]")
+    
+    console.print(f"\n[dim]Next steps:[/dim]")
+    console.print(f"  cd {project_path}")
+    console.print(f"  opencode  # Start OpenCode with AOP coach persona")
+
+
 @project.command("assess")
 @click.option("--problem-clarity", "-p", default="medium", type=click.Choice(["low", "medium", "high"]), help="Problem clarity level")
 @click.option("--data-availability", "-d", default="medium", type=click.Choice(["low", "medium", "high"]), help="Data availability level")
