@@ -57,6 +57,27 @@ def check_mem0_dependencies() -> tuple[bool, str]:
         return False, "依赖检测失败"
 
 
+def check_acpx_installed() -> tuple[bool, str]:
+    """检测 acpx 是否已安装"""
+    try:
+        result = subprocess.run(
+            ["acpx", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0:
+            version = result.stdout.strip().split()[-1] if result.stdout.strip() else "unknown"
+            return True, f"acpx {version}"
+        return False, "acpx 未正确安装"
+    except FileNotFoundError:
+        return False, "acpx 未安装"
+    except subprocess.TimeoutExpired:
+        return False, "acpx 检测超时"
+    except Exception as e:
+        return False, f"检测失败: {str(e)}"
+
+
 st.set_page_config(
     page_title="AOP Dashboard",
     page_icon="🤖",
@@ -2303,6 +2324,16 @@ def page_settings():
         else:
             st.success("已关闭 mem0 记忆，将使用文件存储")
         st.rerun()
+
+    # acpx 检测
+    acpx_installed, acpx_status = check_acpx_installed()
+    
+    if acpx_installed:
+        st.caption(f"✅ {acpx_status}")
+    else:
+        st.warning(f"📦 {acpx_status}")
+        st.code("npm install -g acpx", language="bash")
+        st.caption("acpx 用于 ACP runtime 调度，支持 Claude Code / Codex 等 Agent")
 
     # ========== 嵌入模型配置（仅在 mem0 启用时显示）==========
     if new_enable_mem0 and mem0_installed:

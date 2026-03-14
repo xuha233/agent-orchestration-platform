@@ -1,4 +1,4 @@
-﻿"""AOP CLI."""
+"""AOP CLI."""
 
 from __future__ import annotations
 
@@ -376,6 +376,32 @@ def doctor(json_output: bool, show_fix: bool, show_all: bool):
         orch_table.add_row(orch_type, status, version, auth)
     
     console.print(orch_table)
+    
+    # acpx 检测
+    acpx_installed = False
+    acpx_version = None
+    try:
+        import subprocess
+        result = subprocess.run(["acpx", "--version"], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            acpx_installed = True
+            acpx_version = result.stdout.strip().split()[-1] if result.stdout.strip() else None
+    except Exception:
+        pass
+    
+    acpx_table = Table(title="ACP Runtime")
+    acpx_table.add_column("Component")
+    acpx_table.add_column("Status")
+    acpx_table.add_column("Version")
+    if acpx_installed:
+        acpx_table.add_row("acpx", "[green]Installed[/green]", acpx_version or "-")
+    else:
+        acpx_table.add_row("acpx", "[yellow]Not installed[/yellow]", "-")
+    console.print(acpx_table)
+    
+    if not acpx_installed:
+        console.print("\n[yellow]💡 acpx 未安装，ACP 调度功能不可用[/yellow]")
+        console.print("   安装: [cyan]npm install -g acpx[/cyan]")
     
     if recommended_provider:
         console.print(f"\n[bold cyan]Recommended provider:[/] [green]{recommended_provider}[/green]")
