@@ -161,6 +161,8 @@ class ShimAdapterBase:
             stdout=stdout_file,
             stderr=stderr_file,
             text=True,
+            encoding='utf-8',
+            errors='replace',
             start_new_session=True,
             env=_sanitize_env(),
         )
@@ -371,6 +373,8 @@ class ShimAdapterBase:
             [binary, "--version"],
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='replace',
             check=False,
             env=_sanitize_env(),
         )
@@ -384,6 +388,8 @@ class ShimAdapterBase:
             cmd,
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='replace',
             check=False,
             env=_sanitize_env(),
         )

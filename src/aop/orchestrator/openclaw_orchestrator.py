@@ -277,6 +277,8 @@ class OpenClawOrchestrator(OrchestratorClient):
                 capture_output=True,
                 text=True,
                 timeout=10,
+                encoding='utf-8',
+                errors='replace',
             )
             if result.returncode == 0:
                 return result.stdout.strip().split('\n')[0][:50]

@@ -198,6 +198,8 @@ class OpenCodeOrchestrator(OrchestratorClient):
             text=True,
             timeout=self.config.timeout,
             cwd=cwd,
+            encoding='utf-8',
+            errors='replace',
         )
 
         if result.returncode != 0:
@@ -246,6 +248,8 @@ class OpenCodeOrchestrator(OrchestratorClient):
             text=True,
             timeout=self.config.timeout,
             cwd=repo_root,
+            encoding='utf-8',
+            errors='replace',
         )
 
         return OrchestratorResponse(
@@ -437,7 +441,7 @@ class OpenCodeOrchestrator(OrchestratorClient):
             # 发送输入并等待完成
             try:
                 stdout, stderr = await asyncio.wait_for(
-                    process.communicate(input=full_prompt.encode()),
+                    process.communicate(input=full_prompt.encode('utf-8')),
                     timeout=timeout
                 )
             except asyncio.TimeoutError:
@@ -450,8 +454,8 @@ class OpenCodeOrchestrator(OrchestratorClient):
                     error=f"Timeout after {timeout}s"
                 )
 
-            stdout_str = stdout.decode() if stdout else ""
-            stderr_str = stderr.decode() if stderr else ""
+            stdout_str = stdout.decode("utf-8", errors="replace") if stdout else ""
+            stderr_str = stderr.decode("utf-8", errors="replace") if stderr else ""
 
             if process.returncode != 0:
                 return DispatchResult(
@@ -566,6 +570,8 @@ class OpenCodeOrchestrator(OrchestratorClient):
                 capture_output=True,
                 text=True,
                 timeout=10,
+                encoding='utf-8',
+                errors='replace',
             )
             if result.returncode == 0:
                 return result.stdout.strip().split('\'n')[0][:50]
@@ -590,6 +596,8 @@ class OpenCodeOrchestrator(OrchestratorClient):
                 capture_output=True,
                 text=True,
                 timeout=30,
+                encoding='utf-8',
+                errors='replace',
             )
 
             if result.returncode == 0:

@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 Pre-flight Validation - 任务前验证系统
 
@@ -269,6 +269,8 @@ class PreFlightValidator:
                 ["python", "--version"],
                 capture_output=True,
                 text=True,
+                encoding='utf-8',
+                errors='replace',
                 timeout=5,
             )
             if result.returncode != 0:
@@ -282,6 +284,8 @@ class PreFlightValidator:
                 ["git", "--version"],
                 capture_output=True,
                 text=True,
+                encoding='utf-8',
+                errors='replace',
                 timeout=5,
             )
             if result.returncode != 0:

@@ -176,6 +176,8 @@ class ClaudeCodeOrchestrator(OrchestratorClient):
             text=True,
             timeout=self.config.timeout,
             cwd=cwd,
+            encoding='utf-8',
+            errors='replace',
         )
 
         if result.returncode != 0:
@@ -236,6 +238,8 @@ class ClaudeCodeOrchestrator(OrchestratorClient):
             text=True,
             timeout=self.config.timeout,
             cwd=repo_root,
+            encoding='utf-8',
+            errors='replace',
         )
 
         return self._parse_response(result.stdout)
@@ -317,6 +321,8 @@ class ClaudeCodeOrchestrator(OrchestratorClient):
                 capture_output=True,
                 text=True,
                 timeout=10,
+                encoding='utf-8',
+                errors='replace',
             )
             if result.returncode == 0:
                 return result.stdout.strip().split('\n')[0][:50]
@@ -347,6 +353,8 @@ class ClaudeCodeOrchestrator(OrchestratorClient):
                 capture_output=True,
                 text=True,
                 timeout=30,
+                encoding='utf-8',
+                errors='replace',
             )
 
             if result.returncode == 0:
@@ -354,7 +362,7 @@ class ClaudeCodeOrchestrator(OrchestratorClient):
                 return True, "authenticated"
 
             # 检查是否是认证相关的错误
-            stderr_lower = stderr.lower()
+            stderr_lower = result.stderr.lower()
             stdout_lower = result.stdout.lower()
 
             # 明确的认证错误模式

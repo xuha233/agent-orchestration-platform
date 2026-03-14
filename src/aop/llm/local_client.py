@@ -1,4 +1,4 @@
-﻿"""本地LLM客户端实现（Ollama）"""
+"""本地LLM客户端实现（Ollama）"""
 
 import subprocess
 from typing import List
@@ -36,6 +36,8 @@ class LocalLLMClient(LLMClient):
             [self.command, "run", self.model, prompt],
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='replace',
             timeout=self.timeout,
         )
         

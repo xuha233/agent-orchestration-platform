@@ -1,4 +1,4 @@
-﻿"""
+"""
 AgentOrchestrator - Unified orchestration entry point
 
 Supports multiple AI coding tools:
@@ -637,6 +637,8 @@ class AgentOrchestrator:
                     cmd,
                     capture_output=True,
                     text=True,
+                    encoding='utf-8',
+                    errors='replace',
                     timeout=timeout,
                     cwd=str(self.config.storage_path) if self.config.storage_path else None,
                 )

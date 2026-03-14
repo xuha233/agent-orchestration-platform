@@ -866,7 +866,8 @@ def get_project_progress_data(project_path: str) -> dict:
             ["git", "branch", "--show-current"],
             cwd=project_path,
             capture_output=True,
-            text=True,
+            encoding='utf-8',
+            errors='replace',
             timeout=5
         )
         result["git"]["branch"] = branch_result.stdout.strip() or "unknown"
@@ -875,7 +876,8 @@ def get_project_progress_data(project_path: str) -> dict:
             ["git", "status", "--porcelain"],
             cwd=project_path,
             capture_output=True,
-            text=True,
+            encoding='utf-8',
+            errors='replace',
             timeout=5
         )
         changes = [line for line in status_result.stdout.strip().split("\n") if line]
@@ -889,7 +891,8 @@ def get_project_progress_data(project_path: str) -> dict:
             ["pytest", "--collect-only", "-q"],
             cwd=project_path,
             capture_output=True,
-            text=True,
+            encoding='utf-8',
+            errors='replace',
             timeout=30
         )
         # 解析测试收集结果
@@ -905,7 +908,8 @@ def get_project_progress_data(project_path: str) -> dict:
             ["pytest", "-q", "--tb=no", "-x"],
             cwd=project_path,
             capture_output=True,
-            text=True,
+            encoding='utf-8',
+            errors='replace',
             timeout=60
         )
         # 解析测试结果
