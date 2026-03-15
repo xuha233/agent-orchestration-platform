@@ -652,49 +652,34 @@ class OpenCodeOrchestrator(OrchestratorClient):
     def _check_auth(self) -> tuple[bool, str]:
         """
         检查认证状态
-
-        通过运行一个简单的测试命令来验证 CLI 是否可用。
-        注意：这个检查不仅检查认证，还验证 CLI 是否能正常工作。
+        
+        通过 'opencode providers list' 检查是否有配置的 provider credentials。
+        这个方法不会消耗 API token，只检查配置文件。
         """
         if not self._binary_path:
             return False, "binary_not_found"
 
         try:
-            # 使用 --print 运行一个简单的 prompt 来验证
+            # 使用 providers list 检查认证配置
             result = subprocess.run(
-                [self._binary_path, "--print", "Say 'ok'"],
+                [self._binary_path, "providers", "list"],
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=10,
                 encoding='utf-8',
                 errors='replace',
             )
 
             if result.returncode == 0:
-                # 成功执行，CLI 可用
-                return True, "authenticated"
-
-            # 检查是否是认证相关的错误
-            stderr_lower = stderr.lower()
-            stdout_lower = stdout.lower()
-
-            # 明确的认证错误模式
-            auth_error_patterns = [
-                "not authenticated",
-                "authentication required",
-                "please run",
-                "login required",
-                "no api key",
-                "needs auth",
-            ]
-
-            for pattern in auth_error_patterns:
-                if pattern in stderr_lower or pattern in stdout_lower:
-                    return False, "not_authenticated"
-
-            # 非 0 返回码但没有明确的认证错误
-            # 可能是网络问题、API 限制等，暂时认为可用
-            return True, "available"
+                # 检查输出中是否有 credentials
+                output = result.stdout + result.stderr
+                # 如果有 credentials 行且不是空的
+                if "credentials" in output.lower() and "0 credentials" not in output.lower():
+                    return True, "authenticated"
+                # 有输出但没有 credentials
+                return False, "no_credentials"
+            
+            return False, "check_failed"
 
         except subprocess.TimeoutExpired:
             return False, "timeout"

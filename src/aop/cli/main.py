@@ -1,4 +1,4 @@
-"""AOP CLI."""
+﻿"""AOP CLI."""
 
 from __future__ import annotations
 
@@ -948,29 +948,21 @@ def _run_with_orchestrator(orchestrator, prompt: str, repo_root: str, target_pat
         
         return TaskResult(
             task_id=task_id,
-            decision="PASS" if response.success else "FAIL",
-            terminal_state="completed",
+            provider="opencode",
             success=response.success,
+            output=response.content,
+            error=response.error,
             duration_seconds=duration,
-            provider_results={
-                orchestrator.__class__.__name__: {
-                    "success": response.success,
-                    "output": response.content,
-                }
-            },
-            errors=[response.error] if response.error else [],
             findings=[],
         )
     except Exception as e:
         duration = time.time() - start_time
         return TaskResult(
             task_id=f"task-{int(start_time)}",
-            decision="FAIL",
-            terminal_state="error",
+            provider="opencode",
             success=False,
+            error=str(e),
             duration_seconds=duration,
-            provider_results={},
-            errors=[str(e)],
             findings=[],
         )
 
@@ -1027,12 +1019,11 @@ def _run_parallel_execution(prompt: str, provider: str, agents: List[str], repo_
     
     return TaskResult(
         task_id=task_id,
-        decision="PASS" if overall_success else "FAIL",
-        terminal_state="completed",
+        provider="opencode",
         success=overall_success,
+        output=str(results),
+        error="; ".join(errors) if errors else None,
         duration_seconds=duration,
-        provider_results=results,
-        errors=errors,
         findings=[],
     )
 
@@ -1995,4 +1986,6 @@ try:
     cli.add_command(memory_group, name="memory")
 except ImportError:
     pass
+
+
 
