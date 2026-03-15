@@ -44,6 +44,7 @@ from .base import OrchestratorClient
 from .claude_code_orchestrator import ClaudeCodeOrchestrator
 from .opencode_orchestrator import OpenCodeOrchestrator
 from .openclaw_orchestrator import OpenClawOrchestrator
+from .codex_orchestrator import CodexOrchestrator
 from .api_orchestrator import APIOrchestrator
 from .multi_provider_orchestrator import (
     MultiProviderOrchestrator,
@@ -61,6 +62,7 @@ ORCHESTRATOR_REGISTRY: Dict[str, type] = {
     "claude-code": ClaudeCodeOrchestrator,
     "opencode": OpenCodeOrchestrator,
     "openclaw": OpenClawOrchestrator,
+    "codex": CodexOrchestrator,
     "api": APIOrchestrator,
 }
 
@@ -167,6 +169,7 @@ __all__ = [
     "ClaudeCodeOrchestrator",
     "OpenCodeOrchestrator",
     "OpenClawOrchestrator",
+    "CodexOrchestrator",
     "APIOrchestrator",
     # 多 Provider 调度器
     "MultiProviderOrchestrator",

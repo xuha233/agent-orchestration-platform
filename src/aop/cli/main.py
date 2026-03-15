@@ -35,7 +35,7 @@ EXIT_INCONCLUSIVE = 3
 DEFAULT_POLICY = ReviewPolicy()
 
 # Valid provider types for --provider option
-VALID_PROVIDER_TYPES = ["opencode", "claude-code", "openclaw", "auto"]
+VALID_PROVIDER_TYPES = ["opencode", "claude-code", "codex", "openclaw", "auto"]
 
 
 def _get_default_providers() -> str:
@@ -900,20 +900,18 @@ def run_command(
         console.print(f"[bold]Duration:[/] {result.duration_seconds:.2f}s")
         console.print(f"[bold]Status:[/] {'[green]Success[/green]' if result.success else '[red]Failed[/red]'}")
         
-        if result.provider_results:
-            console.print("\n[bold]Provider Results:[/bold]")
-            for provider_name, details in sorted(result.provider_results.items()):
-                if hasattr(details, 'success'):
-                    success = details.success
-                else:
-                    success = details.get("success", False)
-                status = "[green]Success[/green]" if success else "[red]Failed[/red]"
-                console.print(f"  {provider_name}: {status}")
+        if result.output:
+            console.print(f"\n[bold]Output:[/bold]")
+            # 截断显示
+            output_lines = result.output.split('\n')[:10]
+            for line in output_lines:
+                console.print(f"  {line[:100]}")
+            if len(result.output.split('\n')) > 10:
+                console.print("  ... (truncated)")
     
-    if result.errors:
-        console.print("\n[yellow]Warnings:[/yellow]")
-        for err in result.errors:
-            console.print(f"  * {err}")
+    if result.error:
+        console.print("\n[yellow]Error:[/yellow]")
+        console.print(f"  * {result.error}")
     
     sys.exit(EXIT_SUCCESS if result.success else EXIT_ERROR)
 
@@ -935,23 +933,30 @@ def _run_with_orchestrator(orchestrator, prompt: str, repo_root: str, target_pat
     start_time = time.time()
     
     try:
+        # 确保 binary_path 已初始化（调用 detect）
+        orchestrator.detect()
+        
         # 传递 session_id 用于会话恢复
         response = orchestrator.execute(
             prompt=prompt,
-            cwd=repo_root,
-            timeout=timeout,
+            repo_root=repo_root,
             session_id=session_id if session_id else None
         )
         
         duration = time.time() - start_time
         task_id = f"task-{int(start_time)}"
         
+        # 从 raw 字段获取错误信息
+        raw = response.raw or {}
+        has_error = raw.get("returncode", 0) != 0
+        error_msg = raw.get("stderr") if has_error else None
+        
         return TaskResult(
             task_id=task_id,
-            provider="opencode",
-            success=response.success,
+            provider=orchestrator.orchestrator_type,
+            success=not has_error,
             output=response.content,
-            error=response.error,
+            error=error_msg,
             duration_seconds=duration,
             findings=[],
         )
@@ -959,7 +964,7 @@ def _run_with_orchestrator(orchestrator, prompt: str, repo_root: str, target_pat
         duration = time.time() - start_time
         return TaskResult(
             task_id=f"task-{int(start_time)}",
-            provider="opencode",
+            provider=orchestrator.orchestrator_type if hasattr(orchestrator, 'orchestrator_type') else "unknown",
             success=False,
             error=str(e),
             duration_seconds=duration,

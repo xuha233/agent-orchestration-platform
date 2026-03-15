@@ -2895,7 +2895,7 @@ def page_dev_console():
     
     provider_choice = st.selectbox(
         "Provider",
-        ["claude", "opencode"],
+        ["claude", "codex", "opencode"],
         key="manual_provider_choice"
     )
     
