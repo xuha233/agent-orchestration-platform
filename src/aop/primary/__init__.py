@@ -24,6 +24,7 @@ from .base import AgentContext, PrimaryAgent
 from .claude_code import ClaudeCodeAgent
 from .opencode import OpenCodeAgent
 from .openclaw import OpenClawAgent
+from .codex import CodexAgent
 from .registry import AgentRegistry, get_registry, reset_registry
 from .workspace import Workspace, WorkspaceManager
 from .listener import CommandListener, get_listener, start_listener, stop_listener, submit_command
@@ -34,6 +35,7 @@ __all__ = [
     "ClaudeCodeAgent",
     "OpenCodeAgent",
     "OpenClawAgent",
+    "CodexAgent",
     "AgentRegistry",
     "get_registry",
     "reset_registry",

@@ -85,15 +85,16 @@ class AgentRegistry:
         """Get the default agent.
 
         Priority order:
-        1. openclaw (not implemented yet)
+        1. openclaw
         2. claude_code
-        3. opencode
+        3. codex
+        4. opencode
 
         Returns:
             The first available agent in priority order, or None if none available
         """
         # Priority order for default agent selection
-        priority_order = ["openclaw", "claude_code", "opencode"]
+        priority_order = ["openclaw", "claude_code", "codex", "opencode"]
 
         for agent_id in priority_order:
             agent = self._agents.get(agent_id)
@@ -147,10 +148,12 @@ def get_registry() -> AgentRegistry:
         from .claude_code import ClaudeCodeAgent
         from .opencode import OpenCodeAgent
         from .openclaw import OpenClawAgent
+        from .codex import CodexAgent
 
         _global_registry.register(ClaudeCodeAgent())
         _global_registry.register(OpenCodeAgent())
         _global_registry.register(OpenClawAgent())
+        _global_registry.register(CodexAgent())
 
     return _global_registry
 
