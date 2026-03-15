@@ -1304,7 +1304,7 @@ def page_home():
         
         # 主 Agent
         if primary_agent_id:
-            agent_names = {"claude_code": "Claude Code", "opencode": "OpenCode", "openclaw": "OpenClaw"}
+            agent_names = {"claude_code": "Claude Code", "opencode": "OpenCode", "codex": "Codex", "openclaw": "OpenClaw"}
             agent_name = agent_names.get(primary_agent_id, primary_agent_id)
             is_available = any(a.id == primary_agent_id for a in agents)
             badge = "status-online" if is_available else "status-offline"
@@ -1556,11 +1556,12 @@ def page_coach():
             
             st.caption(f"💡 Session: `{session_name}` | 项目: `{project_path}`")
 
-        elif primary_agent in ["claude_code", "opencode"]:
+        elif primary_agent in ["claude_code", "opencode", "codex"]:
             # CLI 模式 - 启动命令行工具
             agent_names = {
                 "claude_code": "Claude Code",
                 "opencode": "OpenCode",
+                "codex": "Codex",
             }
             agent_name = agent_names.get(primary_agent, primary_agent)
 
@@ -1667,7 +1668,7 @@ def page_coach():
                         f.write(system_prompt)
                     
                     # 构建启动命令
-                    cmd_name = "claude" if primary_agent == "claude_code" else "opencode"
+                    cmd_name = "claude" if primary_agent == "claude_code" else ("codex" if primary_agent == "codex" else "opencode")
                     
                     # 检测命令是否存在
                     if not shutil.which(cmd_name):
@@ -1702,6 +1703,8 @@ def page_coach():
                                 if current_workspace and current_workspace.metadata:
                                     if primary_agent == "claude_code":
                                         saved_session_id = current_workspace.metadata.get("claude_session_id")
+                                    elif primary_agent == "codex":
+                                        saved_session_id = current_workspace.metadata.get("codex_session_id")
                                     else:
                                         saved_session_id = current_workspace.metadata.get("opencode_session_id")
                                 
@@ -1717,6 +1720,11 @@ def page_coach():
                                         f.write(' '.join(get_claude_cmd_prefix()) + ' --resume ' + saved_session_id + '\n')
                                     else:
                                         f.write(' '.join(get_claude_cmd_prefix()) + '\n')
+                                elif primary_agent == "codex":
+                                    if saved_session_id:
+                                        f.write('codex --resume ' + saved_session_id + '\n')
+                                    else:
+                                        f.write('codex\n')
                                 else:
                                     if saved_session_id:
                                         f.write('opencode --resume ' + saved_session_id + '\n')
@@ -1744,7 +1752,7 @@ def page_coach():
                             saved_session_id = None
                             try:
                                 sm = get_session_manager()
-                                provider = "claude" if primary_agent == "claude_code" else "opencode"
+                                provider = "claude" if primary_agent == "claude_code" else ("codex" if primary_agent == "codex" else "opencode")
                                 session_info = sm.get_latest_session(workspace_id, provider)
                                 if session_info:
                                     saved_session_id = session_info.session_id
@@ -1756,6 +1764,11 @@ def page_coach():
                                     full_cmd = get_claude_full_cmd() + ' --resume ' + saved_session_id
                                 else:
                                     full_cmd = get_claude_full_cmd() + ' --system-prompt "$(cat \"' + prompt_file + '\")"'
+                            elif primary_agent == "codex":
+                                if saved_session_id:
+                                    full_cmd = 'codex --resume ' + saved_session_id
+                                else:
+                                    full_cmd = 'codex'
                             else:
                                 if saved_session_id:
                                     full_cmd = 'opencode --resume ' + saved_session_id
@@ -1779,7 +1792,7 @@ def page_coach():
                             saved_session_id = None
                             try:
                                 sm = get_session_manager()
-                                provider = "claude" if primary_agent == "claude_code" else "opencode"
+                                provider = "claude" if primary_agent == "claude_code" else ("codex" if primary_agent == "codex" else "opencode")
                                 session_info = sm.get_latest_session(workspace_id, provider)
                                 if session_info:
                                     saved_session_id = session_info.session_id
@@ -1791,6 +1804,11 @@ def page_coach():
                                     full_cmd = get_claude_full_cmd() + ' --resume ' + saved_session_id
                                 else:
                                     full_cmd = get_claude_full_cmd() + ' --system-prompt "$(cat ' + prompt_file + ')"'
+                            elif primary_agent == "codex":
+                                if saved_session_id:
+                                    full_cmd = 'codex --resume ' + saved_session_id
+                                else:
+                                    full_cmd = 'codex'
                             else:
                                 if saved_session_id:
                                     full_cmd = 'opencode --resume ' + saved_session_id
@@ -2074,13 +2092,17 @@ def page_workspaces():
             selected_agent_id = primary_agent
         else:
             agents = get_available_agents()
-            agent_options = {"Claude Code": "claude_code", "OpenCode": "opencode"}
+            agent_options = {"Claude Code": "claude_code", "OpenCode": "opencode", "Codex": "codex"}
             default_agent = agents[0].id if agents else "claude_code"
+
+            # 计算默认选中的索引
+            agent_index_map = {"claude_code": 0, "opencode": 1, "codex": 2}
+            default_index = agent_index_map.get(default_agent, 0)
 
             primary_agent_name = st.selectbox(
                 "默认 Agent",
                 options=list(agent_options.keys()),
-                index=0 if default_agent == "claude_code" else 1,
+                index=default_index,
             )
             selected_agent_id = agent_options[primary_agent_name]
 
@@ -2217,6 +2239,16 @@ def page_workspaces():
                             key=f"opencode_session_input_{ws.id}"
                         )
                         
+                        # Codex 会话
+                        st.markdown("**Codex 会话 ID**")
+                        codex_session = st.text_input(
+                            "codex_session",
+                            value=ws.metadata.get("codex_session_id", ""),
+                            placeholder="xxxx-xxxx-xxxx-xxxx",
+                            label_visibility="collapsed",
+                            key=f"codex_session_input_{ws.id}"
+                        )
+                        
                         st.markdown("---")
                         st.caption("💡 查看会话 ID：在 CLI 窗口输入 `/q` 回车即可显示")
                         
@@ -2228,6 +2260,7 @@ def page_workspaces():
                                 import re
                                 claude_id = claude_session.strip()
                                 opencode_id = opencode_session.strip()
+                                codex_id = codex_session.strip()
                                 
                                 # 从 ccr code --resume xxx 格式中提取 ID
                                 claude_match = re.search(r'([a-f0-9-]{36})', claude_id)
@@ -2239,9 +2272,15 @@ def page_workspaces():
                                 if opencode_match:
                                     opencode_id = opencode_match.group(1)
                                 
+                                # Codex 会话 ID 格式（UUID）
+                                codex_match = re.search(r'([a-f0-9-]{36})', codex_id)
+                                if codex_match:
+                                    codex_id = codex_match.group(1)
+                                
                                 # 更新 workspace metadata
                                 ws.metadata["claude_session_id"] = claude_id
                                 ws.metadata["opencode_session_id"] = opencode_id
+                                ws.metadata["codex_session_id"] = codex_id
                                 # 保存到文件
                                 wm.update_workspace(ws)
                                 # 更新 session_state 中的 current_workspace
@@ -2276,6 +2315,7 @@ def page_settings():
         "未设置（可切换）": None,
         "Claude Code": "claude_code",
         "OpenCode": "opencode",
+        "Codex": "codex",
         "OpenClaw": "openclaw",
     }
 
