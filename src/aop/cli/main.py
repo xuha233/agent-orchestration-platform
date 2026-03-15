@@ -20,6 +20,7 @@ from ..workflow.hypothesis import HypothesisManager
 from ..workflow.learning import LearningLog
 from ..workflow.team import TeamOrchestrator
 from ..config import AOPConfig, ReviewPolicy, load_config
+from ..config.models import DEFAULT_OPENCODE_MODEL
 from ..report import format_report, format_markdown_pr, format_sarif, format_json, format_summary
 
 console = Console()
@@ -196,19 +197,20 @@ def _create_opencode_config(project_name: str, force: bool = False):
     # opencode.json
     opencode_json = Path("opencode.json")
     if not opencode_json.exists() or force:
-        config_content = """{
-  "$schema": "https://opencode.ai/config.json",
-  "model": "myprovider/qianfan-code-latest",
-  "agent": {
-    "aop-coach": {
-      "description": "AOP 敏捷教练 - 多 Agent 编排、假设驱动开发",
-      "mode": "primary",
-      "prompt": "{file:./AGENTS.md}",
-      "temperature": 0.3
-    }
-  }
-}"""
-        opencode_json.write_text(config_content, encoding="utf-8")
+        config = {
+            "$schema": "https://opencode.ai/config.json",
+            "agent": {
+                "aop-coach": {
+                    "description": "AOP 敏捷教练 - 多 Agent 编排、假设驱动开发",
+                    "mode": "primary",
+                    "prompt": "{file:./AGENTS.md}",
+                    "temperature": 0.3
+                }
+            }
+        }
+        if DEFAULT_OPENCODE_MODEL:
+            config["model"] = DEFAULT_OPENCODE_MODEL
+        opencode_json.write_text(json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8")
         console.print(f"[green]Created {opencode_json}[/green]")
     
     # AGENTS.md
@@ -936,11 +938,12 @@ def _run_with_orchestrator(orchestrator, prompt: str, repo_root: str, target_pat
         # 确保 binary_path 已初始化（调用 detect）
         orchestrator.detect()
         
-        # 传递 session_id 用于会话恢复
+        # 传递 session_id 用于会话恢复，传递 timeout 用于超时控制
         response = orchestrator.execute(
             prompt=prompt,
             repo_root=repo_root,
-            session_id=session_id if session_id else None
+            session_id=session_id if session_id else None,
+            timeout=timeout,
         )
         
         duration = time.time() - start_time
@@ -962,11 +965,21 @@ def _run_with_orchestrator(orchestrator, prompt: str, repo_root: str, target_pat
         )
     except Exception as e:
         duration = time.time() - start_time
+        error_msg = str(e)
+        
+        # 提供更友好的超时提示
+        if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+            error_msg = f"任务执行超时（{timeout}秒）。建议：\n" \
+                       f"  1. 使用 --timeout 参数增加超时时间\n" \
+                       f"  2. 检查网络连接是否稳定\n" \
+                       f"  3. 简化任务描述后重试\n" \
+                       f"原始错误: {error_msg}"
+        
         return TaskResult(
             task_id=f"task-{int(start_time)}",
             provider=orchestrator.orchestrator_type if hasattr(orchestrator, 'orchestrator_type') else "unknown",
             success=False,
-            error=str(e),
+            error=error_msg,
             duration_seconds=duration,
             findings=[],
         )
@@ -1991,6 +2004,7 @@ try:
     cli.add_command(memory_group, name="memory")
 except ImportError:
     pass
+
 
 
 

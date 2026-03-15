@@ -191,17 +191,23 @@ class CodexOrchestrator(OrchestratorClient):
 
         cwd = str(self.config.working_directory) if self.config.working_directory else repo_root
 
-        result = subprocess.run(
-            cmd,
-            input=prompt,
-            capture_output=True,
-            text=True,
-            timeout=self.config.timeout,
-            cwd=cwd,
-            encoding='utf-8',
-            errors='replace',
-        )
-
+        # Use timeout from kwargs if provided, otherwise use config timeout
+        effective_timeout = kwargs.pop("timeout", self.config.timeout)
+        
+        try:
+            result = subprocess.run(
+                cmd,
+                input=prompt,
+                capture_output=True,
+                text=True,
+                timeout=effective_timeout,
+                cwd=cwd,
+                encoding='utf-8',
+                errors='replace',
+            )
+        except subprocess.TimeoutExpired:
+            raise TimeoutError(f"Codex CLI 执行超时（{effective_timeout}秒）。请尝试增加 --timeout 参数。")
+        
         return OrchestratorResponse(
             content=result.stdout,
             model=kwargs.get("model", "codex"),

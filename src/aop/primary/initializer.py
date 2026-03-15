@@ -6,6 +6,7 @@ from typing import Optional, List, Dict, Any
 import json
 
 from rich.console import Console
+from ..config.models import DEFAULT_OPENCODE_MODEL
 
 console = Console()
 
@@ -219,7 +220,6 @@ timeout: 300
         if not opencode_json.exists() or force:
             config = {
                 "$schema": "https://opencode.ai/config.json",
-                "model": "myprovider/qianfan-code-latest",
                 "agent": {
                     "aop-coach": {
                         "description": "AOP 敏捷教练 - 多 Agent 编排、假设驱动开发",
@@ -229,6 +229,8 @@ timeout: 300
                     }
                 }
             }
+            if DEFAULT_OPENCODE_MODEL:
+                config["model"] = DEFAULT_OPENCODE_MODEL
             opencode_json.write_text(json.dumps(config, indent=2), encoding="utf-8")
             result.created_files.append(str(opencode_json))
         
