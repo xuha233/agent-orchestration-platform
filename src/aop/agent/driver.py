@@ -10,11 +10,9 @@ AgentDriver - 全自动 Agent 团队驱动器
 from __future__ import annotations
 
 import hashlib
-import json
-from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import List, Callable, Dict, Any, TYPE_CHECKING, Literal
+from typing import List, Callable, Dict, Any, TYPE_CHECKING
 
 from .types import (
     SprintContext,
@@ -31,36 +29,24 @@ from .learning_extractor import LearningExtractor
 from .persistence import SprintPersistence
 from .scheduler import TaskScheduler
 from ..core.engine import ExecutionEngine
-from ..skills import SkillManager, SkillContext, create_skill_manager
 
 from ..state import StateManager
 from ..review import TwoStageReviewer
+from ..workflow import (
+    CompletionGate,
+    VerificationCheck,
+    VerificationReport,
+    WorkflowArtifactManager,
+    WorkflowPhase,
+    WorkflowPlan,
+    WorkflowPlanChecker,
+    WorkflowRun,
+    WorkflowTask,
+)
 if TYPE_CHECKING:
-    from ..llm import LLMClient, ClaudeClient, LocalLLMClient
-    from ..orchestrator import OrchestratorClient, OrchestratorConfig
+    from ..llm import LLMClient
+    from ..orchestrator import OrchestratorClient
     from ..review import TwoStageReviewResult
-
-def _generate_fix_prompt(self, issues: list, current_content: str) -> str:
-        """生成修复提示"""
-        issue_descriptions = []
-        for issue in issues[:10]:  # 限制到10个问题
-            issue_descriptions.append(f"- [{issue.severity}] {issue.description}")
-            if issue.suggestion:
-                issue_descriptions.append(f"  Suggestion: {issue.suggestion}")
-        
-        return f"""Please fix the following issues in the content:
-
-Issues to fix:
-{chr(10).join(issue_descriptions)}
-
-Current content:
-`
-{current_content[:2000]}  # 限制长度
-`
-
-Please provide the fixed content that addresses these issues.
-"""
-
 
 class AgentDriver:
     """
@@ -143,13 +129,22 @@ class AgentDriver:
         )
 
         # 存储路径
-        self.storage_path = self.config.storage_path or Path(".aop")
+        self.storage_path = (
+            Path(self.config.storage_path)
+            if self.config.storage_path is not None
+            else Path(".aop")
+        )
 
         # 初始化状态管理器（STATE.md 跨会话记忆）
         self.state_manager = StateManager(project_path=self.storage_path)
 
         # 初始化持久化管理器
         self.persistence = SprintPersistence(str(self.storage_path / "sprints"))
+        self.workflow_artifacts = WorkflowArtifactManager(self.storage_path)
+        self.workflow_run: WorkflowRun | None = None
+        self.plan_checker = WorkflowPlanChecker()
+        self.completion_gate = CompletionGate()
+        self.latest_verification_report: VerificationReport | None = None
 
         # 初始化两阶段审查器
         self.reviewer = TwoStageReviewer()
@@ -275,16 +270,20 @@ class AgentDriver:
             original_input=vague_input,
             state=SprintState.INITIALIZED,
         )
+        self._initialize_workflow_tracking()
         
         # 保存初始状态
         self.persistence.save(self.context)
+        self.workflow_artifacts.initialize_run(self.workflow_run)
 
         try:
             # 阶段1: 澄清需求
             self._report_progress("clarifying", "澄清需求中...")
+            self._update_workflow_phase(WorkflowPhase.CLARIFY)
             clarified = self._clarify_requirement(vague_input, clarifications_callback)
             self.context.clarified_requirement = clarified
             self.context.state = SprintState.CLARIFIED
+            self._sync_workflow_run_metadata()
             self.persistence.save(self.context)  # 增量保存
 
             # 阶段2: 生成假设
@@ -292,7 +291,9 @@ class AgentDriver:
             hypotheses = self._generate_hypotheses(clarified)
             self.context.hypotheses = hypotheses
             self.context.state = SprintState.HYPOTHESES_GENERATED
+            self._sync_workflow_run_metadata()
             self.persistence.save(self.context)  # 增量保存
+            self._write_plan_artifact()
 
             # 阶段3: 构建任务图
             self._report_progress("decomposing_tasks", "分解任务中...")
@@ -302,31 +303,40 @@ class AgentDriver:
             # 阶段4: 并行执行 (简化版)
             if self.config.auto_execute:
                 self._report_progress("executing", "并行执行中...")
+                self._update_workflow_phase(WorkflowPhase.EXECUTE)
                 results = self._execute_tasks()
                 self.context.execution_results = results
                 self.context.state = SprintState.EXECUTED
                 self.persistence.save(self.context)  # 增量保存
+                self.workflow_artifacts.write_execution(self.context.sprint_id, results)
 
                 # 阶段5: 自动验证
                 if self.config.auto_validate:
                     self._report_progress("validating", "验证结果中...")
+                    self._update_workflow_phase(WorkflowPhase.VERIFY)
                     self._auto_validate(hypotheses, results)
                     self.context.state = SprintState.VALIDATED
                     self.persistence.save(self.context)  # 增量保存
+                    self._write_verification_artifact()
 
                 # 阶段6: 学习提取
                 if self.config.auto_learn:
                     self._report_progress("learning", "提取学习中...")
+                    self._update_workflow_phase(WorkflowPhase.LEARN)
                     learnings = self._extract_learnings(results)
                     self.context.learnings = learnings
                     self.context.state = SprintState.COMPLETED
                     self.persistence.save(self.context)  # 增量保存
+                    self._write_learnings_artifact()
+
+            self._finalize_workflow_run("completed")
 
             return self._build_result()
 
-        except Exception as e:
+        except Exception:
             self.context.state = SprintState.FAILED
             self.persistence.save(self.context)  # 保存失败状态
+            self._finalize_workflow_run("failed")
             raise
 
     def run_from_clarified_requirement(
@@ -342,6 +352,7 @@ class AgentDriver:
             clarified_requirement=ClarifiedRequirement(**requirement),
             state=SprintState.CLARIFIED,
         )
+        self._initialize_workflow_tracking()
         
         self.persistence.save(self.context)
 
@@ -435,6 +446,7 @@ class AgentDriver:
         self._report_progress("decomposing_tasks", "分解任务中...")
         self.context.state = SprintState.TASKS_DECOMPOSED
         self.persistence.save(self.context)
+        self._write_plan_artifact()
 
         if self.config.auto_execute:
             return self._continue_from_execution()
@@ -445,10 +457,12 @@ class AgentDriver:
         """从任务分解后继续执行"""
         if self.config.auto_execute:
             self._report_progress("executing", "并行执行中...")
+            self._update_workflow_phase(WorkflowPhase.EXECUTE)
             results = self._execute_tasks()
             self.context.execution_results = results
             self.context.state = SprintState.EXECUTED
             self.persistence.save(self.context)
+            self.workflow_artifacts.write_execution(self.context.sprint_id, results)
 
             if self.config.auto_validate:
                 return self._continue_from_validation()
@@ -459,9 +473,11 @@ class AgentDriver:
         """从执行后继续验证"""
         if self.config.auto_validate:
             self._report_progress("validating", "验证结果中...")
+            self._update_workflow_phase(WorkflowPhase.VERIFY)
             self._auto_validate(self.context.hypotheses, self.context.execution_results)
             self.context.state = SprintState.VALIDATED
             self.persistence.save(self.context)
+            self._write_verification_artifact()
 
             if self.config.auto_learn:
                 return self._continue_from_learning()
@@ -472,10 +488,13 @@ class AgentDriver:
         """从验证后继续学习提取"""
         if self.config.auto_learn:
             self._report_progress("learning", "提取学习中...")
+            self._update_workflow_phase(WorkflowPhase.LEARN)
             learnings = self._extract_learnings(self.context.execution_results)
             self.context.learnings = learnings
             self.context.state = SprintState.COMPLETED
             self.persistence.save(self.context)
+            self._write_learnings_artifact()
+            self._finalize_workflow_run("completed")
         
         return self._build_result()
 
@@ -652,8 +671,6 @@ class AgentDriver:
         if not self.context or not self.context.hypotheses:
             return []
 
-        results: List[Dict[str, Any]] = []
-
         # 优先使用 OrchestratorClient 执行
         if self._orchestrator and self._orchestrator.supports(
             self._get_capability("task_execution")
@@ -747,7 +764,7 @@ class AgentDriver:
             hypotheses_for_scheduler.append(h_dict)
 
         # 调度任务
-        assignments = scheduler.schedule(hypotheses_for_scheduler)
+        scheduler.schedule(hypotheses_for_scheduler)
 
         # 执行任务
         results = []
@@ -854,15 +871,21 @@ class AgentDriver:
 
         # 转换学习
         learnings_data = []
-        for l in (self.context.learnings if self.context else []):
+        for learning in (self.context.learnings if self.context else []):
             learnings_data.append({
-                "phase": getattr(l, 'phase', ''),
-                "insights": getattr(l, 'insights', []),
+                "phase": getattr(learning, 'phase', ''),
+                "insights": getattr(learning, 'insights', []),
             })
 
         return SprintResult(
             sprint_id=self.context.sprint_id if self.context else "",
-            success=self.context.state == SprintState.COMPLETED if self.context else False,
+            success=(
+                self.context.state == SprintState.COMPLETED
+                and (
+                    self.workflow_run is None
+                    or self.workflow_run.status == "completed"
+                )
+            ) if self.context else False,
             state=self.context.state if self.context else SprintState.FAILED,
             clarified_requirement=req_dict,
             hypotheses=hypotheses_data,
@@ -878,6 +901,271 @@ class AgentDriver:
             return "无活跃冲刺"
 
         return f"冲刺 {self.context.sprint_id} 已完成，共处理 {len(self.context.hypotheses)} 个假设"
+
+    def _sync_workflow_run_metadata(self):
+        """同步 workflow run 元数据。"""
+        if not self.context:
+            return
+
+        if self.workflow_run is None:
+            self.workflow_run = WorkflowRun(
+                run_id=self.context.sprint_id,
+                original_input=self.context.original_input,
+            )
+
+        clarified = self.context.clarified_requirement
+        self.workflow_run.clarified_summary = getattr(clarified, "summary", "")
+        self.workflow_run.success_criteria = list(
+            getattr(clarified, "success_criteria", []) or []
+        )
+        self.workflow_run.hypothesis_ids = [
+            self._get_hypothesis_id(h, index)
+            for index, h in enumerate(self.context.hypotheses or [])
+        ]
+        self.workflow_artifacts.update_run(self.workflow_run)
+
+    def _initialize_workflow_tracking(self):
+        """为新冲刺重置并初始化 workflow 跟踪状态。"""
+        if not self.context:
+            return
+
+        self.latest_verification_report = None
+        self.workflow_run = WorkflowRun(
+            run_id=self.context.sprint_id,
+            original_input=self.context.original_input,
+        )
+        self.workflow_artifacts.initialize_run(self.workflow_run)
+
+    def _update_workflow_phase(self, phase: WorkflowPhase, status: str = "running"):
+        """更新 workflow run 所处阶段。"""
+        if not self.context:
+            return
+
+        if self.workflow_run is None:
+            self.workflow_run = WorkflowRun(
+                run_id=self.context.sprint_id,
+                original_input=self.context.original_input,
+            )
+
+        self.workflow_run.current_phase = phase
+        self.workflow_run.status = status
+        self._sync_workflow_run_metadata()
+
+    def _write_plan_artifact(self):
+        """生成并写入 PLAN.md。"""
+        if not self.context or not self.context.clarified_requirement:
+            return
+
+        self._update_workflow_phase(WorkflowPhase.PLAN)
+        plan = self._build_workflow_plan()
+        self.workflow_artifacts.write_plan(self.context.sprint_id, plan)
+        self.workflow_artifacts.write_plan_check(
+            self.context.sprint_id,
+            self.plan_checker.check(plan),
+        )
+
+    def _write_verification_artifact(self):
+        """生成并写入 VERIFICATION.md。"""
+        if not self.context:
+            return
+
+        report = self._build_verification_report()
+        self.latest_verification_report = report
+        self.workflow_artifacts.write_verification(self.context.sprint_id, report)
+
+    def _write_learnings_artifact(self):
+        """生成并写入 LEARNINGS.md。"""
+        if not self.context:
+            return
+
+        learnings = []
+        for learning in self.context.learnings:
+            learnings.append(
+                {
+                    "phase": getattr(learning, "phase", ""),
+                    "insights": getattr(learning, "insights", []),
+                }
+            )
+        self.workflow_artifacts.write_learnings(self.context.sprint_id, learnings)
+
+    def _finalize_workflow_run(self, status: str):
+        """写入最终 summary 并将 workflow run 标记为完成或失败。"""
+        if not self.context:
+            return
+
+        learnings = []
+        for learning in self.context.learnings or []:
+            learnings.append(
+                {
+                    "phase": getattr(learning, "phase", ""),
+                    "insights": getattr(learning, "insights", []),
+                }
+            )
+
+        decision = self.completion_gate.evaluate(
+            verification_report=self.latest_verification_report,
+            execution_results=self.context.execution_results,
+            learnings=learnings,
+        )
+        final_phase = (
+            WorkflowPhase.COMPLETE
+            if decision.passed and status == "completed"
+            else WorkflowPhase.GAP_CLOSE
+        )
+        final_status = decision.status if status == "completed" else status
+        self._update_workflow_phase(final_phase, status=final_status)
+        self.workflow_artifacts.write_completion(self.context.sprint_id, decision)
+        self.workflow_artifacts.write_summary(
+            self.context.sprint_id,
+            self._generate_summary(),
+        )
+
+    def _build_workflow_plan(self) -> WorkflowPlan:
+        """根据当前上下文构建 workflow plan。"""
+        requirement = self.context.clarified_requirement
+        hypotheses = self.context.hypotheses or []
+        tasks = []
+
+        for index, hypothesis in enumerate(hypotheses):
+            title = self._get_hypothesis_statement(hypothesis) or f"Hypothesis {index + 1}"
+            tasks.append(
+                WorkflowTask(
+                    task_id=f"task-{index + 1}",
+                    title=title[:100],
+                    description=self._get_hypothesis_validation_method(hypothesis) or title,
+                    hypothesis_id=self._get_hypothesis_id(hypothesis, index),
+                    dependencies=self._get_hypothesis_dependencies(hypothesis),
+                    verification_steps=self._get_hypothesis_success_criteria(hypothesis)
+                    or list(getattr(requirement, "success_criteria", []) or []),
+                    objective=title,
+                    output_format="Execution result with concrete artifact or repo change summary.",
+                    tools_guidance=self._get_hypothesis_tools_guidance(hypothesis)
+                    or "Use the configured orchestrator or execution engine.",
+                    boundaries=self._get_hypothesis_boundaries(hypothesis)
+                    or "Do not change unrelated files or exceed the scoped task.",
+                    effort_budget=self._get_hypothesis_effort_budget(hypothesis),
+                )
+            )
+
+        return WorkflowPlan(
+            summary=getattr(requirement, "summary", ""),
+            goals=list(getattr(requirement, "core_features", []) or [])
+            or [getattr(requirement, "summary", "")],
+            tasks=tasks,
+            verification_steps=list(getattr(requirement, "success_criteria", []) or []),
+            out_of_scope=[],
+            risks=list(getattr(requirement, "risks", []) or []),
+        )
+
+    def _build_verification_report(self) -> VerificationReport:
+        """根据执行与验证结果构建验证报告。"""
+        truths = []
+        gaps = []
+        evidence = []
+        checks = []
+
+        for result in self.context.execution_results or []:
+            task_id = result.get("task_id", "unknown-task")
+            state = result.get("state", "unknown")
+            success = result.get("success", False)
+            evidence.append(f"{task_id}: state={state}, success={success}")
+            if success:
+                truths.append(f"{task_id} executed successfully")
+            else:
+                gaps.append(f"{task_id} failed during execution")
+
+        validation_results = getattr(self.context, "validation_results", []) or []
+        for validation in validation_results:
+            verdict = getattr(getattr(validation, "verdict", None), "value", None) or str(
+                getattr(validation, "verdict", "unknown")
+            )
+            hypothesis_id = getattr(validation, "hypothesis_id", "unknown")
+            reasoning = getattr(validation, "reasoning", "")
+
+            checks.append(
+                VerificationCheck(
+                    name=f"hypothesis:{hypothesis_id}",
+                    status=verdict,
+                    details=reasoning,
+                )
+            )
+
+            if verdict == "validated":
+                truths.append(f"{hypothesis_id} validated")
+            elif verdict in {"refuted", "needs_more_info", "inconclusive"}:
+                gaps.append(f"{hypothesis_id} verification verdict: {verdict}")
+
+        verdict = "pass" if not gaps else "partial"
+        summary = "Verification passed with no recorded gaps." if not gaps else (
+            f"Verification found {len(gaps)} gap(s) that still need attention."
+        )
+
+        return VerificationReport(
+            summary=summary,
+            verdict=verdict,
+            truths=truths,
+            gaps=gaps,
+            evidence=evidence,
+            checks=checks,
+        )
+
+    def _get_hypothesis_id(self, hypothesis: Any, index: int) -> str:
+        if hasattr(hypothesis, "id") and getattr(hypothesis, "id"):
+            return getattr(hypothesis, "id")
+        if hasattr(hypothesis, "hypothesis_id") and getattr(hypothesis, "hypothesis_id"):
+            return getattr(hypothesis, "hypothesis_id")
+        if isinstance(hypothesis, dict):
+            return hypothesis.get("id") or hypothesis.get("hypothesis_id") or f"h{index}"
+        return f"h{index}"
+
+    def _get_hypothesis_statement(self, hypothesis: Any) -> str:
+        if hasattr(hypothesis, "statement"):
+            return getattr(hypothesis, "statement", "")
+        if isinstance(hypothesis, dict):
+            return hypothesis.get("statement", "")
+        return ""
+
+    def _get_hypothesis_validation_method(self, hypothesis: Any) -> str:
+        if hasattr(hypothesis, "validation_method"):
+            return getattr(hypothesis, "validation_method", "")
+        if isinstance(hypothesis, dict):
+            return hypothesis.get("validation_method", "")
+        return ""
+
+    def _get_hypothesis_dependencies(self, hypothesis: Any) -> List[str]:
+        if hasattr(hypothesis, "dependencies"):
+            return list(getattr(hypothesis, "dependencies", []) or [])
+        if isinstance(hypothesis, dict):
+            return list(hypothesis.get("dependencies", []) or [])
+        return []
+
+    def _get_hypothesis_success_criteria(self, hypothesis: Any) -> List[str]:
+        if hasattr(hypothesis, "success_criteria"):
+            return list(getattr(hypothesis, "success_criteria", []) or [])
+        if isinstance(hypothesis, dict):
+            return list(hypothesis.get("success_criteria", []) or [])
+        return []
+
+    def _get_hypothesis_tools_guidance(self, hypothesis: Any) -> str:
+        if hasattr(hypothesis, "tools_guidance"):
+            return getattr(hypothesis, "tools_guidance", "")
+        if isinstance(hypothesis, dict):
+            return hypothesis.get("tools_guidance", "")
+        return ""
+
+    def _get_hypothesis_boundaries(self, hypothesis: Any) -> str:
+        if hasattr(hypothesis, "boundaries"):
+            return getattr(hypothesis, "boundaries", "")
+        if isinstance(hypothesis, dict):
+            return hypothesis.get("boundaries", "")
+        return ""
+
+    def _get_hypothesis_effort_budget(self, hypothesis: Any) -> int:
+        if hasattr(hypothesis, "effort_budget"):
+            return int(getattr(hypothesis, "effort_budget", 10) or 10)
+        if isinstance(hypothesis, dict):
+            return int(hypothesis.get("effort_budget", 10) or 10)
+        return 10
 
     def _generate_sprint_id(self) -> str:
         """生成冲刺ID"""
@@ -966,8 +1254,6 @@ class AgentDriver:
         Returns:
             (审查结果, 最终内容)
         """
-        from ..review import ReviewIssue
-        
         current_content = content
         
         def fix_callback(issues: list) -> str:
