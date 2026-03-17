@@ -157,3 +157,89 @@ def test_agent_driver_writes_gap_closure_when_verification_has_gaps(tmp_path):
 
     assert "repair-1" in gaps_content
     assert "needs_follow_up" in completion_content
+
+
+def test_agent_driver_runs_single_repair_wave_and_clears_gaps_on_success(tmp_path):
+    config = AgentDriverConfig(
+        storage_path=tmp_path,
+        auto_execute=True,
+        auto_validate=True,
+        auto_learn=True,
+    )
+    driver = AgentDriver(config=config)
+
+    driver._clarify_requirement = lambda vague_input, callback: ClarifiedRequirement(
+        summary="Build a login MVP",
+        core_features=["Login form"],
+        success_criteria=["Users can log in successfully"],
+    )
+    driver._generate_hypotheses = lambda requirement: [
+        {
+            "hypothesis_id": "H-001",
+            "statement": "Login flow works",
+            "validation_method": "Run smoke test",
+            "success_criteria": ["Smoke test passes"],
+        }
+    ]
+    driver._execute_tasks = lambda: [
+        {
+            "task_id": "task-1",
+            "hypothesis_id": "H-001",
+            "success": False,
+            "state": "failed",
+            "errors": ["Smoke test failed"],
+        }
+    ]
+    driver._execute_workflow_tasks = lambda tasks: [
+        {
+            "task_id": tasks[0].task_id,
+            "hypothesis_id": "H-001",
+            "success": True,
+            "state": "completed",
+            "errors": [],
+            "repair_wave": True,
+        }
+    ]
+
+    validation_calls = {"count": 0}
+
+    def fake_auto_validate(hypotheses, results):
+        validation_calls["count"] += 1
+        if validation_calls["count"] == 1:
+            driver.context.validation_results = [
+                ValidationResult(
+                    hypothesis_id="H-001",
+                    state="failed",
+                    verdict=ValidationVerdict.REFUTED,
+                    reasoning="Smoke test failed.",
+                )
+            ]
+        else:
+            driver.context.validation_results = [
+                ValidationResult(
+                    hypothesis_id="H-001",
+                    state="completed",
+                    verdict=ValidationVerdict.VALIDATED,
+                    reasoning="Repair wave fixed the failing path.",
+                )
+            ]
+
+    driver._auto_validate = fake_auto_validate
+    driver._extract_learnings = lambda results: [
+        ExtractedLearning(
+            phase="gap_close",
+            insights=["One repair wave resolved the issue."],
+        )
+    ]
+
+    result = driver.run_from_vague_description("Build a login MVP")
+
+    run_dir = tmp_path / ".aop" / "runs" / result.sprint_id
+    completion_content = (run_dir / "COMPLETION.md").read_text(encoding="utf-8")
+    verification_content = (run_dir / "VERIFICATION.md").read_text(encoding="utf-8")
+
+    assert result.success is True
+    assert validation_calls["count"] == 2
+    assert not (run_dir / "GAPS.md").exists()
+    assert "Status: completed" in completion_content
+    assert "Verdict: pass" in verification_content

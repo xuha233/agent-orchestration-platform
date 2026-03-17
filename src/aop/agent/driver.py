@@ -148,6 +148,7 @@ class AgentDriver:
         self.completion_gate = CompletionGate()
         self.latest_verification_report: VerificationReport | None = None
         self.latest_gap_closure_plan: GapClosurePlan | None = None
+        self.repair_attempts = 0
 
         # 初始化两阶段审查器
         self.reviewer = TwoStageReviewer()
@@ -321,6 +322,7 @@ class AgentDriver:
                     self.context.state = SprintState.VALIDATED
                     self.persistence.save(self.context)  # 增量保存
                     self._write_verification_artifact()
+                    self._run_gap_closure_cycle()
 
                 # 阶段6: 学习提取
                 if self.config.auto_learn:
@@ -481,6 +483,7 @@ class AgentDriver:
             self.context.state = SprintState.VALIDATED
             self.persistence.save(self.context)
             self._write_verification_artifact()
+            self._run_gap_closure_cycle()
 
             if self.config.auto_learn:
                 return self._continue_from_learning()
@@ -934,6 +937,7 @@ class AgentDriver:
 
         self.latest_verification_report = None
         self.latest_gap_closure_plan = None
+        self.repair_attempts = 0
         self.workflow_run = WorkflowRun(
             run_id=self.context.sprint_id,
             original_input=self.context.original_input,
@@ -982,6 +986,9 @@ class AgentDriver:
                 self.context.sprint_id,
                 self.latest_gap_closure_plan,
             )
+        else:
+            self.latest_gap_closure_plan = None
+            self.workflow_artifacts.clear_gap_closure(self.context.sprint_id)
 
     def _write_learnings_artifact(self):
         """生成并写入 LEARNINGS.md。"""
@@ -1073,16 +1080,7 @@ class AgentDriver:
         gaps = []
         evidence = []
         checks = []
-
-        for result in self.context.execution_results or []:
-            task_id = result.get("task_id", "unknown-task")
-            state = result.get("state", "unknown")
-            success = result.get("success", False)
-            evidence.append(f"{task_id}: state={state}, success={success}")
-            if success:
-                truths.append(f"{task_id} executed successfully")
-            else:
-                gaps.append(f"{task_id} failed during execution")
+        verdict_by_hypothesis: Dict[str, str] = {}
 
         validation_results = getattr(self.context, "validation_results", []) or []
         for validation in validation_results:
@@ -1091,6 +1089,7 @@ class AgentDriver:
             )
             hypothesis_id = getattr(validation, "hypothesis_id", "unknown")
             reasoning = getattr(validation, "reasoning", "")
+            verdict_by_hypothesis[hypothesis_id] = verdict
 
             checks.append(
                 VerificationCheck(
@@ -1104,6 +1103,21 @@ class AgentDriver:
                 truths.append(f"{hypothesis_id} validated")
             elif verdict in {"refuted", "needs_more_info", "inconclusive"}:
                 gaps.append(f"{hypothesis_id} verification verdict: {verdict}")
+
+        for result in self.context.execution_results or []:
+            task_id = result.get("task_id", "unknown-task")
+            hypothesis_id = result.get("hypothesis_id", "unknown")
+            state = result.get("state", "unknown")
+            success = result.get("success", False)
+            evidence.append(
+                f"{task_id}: hypothesis={hypothesis_id}, state={state}, success={success}"
+            )
+            if success:
+                truths.append(f"{task_id} executed successfully")
+            elif verdict_by_hypothesis.get(hypothesis_id) == "validated":
+                truths.append(f"{task_id} failure was superseded by a validated repair.")
+            else:
+                gaps.append(f"{task_id} failed during execution")
 
         verdict = "pass" if not gaps else "partial"
         summary = "Verification passed with no recorded gaps." if not gaps else (
@@ -1166,6 +1180,161 @@ class AgentDriver:
                 "Re-run verification after targeted repair tasks complete.",
             ],
         )
+
+    def _run_gap_closure_cycle(self):
+        """Run one bounded repair wave when verification leaves structured gaps."""
+        if not self.context or not self.config.auto_execute:
+            return
+        if self.latest_gap_closure_plan is None:
+            return
+        if not self.latest_gap_closure_plan.repair_tasks:
+            return
+        if self.repair_attempts >= 1:
+            return
+
+        self.repair_attempts += 1
+        self._report_progress("gap_closing", "执行有边界的修复任务中...")
+        self._update_workflow_phase(WorkflowPhase.GAP_CLOSE)
+
+        repair_results = self._execute_workflow_tasks(self.latest_gap_closure_plan.repair_tasks)
+        self.context.execution_results.extend(repair_results)
+        self.persistence.save(self.context)
+        self.workflow_artifacts.write_execution(
+            self.context.sprint_id,
+            self.context.execution_results,
+        )
+
+        self._report_progress("revalidating", "修复后重新验证中...")
+        self._auto_validate(self.context.hypotheses, self.context.execution_results)
+        self.persistence.save(self.context)
+        self._write_verification_artifact()
+
+    def _execute_workflow_tasks(self, tasks: List[WorkflowTask]) -> List[Dict[str, Any]]:
+        """Execute workflow-native tasks for repair waves."""
+        if self._orchestrator and self._orchestrator.supports(
+            self._get_capability("task_execution")
+        ):
+            return self._execute_workflow_tasks_with_orchestrator(tasks)
+        return self._execute_workflow_tasks_with_engine(tasks)
+
+    def _execute_workflow_tasks_with_orchestrator(
+        self,
+        tasks: List[WorkflowTask],
+    ) -> List[Dict[str, Any]]:
+        """Execute workflow-native tasks through the orchestrator."""
+        results: List[Dict[str, Any]] = []
+
+        for task in tasks:
+            prompt = self._build_workflow_task_prompt(task)
+            try:
+                response = self._orchestrator.execute(
+                    prompt=prompt,
+                    repo_root=str(self.storage_path),
+                )
+                success = response.finish_reason == "stop"
+                results.append(
+                    {
+                        "task_id": task.task_id,
+                        "hypothesis_id": task.hypothesis_id,
+                        "success": success,
+                        "state": "completed" if success else "failed",
+                        "provider_results": {
+                            "orchestrator": {
+                                "success": success,
+                                "output": response.content,
+                            }
+                        },
+                        "duration_seconds": 0,
+                        "errors": [] if success else [response.finish_reason],
+                        "repair_wave": True,
+                    }
+                )
+            except Exception as exc:
+                results.append(
+                    {
+                        "task_id": task.task_id,
+                        "hypothesis_id": task.hypothesis_id,
+                        "success": False,
+                        "state": "failed",
+                        "errors": [str(exc)],
+                        "repair_wave": True,
+                    }
+                )
+
+        return results
+
+    def _execute_workflow_tasks_with_engine(
+        self,
+        tasks: List[WorkflowTask],
+    ) -> List[Dict[str, Any]]:
+        """Execute workflow-native tasks through the legacy execution engine."""
+        engine = ExecutionEngine(
+            providers=self.config.providers,
+            default_timeout=self.config.default_timeout,
+        )
+        results: List[Dict[str, Any]] = []
+
+        for task in tasks:
+            prompt = self._build_workflow_task_prompt(task)
+            try:
+                exec_result = engine.execute(
+                    prompt=prompt,
+                    repo_root=str(self.storage_path),
+                )
+                results.append(
+                    {
+                        "task_id": task.task_id,
+                        "hypothesis_id": task.hypothesis_id,
+                        "success": exec_result.success,
+                        "state": exec_result.terminal_state.value,
+                        "provider_results": {
+                            pid: {
+                                "success": result.success,
+                                "output": result.output if hasattr(result, "output") else str(result),
+                            }
+                            for pid, result in exec_result.provider_results.items()
+                        },
+                        "duration_seconds": exec_result.duration_seconds,
+                        "errors": exec_result.errors,
+                        "repair_wave": True,
+                    }
+                )
+            except Exception as exc:
+                results.append(
+                    {
+                        "task_id": task.task_id,
+                        "hypothesis_id": task.hypothesis_id,
+                        "success": False,
+                        "state": "failed",
+                        "errors": [str(exc)],
+                        "repair_wave": True,
+                    }
+                )
+
+        return results
+
+    def _build_workflow_task_prompt(self, task: WorkflowTask) -> str:
+        """Build a bounded execution prompt for workflow-native tasks."""
+        verification_steps = "\n".join(
+            f"- {step}" for step in task.verification_steps
+        ) or "- None"
+        return f"""Task: {task.title}
+
+Objective:
+{task.objective or task.description or task.title}
+
+Expected output:
+{task.output_format or 'Provide concrete execution evidence.'}
+
+Tool guidance:
+{task.tools_guidance or 'Use the available execution tools carefully.'}
+
+Boundaries:
+{task.boundaries or 'Stay within the scoped task.'}
+
+Verification steps:
+{verification_steps}
+"""
 
     def _get_hypothesis_id(self, hypothesis: Any, index: int) -> str:
         if hasattr(hypothesis, "id") and getattr(hypothesis, "id"):

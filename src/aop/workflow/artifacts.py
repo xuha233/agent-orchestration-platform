@@ -252,6 +252,14 @@ class WorkflowArtifactManager:
         lines.extend(self._format_bullets(plan.next_verification_steps))
         return self._write_markdown(run_dir / "GAPS.md", lines)
 
+    def clear_gap_closure(self, run_id: str) -> None:
+        """Remove stale gap artifacts once verification fully passes."""
+        run_dir = self.get_run_dir(run_id)
+        for filename in ("gap_closure.json", "GAPS.md"):
+            path = run_dir / filename
+            if path.exists():
+                path.unlink()
+
     def write_learnings(self, run_id: str, learnings: List[Dict[str, Any]]) -> Path:
         """Persist learnings for the run."""
         run_dir = self.get_run_dir(run_id)

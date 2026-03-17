@@ -428,6 +428,13 @@ The first implementation step in this phase should keep the loop intentionally l
 
 Only after these artifacts are stable should AOP move to automatic targeted re-execution.
 
+The first automatic execution policy should stay conservative:
+
+- allow at most one repair wave per run
+- execute only the generated repair tasks
+- immediately re-run verification
+- if the gap still remains, stop and leave a clear follow-up artifact instead of looping
+
 ### Phase 4: Unify orchestrator ownership
 
 Move execution semantics under the new workflow engine and shrink direct workflow logic in `AgentDriver`.
