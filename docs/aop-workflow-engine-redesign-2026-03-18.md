@@ -416,8 +416,17 @@ Add repair planning and targeted re-execution driven by verification gaps.
 Deliverables:
 
 - `GAPS.md`
+- `gap_closure.json`
 - bounded repair cycles
 - re-verification step
+
+The first implementation step in this phase should keep the loop intentionally light:
+
+- capture verification gaps as structured items
+- generate a bounded repair plan with explicit objectives and verification targets
+- persist the repair plan for the next execution wave
+
+Only after these artifacts are stable should AOP move to automatic targeted re-execution.
 
 ### Phase 4: Unify orchestrator ownership
 

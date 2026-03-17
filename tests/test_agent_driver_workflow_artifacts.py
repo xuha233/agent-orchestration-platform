@@ -94,3 +94,66 @@ def test_agent_driver_accepts_string_storage_path(tmp_path):
     )
 
     assert str(driver.storage_path) == str(tmp_path)
+
+
+def test_agent_driver_writes_gap_closure_when_verification_has_gaps(tmp_path):
+    config = AgentDriverConfig(
+        storage_path=tmp_path,
+        auto_execute=True,
+        auto_validate=True,
+        auto_learn=True,
+    )
+    driver = AgentDriver(config=config)
+
+    driver._clarify_requirement = lambda vague_input, callback: ClarifiedRequirement(
+        summary="Build a login MVP",
+        core_features=["Login form"],
+        success_criteria=["Users can log in successfully"],
+    )
+    driver._generate_hypotheses = lambda requirement: [
+        {
+            "hypothesis_id": "H-001",
+            "statement": "Login flow works",
+            "validation_method": "Run smoke test",
+            "success_criteria": ["Smoke test passes"],
+        }
+    ]
+    driver._execute_tasks = lambda: [
+        {
+            "task_id": "task-1",
+            "hypothesis_id": "H-001",
+            "success": False,
+            "state": "failed",
+            "errors": ["Smoke test failed"],
+        }
+    ]
+
+    def fake_auto_validate(hypotheses, results):
+        driver.context.validation_results = [
+            ValidationResult(
+                hypothesis_id="H-001",
+                state="failed",
+                verdict=ValidationVerdict.REFUTED,
+                reasoning="Smoke test failed.",
+            )
+        ]
+
+    driver._auto_validate = fake_auto_validate
+    driver._extract_learnings = lambda results: [
+        ExtractedLearning(
+            phase="verify",
+            insights=["Need targeted repair plan."],
+        )
+    ]
+
+    result = driver.run_from_vague_description("Build a login MVP")
+
+    run_dir = tmp_path / ".aop" / "runs" / result.sprint_id
+    assert result.success is False
+    assert (run_dir / "GAPS.md").exists()
+
+    gaps_content = (run_dir / "GAPS.md").read_text(encoding="utf-8")
+    completion_content = (run_dir / "COMPLETION.md").read_text(encoding="utf-8")
+
+    assert "repair-1" in gaps_content
+    assert "needs_follow_up" in completion_content

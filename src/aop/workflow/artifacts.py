@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
 from .checks import CompletionDecision, PlanCheckReport
-from .types import VerificationReport, WorkflowPlan, WorkflowRun
+from .types import GapClosurePlan, VerificationReport, WorkflowPlan, WorkflowRun
 
 
 class WorkflowArtifactManager:
@@ -205,6 +205,52 @@ class WorkflowArtifactManager:
             lines.append("- No checks recorded")
 
         return self._write_markdown(run_dir / "VERIFICATION.md", lines)
+
+    def write_gap_closure(self, run_id: str, plan: GapClosurePlan) -> Path:
+        """Persist the gap-closure repair plan."""
+        run_dir = self.get_run_dir(run_id)
+        self._write_json(run_dir / "gap_closure.json", asdict(plan))
+
+        lines = [
+            "# GAPS",
+            "",
+            "## Summary",
+            "",
+            plan.summary or "N/A",
+            "",
+            "## Gap Items",
+            "",
+        ]
+
+        if plan.gaps:
+            for gap in plan.gaps:
+                lines.append(f"### {gap.gap_id}: {gap.title}")
+                lines.append("")
+                lines.append(gap.description or "N/A")
+                lines.append("")
+                lines.append(f"- Source: {gap.source or 'N/A'}")
+                lines.append(f"- Severity: {gap.severity}")
+                lines.append(f"- Suggested action: {gap.suggested_action or 'N/A'}")
+                lines.append(f"- Verification target: {gap.verification_target or 'N/A'}")
+                lines.append("")
+        else:
+            lines.extend(["- No structured gaps recorded", ""])
+
+        lines.extend(["## Repair Tasks", ""])
+        if plan.repair_tasks:
+            for task in plan.repair_tasks:
+                lines.append(f"- {task.task_id}: {task.title}")
+                lines.append(f"  - Objective: {task.objective or 'N/A'}")
+                lines.append(f"  - Boundaries: {task.boundaries or 'N/A'}")
+                lines.append(f"  - Verification: {', '.join(task.verification_steps) if task.verification_steps else 'None'}")
+        else:
+            lines.append("- No repair tasks generated")
+
+        lines.extend(["", "## Stop Conditions", ""])
+        lines.extend(self._format_bullets(plan.stop_conditions))
+        lines.extend(["", "## Next Verification Steps", ""])
+        lines.extend(self._format_bullets(plan.next_verification_steps))
+        return self._write_markdown(run_dir / "GAPS.md", lines)
 
     def write_learnings(self, run_id: str, learnings: List[Dict[str, Any]]) -> Path:
         """Persist learnings for the run."""

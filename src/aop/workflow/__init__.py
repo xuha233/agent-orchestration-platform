@@ -15,6 +15,8 @@ from .persistence import PersistenceManager, get_persistence_manager
 from .artifacts import WorkflowArtifactManager
 from .checks import CompletionDecision, CompletionGate, PlanCheckIssue, PlanCheckReport, WorkflowPlanChecker
 from .types import (
+    GapClosurePlan,
+    GapItem,
     VerificationCheck,
     VerificationReport,
     WorkflowPhase,
@@ -35,6 +37,8 @@ __all__ = [
     "PlanCheckReport",
     "CompletionGate",
     "CompletionDecision",
+    "GapItem",
+    "GapClosurePlan",
     "WorkflowPhase",
     "WorkflowRun",
     "WorkflowPlan",

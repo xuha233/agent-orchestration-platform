@@ -34,6 +34,8 @@ from ..state import StateManager
 from ..review import TwoStageReviewer
 from ..workflow import (
     CompletionGate,
+    GapClosurePlan,
+    GapItem,
     VerificationCheck,
     VerificationReport,
     WorkflowArtifactManager,
@@ -145,6 +147,7 @@ class AgentDriver:
         self.plan_checker = WorkflowPlanChecker()
         self.completion_gate = CompletionGate()
         self.latest_verification_report: VerificationReport | None = None
+        self.latest_gap_closure_plan: GapClosurePlan | None = None
 
         # 初始化两阶段审查器
         self.reviewer = TwoStageReviewer()
@@ -930,6 +933,7 @@ class AgentDriver:
             return
 
         self.latest_verification_report = None
+        self.latest_gap_closure_plan = None
         self.workflow_run = WorkflowRun(
             run_id=self.context.sprint_id,
             original_input=self.context.original_input,
@@ -972,6 +976,12 @@ class AgentDriver:
         report = self._build_verification_report()
         self.latest_verification_report = report
         self.workflow_artifacts.write_verification(self.context.sprint_id, report)
+        if report.gaps:
+            self.latest_gap_closure_plan = self._build_gap_closure_plan(report)
+            self.workflow_artifacts.write_gap_closure(
+                self.context.sprint_id,
+                self.latest_gap_closure_plan,
+            )
 
     def _write_learnings_artifact(self):
         """生成并写入 LEARNINGS.md。"""
@@ -1107,6 +1117,54 @@ class AgentDriver:
             gaps=gaps,
             evidence=evidence,
             checks=checks,
+        )
+
+    def _build_gap_closure_plan(
+        self,
+        report: VerificationReport,
+    ) -> GapClosurePlan:
+        """将验证缺口转换为有边界的修复计划。"""
+        gap_items: List[GapItem] = []
+        repair_tasks: List[WorkflowTask] = []
+
+        for index, gap in enumerate(report.gaps, start=1):
+            gap_id = f"gap-{index}"
+            gap_item = GapItem(
+                gap_id=gap_id,
+                title=f"Resolve {gap_id}",
+                description=gap,
+                source="verification",
+                severity="important",
+                suggested_action="Investigate the failing requirement and patch only the scoped issue.",
+                verification_target=gap,
+            )
+            gap_items.append(gap_item)
+            repair_tasks.append(
+                WorkflowTask(
+                    task_id=f"repair-{index}",
+                    title=gap_item.title,
+                    description=gap_item.description,
+                    verification_steps=[gap_item.verification_target],
+                    objective=gap_item.suggested_action,
+                    output_format="Minimal code or artifact update plus evidence of the fix.",
+                    tools_guidance="Focus only on the failing path and gather concrete verification evidence.",
+                    boundaries="Avoid unrelated refactors and stop after the scoped gap is addressed.",
+                    effort_budget=5,
+                )
+            )
+
+        return GapClosurePlan(
+            summary=f"Generated {len(gap_items)} repair task(s) from verification gaps.",
+            gaps=gap_items,
+            repair_tasks=repair_tasks,
+            stop_conditions=[
+                "Stop if the same gap remains after one targeted repair attempt.",
+                "Stop if fixing the gap requires broader scope than the current run allows.",
+            ],
+            next_verification_steps=[
+                *[gap.verification_target for gap in gap_items if gap.verification_target],
+                "Re-run verification after targeted repair tasks complete.",
+            ],
         )
 
     def _get_hypothesis_id(self, hypothesis: Any, index: int) -> str:

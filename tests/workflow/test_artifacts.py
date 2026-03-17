@@ -2,6 +2,8 @@
 
 from aop.workflow import (
     CompletionDecision,
+    GapClosurePlan,
+    GapItem,
     PlanCheckReport,
     VerificationCheck,
     VerificationReport,
@@ -81,6 +83,20 @@ def test_workflow_artifact_manager_writes_run_plan_and_verification(tmp_path):
             summary="Completion gate passed.",
         ),
     )
+    manager.write_gap_closure(
+        run.run_id,
+        GapClosurePlan(
+            summary="One follow-up gap remains.",
+            gaps=[
+                GapItem(
+                    gap_id="gap-1",
+                    title="Fix login failure",
+                    description="Login smoke test failed.",
+                    verification_target="Smoke test passes",
+                )
+            ],
+        ),
+    )
 
     run_dir = tmp_path / ".aop" / "runs" / "run-001"
     assert (run_dir / "RUN.md").exists()
@@ -88,6 +104,7 @@ def test_workflow_artifact_manager_writes_run_plan_and_verification(tmp_path):
     assert (run_dir / "PLAN_CHECK.md").exists()
     assert (run_dir / "EXECUTION.md").exists()
     assert (run_dir / "VERIFICATION.md").exists()
+    assert (run_dir / "GAPS.md").exists()
     assert (run_dir / "COMPLETION.md").exists()
     assert (run_dir / "SUMMARY.md").exists()
 

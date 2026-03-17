@@ -71,6 +71,30 @@ class VerificationReport:
 
 
 @dataclass
+class GapItem:
+    """A concrete gap discovered during verification."""
+
+    gap_id: str
+    title: str
+    description: str = ""
+    source: str = ""
+    severity: str = "important"
+    suggested_action: str = ""
+    verification_target: str = ""
+
+
+@dataclass
+class GapClosurePlan:
+    """A bounded repair plan derived from verification gaps."""
+
+    summary: str
+    gaps: List[GapItem] = field(default_factory=list)
+    repair_tasks: List[WorkflowTask] = field(default_factory=list)
+    stop_conditions: List[str] = field(default_factory=list)
+    next_verification_steps: List[str] = field(default_factory=list)
+
+
+@dataclass
 class WorkflowRun:
     """Top-level workflow run metadata."""
 
