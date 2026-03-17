@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/providers-5%20built--in-orange" alt="Providers: 5 built-in" />
   <img src="https://img.shields.io/badge/platform-windows%20%7C%20macos%20%7C%20linux-lightgrey" alt="Platform: Windows | macOS | Linux" />
   <img src="https://img.shields.io/badge/version-v0.5.0-blueviolet" alt="Version: v0.5.0" />
-  <img src="https://img.shields.io/badge/tests-288%20passed-brightgreen" alt="Tests: 288 passed" />
+  <img src="https://img.shields.io/badge/tests-576%20passed-brightgreen" alt="Tests: 576 passed" />
 </p>
 
 <h1 align="center">AOP - MVP Generator</h1>
@@ -319,7 +319,7 @@ class MyCustomSkill(SkillBase):
                   │
 ┌─────────────────┴───────────────────────┐
 │         Orchestration Layer              │
-│  Claude-Code | OpenCode | OpenClaw      │
+│ Claude-Code | Codex | OpenCode | OpenClaw │
 │  Multi-Provider Parallel Dispatch       │
 └─────────────────┬───────────────────────┘
                   │
@@ -344,7 +344,7 @@ class MyCustomSkill(SkillBase):
 | TaskScheduler | 7 | ✅ |
 | SprintPersistence | 4 | ✅ |
 
-**Total: 288 tests passing**
+**Total: 576 tests passing**
 
 ---
 

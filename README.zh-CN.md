@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/providers-5%20built--in-orange" alt="Providers: 5 built-in" />
   <img src="https://img.shields.io/badge/platform-windows%20%7C%20macos%20%7C%20linux-lightgrey" alt="Platform: Windows | macOS | Linux" />
   <img src="https://img.shields.io/badge/version-v0.5.0-blueviolet" alt="Version: v0.5.0" />
-  <img src="https://img.shields.io/badge/tests-288%20passed-brightgreen" alt="Tests: 288 passed" />
+  <img src="https://img.shields.io/badge/tests-576%20passed-brightgreen" alt="Tests: 576 passed" />
 </p>
 
 <h1 align="center">AOP - MVP 生成器</h1>
@@ -253,7 +253,7 @@ H-003: 直接消息增加信任和转化率
                   │
 ┌─────────────────┴───────────────────────┐
 │         编排层                           │
-│  Claude-Code | OpenCode | OpenClaw      │
+│ Claude-Code | Codex | OpenCode | OpenClaw │
 │  多 Provider 并行调度                   │
 └─────────────────┬───────────────────────┘
                   │
@@ -278,7 +278,7 @@ H-003: 直接消息增加信任和转化率
 | TaskScheduler | 7 | ✅ |
 | SprintPersistence | 4 | ✅ |
 
-**总计：288 个测试通过**
+**总计：576 个测试通过**
 
 ---
 

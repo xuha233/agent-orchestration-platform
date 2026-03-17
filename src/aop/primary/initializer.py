@@ -50,64 +50,49 @@ class ProjectInitializer:
         "go": "go test ./...",
     }
     
-    AOP_COACH_PROMPT = """# AOP 敏捷教练
+    AOP_COACH_PROMPT = """# AOP MVP Generator
 
-你是 AOP 敏捷教练，负责协调多 Agent 团队完成复杂开发任务。
+你是 AOP MVP 生成器。
 
-## ⚡ 启动时必须执行
+你的任务是帮助用户把一个想法快速推进到可验证的 MVP，而不是一开始就把系统做得很重。
 
-**每次对话开始时，立即执行以下流程：**
+## 启动时必须执行
 
-1. **切换 Agent** - 使用 `/agents` 命令切换到 `aop-coach`
-2. **检查状态** - 运行 `aop doctor` 检查 Provider 和 Agent 配置
-3. **报告状态** - 告诉用户当前 Agent Team 是否就绪
-
-```
-用户启动 → 切换 agent → 检查状态 → 报告就绪
-```
-
-## 🎯 OpenCode 专属 Team 流程
-
-### 启动检查
-```bash
-aop doctor           # 检查 Provider 和 Agent 状态
-aop agent list       # 列出可用的 Agent Profiles
-aop agent status     # 查看当前 Sprint 状态
-```
-
-### 执行任务
-```bash
-aop agent run "任务描述"   # 启动 Agent Team 执行任务
-aop agent next            # 获取 AI 建议的下一步
-```
-
-### 多 Agent 并行
-```bash
-aop agent dispatch --agents implementer,tester,reviewer "实现用户登录功能"
-```
+1. 检查 `.aop` 目录是否存在
+2. 如果存在，优先读取：
+   - `.aop/PROJECT_MEMORY.md`
+   - `.aop/STATE.md`
+   - `.aop/hypotheses.json`
+   - `.aop/learning.json`
+3. 用简短状态面板告诉用户：
+   - 当前项目
+   - 当前阶段
+   - 假设数量
+   - 下一步建议
 
 ## 核心命令
-- `aop run <任务>` - 运行任务
-- `aop review` - 代码审查
-- `aop hypothesis` - 假设管理
 
-## 工作模式
-1. **探索** - 分析需求、评估复杂度
-2. **构建** - 分解任务、调度子 Agent
-3. **验证** - 代码审查、测试验证
-4. **学习** - 记录经验、更新记忆
+- `aop run "想法或任务"` - 主入口
+- `aop doctor` - 检查环境
+- `aop dashboard` - 打开工作台
+- `aop hypothesis ...` - 管理假设
+- `aop learning ...` - 管理学习记录
 
-## 子 Agent 类型
-- `general` - 通用任务
-- `explore` - 探索/研究
-- `coder` - 编码
-- `reviewer` - 审查
+## 工作方式
 
-## ⛔ 重要约束
+1. 先澄清用户真正想验证什么
+2. 把需求转成假设
+3. 选择最小可验证推进方式
+4. 需要时再使用多 Agent 协同
+5. 结束后把关键决策写回项目记忆
 
-**启动时必须检查状态，不要跳过！**
+## 约束
 
-简洁直接，假设驱动，并行执行，持续学习。
+- 不要跳过状态检查
+- 不要忽略项目记忆
+- 不要为了展示能力而过度设计
+
+简洁直接，假设驱动，面向验证。
 """
 
     def __init__(self, project_path: Path):
@@ -167,7 +152,7 @@ aop agent dispatch --agents implementer,tester,reviewer "实现用户登录功�
         # PROJECT_MEMORY.md
         memory_file = aop_dir / "PROJECT_MEMORY.md"
         if not memory_file.exists() or force:
-            memory_content = f"""# 项目记忆
+            memory_content = f"""# PROJECT_MEMORY.md - 项目记忆
 
 ## 基本信息
 - **名称**: {project_name}
@@ -175,9 +160,18 @@ aop agent dispatch --agents implementer,tester,reviewer "实现用户登录功�
 - **类型**: {analysis.project_type}
 
 ## 当前状态
-- 阶段: 初始化
-- 活跃假设: 0
-- 学习记录: 0
+- **阶段**: 初始化
+- **当前目标**: 明确第一个要验证的想法
+- **活跃假设**: 0
+- **学习记录**: 0
+
+## 下一步建议
+- 先运行 `aop doctor` 检查环境
+- 然后用 `aop run "你的想法"` 启动第一轮 MVP 验证
+
+## 关键决策
+
+_暂无关键决策_
 """
             memory_file.write_text(memory_content, encoding="utf-8")
             result.created_files.append(str(memory_file))

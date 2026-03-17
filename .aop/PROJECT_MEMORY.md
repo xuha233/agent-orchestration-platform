@@ -3,112 +3,86 @@
 ## 项目概况
 
 **名称:** Agent Orchestration Platform (AOP)
-**版本:** v0.4.0
-**描述:** 统一的多 Agent 编排平台，融合 MCO 执行引擎 + AAIF 工作流方法论 + Anthropic 多 Agent 最佳实践
+**版本:** v0.5.0
+**当前定位:** MVP Generator for idea validation
+**一句话描述:** 帮助非技术创始人、产品经理和独立开发者把想法快速转成可验证的 MVP 原型，同时保留 AOP 的多 Agent 编排、记忆和工作台能力。
 
-## 核心功能
+## 当前真实状态
 
 ### 已完成 ✅
-- 智能体核心系统（扫描/审查/清理/报告）
-- 工具层（Read/Glob/Grep等）
-- 中枢抽象层（OrchestratorClient）
-- Dashboard Web 界面
-- CLI 命令（doctor/run/review/hypothesis）
-- 多 Provider 支持（Claude/OpenCode/OpenClaw/API）
-- 动态超时延长机制
-- 开发者控制台
-- 会话管理
-- **多 Agent 并行调度框架**
+- CLI 主流程已成型：`aop run`、`aop doctor`、`aop dashboard`、`aop hypothesis`、`aop learning`
+- Dashboard 主工作台已可用：聊天入口、快捷操作、项目记忆、工作区管理、设置页
+- 多中枢抽象已落地：Claude Code、Codex、OpenCode、OpenClaw、API
+- Primary Agent 已支持 Claude Code、OpenCode、Codex
+- 会话隔离、自动记忆、STATE.md 跨会话记忆、mem0 实验性记忆已接入
+- Orchestrator 已集成预检、动态超时、LLM-as-Judge、错误恢复、知识库、任务调度
+- OpenCode 初始化、工作区自动初始化、`aop project add` 等工程化能力已落地
+- 当前测试主干健康：`576 passed`
 
 ### 进行中 🔄
-- Dashboard 功能完善
-- Agent 团队状态展示
+- 收口产品定位与项目记忆，统一 `README / .aop / 初始化模板 / 提示词`
+- 继续打磨 Dashboard 到“可连续使用”的 MVP 工作台体验
+- 继续补强 Primary Agent 与 AgentDriver 的联动闭环
 
-### 待完成 ⏳
-- 完整集成测试
-- 性能优化
-- 文档完善
-
-## 技术栈
-
-- **语言:** Python 3.8+
-- **CLI:** Click
-- **Web:** Streamlit
-- **测试:** pytest
-- **中枢:** Claude Code, OpenCode, OpenClaw
+### 下一阶段 ⏭
+- 围绕 MVP Generator 主线补足端到端工作流
+- 把项目记忆、STATE、自动初始化、Dashboard 首页状态进一步统一
+- 补更高层的集成测试与产品演示路径
 
 ## 关键决策
 
-### 2026-03-01: 采用 AOP 框架
-- 原因：更灵活，支持假设驱动，适合快速迭代
-- 替代：固定四人团队框架
+### 2026-03-01 到 2026-03-07：打稳 AOP 基础编排层
+- 完成多 Agent 编排、动态超时、LLM 评估、错误恢复、知识库、项目评估
+- 为后续产品形态提供底层能力
 
-### 2026-03-03: 动态超时延长
-- 原因：子 Agent 执行复杂任务时经常超时
-- 方案：TimeoutManager + ExtensionProtocol
+### 2026-03-05 到 2026-03-07：Dashboard 形成主工作台
+- 建立聊天入口、快捷命令、项目记忆、工作区、设置等核心界面
+- 解决 Windows subprocess、流式输出、session 隔离等关键问题
 
-### 2026-03-05: 中枢抽象层
-- 原因：统一不同 Agent 的调用方式
-- 方案：OrchestratorClient 抽象基类 + 多适配器
+### 2026-03-11 到 2026-03-16：产品叙事转向 MVP Generator
+- README 和对外描述从“通用多 Agent 编排平台”收束为“想法验证与 MVP 生成器”
+- 保留编排内核，但把用户入口聚焦到 `idea -> hypothesis -> prototype -> validation`
 
-### 2026-03-08: Team 功能 Bug 发现与解决
-- **问题**: TeamCreate 导致 Agent 使用 `in-process` 后端，进入 idle 模式永远不执行
-- **解决**: 放弃 TeamCreate，使用原生 Task + `subagent_type="general-purpose"`
-- **发现者**: Claude Code 自主 debug
+### 2026-03-13 到 2026-03-16：Codex 接入完成
+- Codex 已接入 orchestrator、primary agent、dashboard
+- 当前支持 Claude Code / Codex / OpenCode 多种主要入口
 
-### 2026-03-08: 多 Agent 架构优化
-- **参考**: Anthropic "How we built our multi-agent research system"
-- **改进**:
-  - Orchestrator-Worker 模式
-  - 任务复杂度评估机制
-  - 详细委派指导（目标/输出格式/工具/边界）
-  - 并行化策略
-  - AAIF 循环整合
+## 当前架构认知
 
-## 架构设计
+### 对外产品层
+- MVP 生成
+- 假设驱动验证
+- 项目记忆与学习沉淀
+- Dashboard 工作台
 
-### Orchestrator-Worker 模式
-
-```
-Lead Agent (Orchestrator)
-├── 分析任务复杂度
-├── 分解任务
-├── 并行委派
-└── 汇总结果
-
-子 Agent (Workers)
-├── Developer Agent
-├── Reviewer Agent
-├── Tester Agent
-└── Researcher Agent
-```
-
-### 任务复杂度评估
-
-| 复杂度 | 子 Agent 数量 | 工具调用次数 |
-|--------|--------------|-------------|
-| 简单 | 1 | 3-10 |
-| 中等 | 2-4 | 10-15 |
-| 复杂 | 5-10+ | 15+ |
+### 内部执行层
+- Primary Agent
+- Orchestrator 抽象层
+- 多 Provider / 多中枢调度
+- STATE / memory / mem0 记忆系统
 
 ## 重要文件
 
+- `README.md` - 英文主说明，当前产品定位以此为准
+- `README.zh-CN.md` - 中文说明
+- `src/aop/primary/` - Primary Agent 实现（Claude/OpenCode/Codex/OpenClaw）
 - `src/aop/orchestrator/` - 中枢抽象层
-- `src/aop/agent/` - Agent 系统
-- `src/aop/dashboard/` - Web 界面
-- `src/aop/cli/` - CLI 命令
-- `.aop/` - 项目记忆和配置
+- `src/aop/dashboard/app.py` - Dashboard 主入口
+- `src/aop/memory/` - 记忆加载与 mem0 集成
+- `src/aop/state/` - STATE.md 跨会话记忆
+- `.aop/` - 当前仓库自己的项目记忆与状态
 
-## 常用命令
+## 当前已知不一致点
 
-```bash
-aop doctor                    # 检查环境
-aop orchestrator doctor       # 检查中枢状态
-aop run --task \"任务\"        # 运行任务
-aop review -p \"提示\"         # 代码审查
-aop hypothesis create \"陈述\" # 创建假设
-aop dashboard                 # 启动 Web 界面
-```
+- 历史文档里仍残留一部分 `v0.4.0` / 通用编排平台叙事
+- 某些初始化模板和项目记忆模板仍偏旧版敏捷教练 / 多 Agent 描述
+- README 测试数字曾落后于真实测试结果
+
+## 接手开发时的默认判断
+
+- 以 `README.md` 和当前代码实现为准，不以旧记忆为准
+- 当前主线不是继续发散做“更多抽象”，而是围绕 MVP Generator 把体验闭环做扎实
+- 修改涉及产品定位时，优先同步 README、`.aop` 记忆和初始化模板
 
 ---
 
