@@ -32,7 +32,11 @@ _logger = logging.getLogger(__name__)
 from aop.memory import build_agent_system_prompt
 from aop.session import get_session_manager
 from aop.utils.claude_config import get_claude_full_cmd, get_claude_cmd_prefix
-from aop.dashboard.workflow_views import get_latest_workflow_run, render_workflow_artifact_panel
+from aop.dashboard.home_views import (
+    render_current_iteration,
+    render_project_progress,
+    render_recent_activity,
+)
 from aop import __version__
 
 
@@ -1251,72 +1255,16 @@ def page_home():
     
     # ========== 左栏 ==========
     with left_col:
-        # === 1. 项目进度 ===
-        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">📈</span> 项目进度</div></div>""", unsafe_allow_html=True)
-        
-        workflow_run = get_latest_workflow_run(".")
-
-        if sprint:
-            st.markdown(f"**当前冲刺**: {sprint.get('original_input', '无')[:60]}")
-            st.caption(f"ID: {sprint.get('sprint_id', '-')}")
-        else:
-            st.info("暂无活跃冲刺")
-
-        if workflow_run:
-            flags = []
-            if workflow_run.has_gaps:
-                flags.append("gaps")
-            if workflow_run.has_guardrails:
-                flags.append("guardrails")
-            flag_text = f" | Flags: {', '.join(flags)}" if flags else ""
-            st.markdown(
-                f"**Workflow Run**: `{workflow_run.run_id}` | "
-                f"Status: `{workflow_run.status}` | "
-                f"Phase: `{workflow_run.current_phase}` | "
-                f"Verify: `{workflow_run.verification_verdict or '-'}`"
-                f"{flag_text}"
-            )
-
-        if h_pending > 0:
-            next_h = [h for h in hypotheses if h.get("state") == "pending"][0]
-            st.markdown(f"**下一个假设**: {next_h.get('statement', '-')[:50]}...")
-
-        st.markdown("---")
-        render_workflow_artifact_panel(project_path, workflow_run)
+        render_project_progress(project_path, sprint, hypotheses)
         
         st.markdown("---")
         
-        # === 2. 最近活动 ===
-        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">📋</span> 最近活动</div></div>""", unsafe_allow_html=True)
-        
-        activities = []
-        for h in hypotheses[:6]:
-            state = h.get("state", "pending")
-            statement = h.get("statement", "")[:30]
-            icon = "✅" if state == "validated" else "🔬" if state == "testing" else "📝"
-            state_text = "已验证" if state == "validated" else "测试中" if state == "testing" else "待处理"
-            activities.append({"icon": icon, "text": statement + "...", "state": state_text})
-        
-        if activities:
-            for act in activities:
-                st.markdown(f"""<div class="activity-item"><span class="icon">{act['icon']}</span><span class="text">{act['text']}</span><span style="color: var(--text-muted); font-size: 0.65rem;">{act['state']}</span></div>""", unsafe_allow_html=True)
-        else:
-            st.info("暂无最近活动")
+        render_recent_activity(hypotheses)
         
         st.markdown("---")
-        
-        # === 3. 当前迭代 ===
-        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">🎯</span> 当前迭代</div></div>""", unsafe_allow_html=True)
         
         memory_content = read_aop_file("PROJECT_MEMORY.md")
-        if memory_content:
-            in_progress = parse_md_section(memory_content, "进行中")
-            if in_progress:
-                st.markdown(in_progress[:350])
-            else:
-                st.info("暂无进行中的迭代目标")
-        else:
-            st.info("未找到项目记忆文件")
+        render_current_iteration(memory_content, parse_md_section)
     
     # ========== 右栏 ==========
     with right_col:
