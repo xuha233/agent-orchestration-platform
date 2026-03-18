@@ -11,7 +11,6 @@ import threading
 import re
 import sys
 import streamlit as st
-import json
 import subprocess
 from pathlib import Path
 from typing import Optional, Dict, List, Any
@@ -33,6 +32,9 @@ from aop.memory import build_agent_system_prompt
 from aop.session import get_session_manager
 from aop.utils.claude_config import get_claude_full_cmd, get_claude_cmd_prefix
 from aop.dashboard.home_views import (
+    get_project_progress_data,
+    render_home_header,
+    render_home_metrics,
     render_agent_status,
     render_current_iteration,
     render_issue_queue,
@@ -840,123 +842,6 @@ def parse_md_section(content: str, section_title: str) -> str:
 
 
 
-def get_project_progress_data(project_path: str) -> dict:
-    """获取项目进度数据
-    
-    Args:
-        project_path: 项目根目录路径
-        
-    Returns:
-        包含假设、学习、Git、测试状态的字典
-    """
-    result = {
-        "hypotheses": {"total": 0, "validated": 0, "testing": 0, "pending": 0},
-        "learnings": {"total": 0, "latest": ""},
-        "git": {"branch": "unknown", "changes": 0},
-        "tests": {"passed": 0, "total": 0}
-    }
-    
-    aop_dir = Path(project_path) / ".aop"
-    
-    # 假设数据
-    hypotheses_file = aop_dir / "hypotheses.json"
-    if hypotheses_file.exists():
-        try:
-            data = json.loads(hypotheses_file.read_text(encoding="utf-8"))
-            hypotheses = list(data.get("data", {}).values())
-            result["hypotheses"]["total"] = len(hypotheses)
-            for h in hypotheses:
-                status = h.get("state", "pending")
-                if status == "validated":
-                    result["hypotheses"]["validated"] += 1
-                elif status == "testing":
-                    result["hypotheses"]["testing"] += 1
-                else:
-                    result["hypotheses"]["pending"] += 1
-        except Exception:
-            pass
-    
-    # 学习记录
-    learning_file = aop_dir / "learning.json"
-    if learning_file.exists():
-        try:
-            data = json.loads(learning_file.read_text(encoding="utf-8"))
-            learnings = data.get("data", {}).get("records", [])
-            result["learnings"]["total"] = len(learnings)
-            if learnings:
-                insights = learnings[-1].get("insights", [])
-                if insights:
-                    result["learnings"]["latest"] = insights[-1][:50]
-        except Exception:
-            pass
-    
-    # Git 状态
-    try:
-        branch_result = subprocess.run(
-            ["git", "branch", "--show-current"],
-            cwd=project_path,
-            capture_output=True,
-            encoding='utf-8',
-            errors='replace',
-            timeout=5
-        )
-        result["git"]["branch"] = branch_result.stdout.strip() or "unknown"
-        
-        status_result = subprocess.run(
-            ["git", "status", "--porcelain"],
-            cwd=project_path,
-            capture_output=True,
-            encoding='utf-8',
-            errors='replace',
-            timeout=5
-        )
-        changes = [line for line in status_result.stdout.strip().split("\n") if line]
-        result["git"]["changes"] = len(changes)
-    except Exception:
-        pass
-    
-    # 测试状态（运行 pytest）
-    try:
-        test_result = subprocess.run(
-            ["pytest", "--collect-only", "-q"],
-            cwd=project_path,
-            capture_output=True,
-            encoding='utf-8',
-            errors='replace',
-            timeout=30
-        )
-        # 解析测试收集结果
-        output = test_result.stdout + test_result.stderr
-        import re as regex
-        # 匹配 "X tests collected" 或 "X items collected"
-        match = regex.search(r"(\d+)\s+(?:tests?|items?)\s+(?:collected|selected)", output, regex.IGNORECASE)
-        if match:
-            result["tests"]["total"] = int(match.group(1))
-        
-        # 运行测试获取通过数
-        run_result = subprocess.run(
-            ["pytest", "-q", "--tb=no", "-x"],
-            cwd=project_path,
-            capture_output=True,
-            encoding='utf-8',
-            errors='replace',
-            timeout=60
-        )
-        # 解析测试结果
-        run_output = run_result.stdout + run_result.stderr
-        # 匹配 "X passed"
-        passed_match = regex.search(r"(\d+)\s+passed", run_output)
-        if passed_match:
-            result["tests"]["passed"] = int(passed_match.group(1))
-        elif result["tests"]["total"] > 0 and run_result.returncode == 0:
-            # 如果测试全部通过，passed = total
-            result["tests"]["passed"] = result["tests"]["total"]
-    except Exception:
-        pass
-    
-    return result
-
-
 # ============ 页面组件 ============
 
 def render_sidebar():
@@ -1192,65 +1077,9 @@ def page_home():
     else:
         project_path = str(Path.home())  # 使用用户主目录，避免硬编码
     progress_data = get_project_progress_data(project_path)
-    
-    # ========== 头部 ========== 
     project_name = st.session_state.current_workspace.name if st.session_state.current_workspace else "AOP 仪表板"
-    
-    st.markdown(f"""
-    <div class="header-gradient">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div>
-                <h1 style="margin: 0; font-size: 1.35rem; color: white; font-weight: 600;">{project_name}</h1>
-                <p style="margin: 0.2rem 0 0 0; color: rgba(255,255,255,0.75); font-size: 0.75rem;">Agent 编排平台</p>
-            </div>
-            <div style="display: flex; gap: 0.4rem; align-items: center;">
-                <span class="status-badge {'status-online' if agents else 'status-offline'}">{'● ' + str(len(agents)) + ' 个 Agent' if agents else '○ 无 Agent'}</span>
-                <span class="status-badge status-info">📊 {stats['file_count']} 个文件</span>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # ========== 核心指标（4 个卡片）==========
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="label">假设验证</div>
-            <div class="value">{h_validated}/{h_total}</div>
-            <div class="progress-bar"><div class="fill" style="width: {progress_pct}%;"></div></div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        t = progress_data["tests"]
-        test_status = f"{t['passed']}/{t['total']}" if t['total'] > 0 else "无"
-        test_class = "success" if t['passed'] == t['total'] and t['total'] > 0 else "warning"
-        st.markdown(f"""
-        <div class="metric-card {test_class}">
-            <div class="label">测试通过</div>
-            <div class="value">{test_status}</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col3:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="label">代码行数</div>
-            <div class="value">{stats['line_count']:,}</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col4:
-        g = progress_data["git"]
-        git_status = "✓" if g['changes'] == 0 else f"±{g['changes']}"
-        st.markdown(f"""
-        <div class="metric-card {'success' if g['changes'] == 0 else 'warning'}">
-            <div class="label">Git: {g['branch']}</div>
-            <div class="value">{git_status}</div>
-        </div>
-        """, unsafe_allow_html=True)
+    render_home_header(project_name, agents, stats)
+    render_home_metrics(progress_data, stats, h_validated, h_total, progress_pct)
     
     # ========== 两栏布局 ==========
     left_col, right_col = st.columns([2, 1])
