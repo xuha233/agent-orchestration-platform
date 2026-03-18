@@ -131,6 +131,14 @@ class WorkflowRuntime:
         ]
         self.workflow_artifacts.write_learnings(context.sprint_id, learnings)
 
+    def write_execution(
+        self,
+        sprint_id: str,
+        execution_results: List[Dict[str, Any]],
+    ) -> None:
+        """Persist execution results for the current run."""
+        self.workflow_artifacts.write_execution(sprint_id, execution_results)
+
     def finalize(self, context: SprintContext, status: str, summary: str) -> None:
         """Persist completion and optional guardrail artifacts."""
         learnings = [

@@ -24,6 +24,7 @@ class WorkflowCoordinator:
         sync_workflow_run_metadata: Callable[[], None],
         update_workflow_phase: Callable[[WorkflowPhase, str], None],
         write_plan_artifact: Callable[[], None],
+        write_execution_artifact: Callable[[str, List[Dict[str, Any]]], None],
         write_verification_artifact: Callable[[], None],
         write_learnings_artifact: Callable[[], None],
         run_gap_closure_cycle: Callable[[], None],
@@ -42,6 +43,7 @@ class WorkflowCoordinator:
         self.sync_workflow_run_metadata = sync_workflow_run_metadata
         self.update_workflow_phase = update_workflow_phase
         self.write_plan_artifact = write_plan_artifact
+        self.write_execution_artifact = write_execution_artifact
         self.write_verification_artifact = write_verification_artifact
         self.write_learnings_artifact = write_learnings_artifact
         self.run_gap_closure_cycle = run_gap_closure_cycle
@@ -59,7 +61,6 @@ class WorkflowCoordinator:
         auto_execute: bool,
         auto_validate: bool,
         auto_learn: bool,
-        write_execution: Callable[[str, List[Dict[str, Any]]], None],
     ) -> SprintResult:
         """Run a new sprint from vague user input."""
         self.initialize_tracking()
@@ -91,7 +92,6 @@ class WorkflowCoordinator:
                     context=context,
                     auto_validate_enabled=auto_validate,
                     auto_learn_enabled=auto_learn,
-                    write_execution=write_execution,
                 )
 
             self.finalize_workflow_run("completed")
@@ -108,7 +108,6 @@ class WorkflowCoordinator:
         auto_execute: bool,
         auto_validate: bool,
         auto_learn: bool,
-        write_execution: Callable[[str, List[Dict[str, Any]]], None],
     ) -> SprintResult:
         """Run from a pre-clarified requirement."""
         if context.clarified_requirement is None:
@@ -126,7 +125,6 @@ class WorkflowCoordinator:
                 context=context,
                 auto_validate_enabled=auto_validate,
                 auto_learn_enabled=auto_learn,
-                write_execution=write_execution,
             )
 
         return self.build_result()
@@ -137,7 +135,6 @@ class WorkflowCoordinator:
         auto_execute: bool,
         auto_validate: bool,
         auto_learn: bool,
-        write_execution: Callable[[str, List[Dict[str, Any]]], None],
     ) -> SprintResult:
         """Resume a persisted sprint context."""
         self.report_progress("resuming", f"恢复冲刺 {context.sprint_id}，当前状态: {context.state.value}")
@@ -150,7 +147,6 @@ class WorkflowCoordinator:
                 auto_execute=auto_execute,
                 auto_validate=auto_validate,
                 auto_learn=auto_learn,
-                write_execution=write_execution,
             )
 
         if context.state == self.sprint_state.CLARIFIED:
@@ -166,7 +162,6 @@ class WorkflowCoordinator:
                 auto_execute=auto_execute,
                 auto_validate=auto_validate,
                 auto_learn=auto_learn,
-                write_execution=write_execution,
             )
 
         if context.state == self.sprint_state.HYPOTHESES_GENERATED:
@@ -175,7 +170,6 @@ class WorkflowCoordinator:
                 auto_execute=auto_execute,
                 auto_validate=auto_validate,
                 auto_learn=auto_learn,
-                write_execution=write_execution,
             )
 
         if context.state == self.sprint_state.TASKS_DECOMPOSED:
@@ -183,7 +177,6 @@ class WorkflowCoordinator:
                 context=context,
                 auto_validate_enabled=auto_validate,
                 auto_learn_enabled=auto_learn,
-                write_execution=write_execution,
             )
 
         if context.state == self.sprint_state.EXECUTED:
@@ -208,7 +201,6 @@ class WorkflowCoordinator:
         auto_execute: bool,
         auto_validate: bool,
         auto_learn: bool,
-        write_execution: Callable[[str, List[Dict[str, Any]]], None],
     ) -> SprintResult:
         self.report_progress("decomposing_tasks", "分解任务中...")
         context.state = self.sprint_state.TASKS_DECOMPOSED
@@ -220,7 +212,6 @@ class WorkflowCoordinator:
                 context=context,
                 auto_validate_enabled=auto_validate,
                 auto_learn_enabled=auto_learn,
-                write_execution=write_execution,
             )
         return self.build_result()
 
@@ -229,7 +220,6 @@ class WorkflowCoordinator:
         context: SprintContext,
         auto_validate_enabled: bool,
         auto_learn_enabled: bool,
-        write_execution: Callable[[str, List[Dict[str, Any]]], None],
     ) -> SprintResult:
         self.report_progress("executing", "并行执行中...")
         self.update_workflow_phase(WorkflowPhase.EXECUTE, "running")
@@ -237,7 +227,7 @@ class WorkflowCoordinator:
         context.execution_results = results
         context.state = self.sprint_state.EXECUTED
         self.save_context()
-        write_execution(context.sprint_id, results)
+        self.write_execution_artifact(context.sprint_id, results)
 
         if auto_validate_enabled:
             return self._continue_from_validation(context, auto_learn_enabled)

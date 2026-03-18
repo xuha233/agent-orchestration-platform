@@ -150,6 +150,10 @@ class AgentDriver:
             sync_workflow_run_metadata=lambda: self._sync_workflow_run_metadata(),
             update_workflow_phase=lambda phase, status="running": self._update_workflow_phase(phase, status),
             write_plan_artifact=lambda: self._write_plan_artifact(),
+            write_execution_artifact=lambda sprint_id, results: self.workflow_runtime.write_execution(
+                sprint_id,
+                results,
+            ),
             write_verification_artifact=lambda: self._write_verification_artifact(),
             write_learnings_artifact=lambda: self._write_learnings_artifact(),
             run_gap_closure_cycle=lambda: self._run_gap_closure_cycle(),
@@ -291,10 +295,6 @@ class AgentDriver:
             auto_execute=self.config.auto_execute,
             auto_validate=self.config.auto_validate,
             auto_learn=self.config.auto_learn,
-            write_execution=lambda sprint_id, results: self.workflow_runtime.workflow_artifacts.write_execution(
-                sprint_id,
-                results,
-            ),
         )
 
     def run_from_clarified_requirement(
@@ -315,10 +315,6 @@ class AgentDriver:
             auto_execute=self.config.auto_execute,
             auto_validate=self.config.auto_validate,
             auto_learn=self.config.auto_learn,
-            write_execution=lambda sprint_id, results: self.workflow_runtime.workflow_artifacts.write_execution(
-                sprint_id,
-                results,
-            ),
         )
 
     def resume_sprint(self, sprint_id: str | None = None) -> SprintResult:
@@ -349,10 +345,6 @@ class AgentDriver:
             auto_execute=self.config.auto_execute,
             auto_validate=self.config.auto_validate,
             auto_learn=self.config.auto_learn,
-            write_execution=lambda sprint_id, results: self.workflow_runtime.workflow_artifacts.write_execution(
-                sprint_id,
-                results,
-            ),
         )
 
     def _continue_from_hypotheses(self) -> SprintResult:
@@ -362,10 +354,6 @@ class AgentDriver:
             auto_execute=self.config.auto_execute,
             auto_validate=self.config.auto_validate,
             auto_learn=self.config.auto_learn,
-            write_execution=lambda sprint_id, results: self.workflow_runtime.workflow_artifacts.write_execution(
-                sprint_id,
-                results,
-            ),
         )
 
     def _continue_from_execution(self) -> SprintResult:
@@ -374,10 +362,6 @@ class AgentDriver:
             context=self.context,
             auto_validate_enabled=self.config.auto_validate,
             auto_learn_enabled=self.config.auto_learn,
-            write_execution=lambda sprint_id, results: self.workflow_runtime.workflow_artifacts.write_execution(
-                sprint_id,
-                results,
-            ),
         )
 
     def _continue_from_validation(self) -> SprintResult:
@@ -833,18 +817,6 @@ class AgentDriver:
                 status=status,
                 summary=self._generate_summary(),
             )
-
-    def _build_workflow_plan(self):
-        """根据当前上下文构建 workflow plan。"""
-        return self.workflow_runtime.build_workflow_plan(self.context)
-
-    def _build_verification_report(self):
-        """根据执行与验证结果构建验证报告。"""
-        return self.workflow_runtime.build_verification_report(self.context)
-
-    def _build_gap_closure_plan(self, report):
-        """将验证缺口转换为有边界的修复计划。"""
-        return self.workflow_runtime.build_gap_closure_plan(report)
 
     def _run_gap_closure_cycle(self):
         """Run one bounded repair wave when verification leaves structured gaps."""
