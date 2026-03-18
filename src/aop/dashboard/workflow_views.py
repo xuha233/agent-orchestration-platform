@@ -138,6 +138,40 @@ def render_follow_up_details(selected_detail: Any) -> None:
         st.markdown(f"- {line}")
 
 
+def render_run_risk_profile(selected_detail: Any) -> None:
+    """Render a top-level risk profile for the selected run."""
+    artifact_map = {artifact.title: artifact for artifact in selected_detail.artifacts}
+    plan_check = artifact_map.get("PLAN CHECK")
+    verification = artifact_map.get("VERIFICATION")
+    guardrails = artifact_map.get("GUARDRAILS")
+    completion = artifact_map.get("COMPLETION")
+
+    st.markdown("**Risk Profile**")
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Plan Critical", str((plan_check.metadata.get("critical_issues", 0) if plan_check else 0)))
+    col2.metric("Plan Important", str((plan_check.metadata.get("important_issues", 0) if plan_check else 0)))
+    col3.metric("Verify Gaps", str((verification.metadata.get("gaps", 0) if verification else 0)))
+    col4.metric("Guardrail Categories", str(len(guardrails.metadata.get("categories", [])) if guardrails else 0))
+
+    highlights: List[str] = []
+    if plan_check and plan_check.metadata.get("critical_issues", 0) > 0:
+        highlights.append("Plan has critical quality issues.")
+    if plan_check and plan_check.metadata.get("important_issues", 0) > 0:
+        highlights.append("Plan is under budget/scope pressure.")
+    if verification and verification.metadata.get("gaps", 0) > 0:
+        highlights.append("Verification still reports unresolved gaps.")
+    if guardrails and guardrails.metadata.get("categories", []):
+        highlights.append("Guardrails are actively constraining the run.")
+    if completion and completion.metadata.get("status"):
+        highlights.append(f"Completion status: {completion.metadata['status']}.")
+
+    if highlights:
+        for item in highlights[:4]:
+            st.markdown(f"- {item}")
+    else:
+        st.caption("当前 run 风险较低，未发现明显的计划或执行阻塞。")
+
+
 def render_run_comparison(selected_run: Any, recent_runs: List[Any]) -> None:
     """Render a compact comparison against the previous run."""
     previous_run = next((run for run in recent_runs if run.run_id != selected_run.run_id), None)
@@ -185,12 +219,17 @@ def render_artifact_metadata_summary(artifact: Any) -> None:
         col3.metric("Checks", str(metadata.get("verification_steps", 0)))
         col4.metric("Risks", str(metadata.get("risks", 0)))
     elif artifact.title == "PLAN CHECK":
-        col1, col2 = st.columns(2)
+        col1, col2, col3, col4 = st.columns(4)
         col1.metric("Passed", str(metadata.get("passed", "-")))
         col2.metric("Issues", str(metadata.get("issues", 0)))
+        col3.metric("Critical", str(metadata.get("critical_issues", 0)))
+        col4.metric("Important", str(metadata.get("important_issues", 0)))
         summary = metadata.get("summary")
         if summary:
             st.caption(summary)
+        issue_details = metadata.get("issue_details", [])
+        for issue in issue_details[:3]:
+            st.markdown(f"- {issue}")
     elif artifact.title == "EXECUTION":
         col1, col2, col3 = st.columns(3)
         col1.metric("Results", str(metadata.get("results", 0)))
@@ -208,9 +247,13 @@ def render_artifact_metadata_summary(artifact: Any) -> None:
         col2.metric("Repair Tasks", str(metadata.get("repair_tasks", 0)))
         col3.metric("Next Steps", str(metadata.get("next_steps", 0)))
     elif artifact.title == "GUARDRAILS":
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         col1.metric("Should Stop", str(metadata.get("should_stop", "-")))
         col2.metric("Reasons", str(metadata.get("reasons", 0)))
+        categories = metadata.get("categories", [])
+        col3.metric("Categories", str(len(categories)))
+        if categories:
+            st.caption(" | ".join(categories))
     elif artifact.title == "LEARNINGS":
         st.metric("Learning Records", str(metadata.get("records", 0)))
     elif artifact.title == "COMPLETION":
@@ -284,6 +327,9 @@ def render_workflow_artifact_panel(project_path: str, workflow_run) -> None:
         st.caption(f"Clarified: {selected_run.clarified_summary}")
     if selected_run.success_criteria:
         st.caption("Success Criteria: " + " | ".join(selected_run.success_criteria[:4]))
+
+    render_run_risk_profile(selected_detail)
+    st.markdown("---")
 
     compare_col, followup_col = st.columns(2)
     with compare_col:

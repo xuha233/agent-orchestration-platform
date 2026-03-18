@@ -172,6 +172,19 @@ class WorkflowRunReader:
                 "passed": plan_check_payload.get("passed"),
                 "issues": len(plan_check_payload.get("issues", []) or []),
                 "summary": plan_check_payload.get("summary", ""),
+                "critical_issues": sum(
+                    1 for issue in plan_check_payload.get("issues", []) or []
+                    if issue.get("severity") == "critical"
+                ),
+                "important_issues": sum(
+                    1 for issue in plan_check_payload.get("issues", []) or []
+                    if issue.get("severity") == "important"
+                ),
+                "issue_details": [
+                    issue.get("message", "")
+                    for issue in (plan_check_payload.get("issues", []) or [])[:5]
+                    if issue.get("message")
+                ],
             },
             "EXECUTION.md": {
                 "results": len(execution_results),
@@ -193,6 +206,7 @@ class WorkflowRunReader:
             },
             "GUARDRAILS.md": {
                 "should_stop": guardrail_payload.get("should_stop"),
+                "categories": list(guardrail_payload.get("categories", []) or []),
                 "reasons": len(guardrail_payload.get("reasons", []) or []),
                 "reason_details": list(guardrail_payload.get("reasons", []) or [])[:5],
             },

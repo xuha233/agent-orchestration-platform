@@ -2,6 +2,7 @@
 
 from aop.workflow import (
     CompletionDecision,
+    GuardrailReport,
     GapClosurePlan,
     GapItem,
     PlanCheckReport,
@@ -97,6 +98,15 @@ def test_workflow_artifact_manager_writes_run_plan_and_verification(tmp_path):
             ],
         ),
     )
+    manager.write_guardrails(
+        run.run_id,
+        GuardrailReport(
+            should_stop=True,
+            summary="Guardrails require re-plan.",
+            categories=["repair_budget", "failure_pressure"],
+            reasons=["Repair budget exhausted.", "Execution context pressure is high."],
+        ),
+    )
 
     run_dir = tmp_path / ".aop" / "runs" / "run-001"
     assert (run_dir / "RUN.md").exists()
@@ -105,11 +115,14 @@ def test_workflow_artifact_manager_writes_run_plan_and_verification(tmp_path):
     assert (run_dir / "EXECUTION.md").exists()
     assert (run_dir / "VERIFICATION.md").exists()
     assert (run_dir / "GAPS.md").exists()
+    assert (run_dir / "GUARDRAILS.md").exists()
     assert (run_dir / "COMPLETION.md").exists()
     assert (run_dir / "SUMMARY.md").exists()
 
     plan_content = (run_dir / "PLAN.md").read_text(encoding="utf-8")
     verification_content = (run_dir / "VERIFICATION.md").read_text(encoding="utf-8")
+    guardrails_content = (run_dir / "GUARDRAILS.md").read_text(encoding="utf-8")
 
     assert "Implement login form" in plan_content
     assert "Verdict: pass" in verification_content
+    assert "failure_pressure" in guardrails_content

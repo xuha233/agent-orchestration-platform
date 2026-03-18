@@ -2,6 +2,8 @@
 
 from aop.workflow import (
     CompletionDecision,
+    PlanCheckReport,
+    PlanCheckIssue,
     VerificationReport,
     WorkflowArtifactManager,
     WorkflowArtifactDocument,
@@ -74,6 +76,17 @@ def test_workflow_run_reader_loads_run_detail_with_artifacts(tmp_path):
             truths=["Dashboard can read workflow files."],
         ),
     )
+    manager.write_plan_check(
+        run.run_id,
+        PlanCheckReport(
+            passed=False,
+            summary="Plan has budget pressure.",
+            issues=[
+                PlanCheckIssue("critical", "Top-level verification is incomplete."),
+                PlanCheckIssue("important", "Plan exceeds the total effort budget guardrail."),
+            ],
+        ),
+    )
     manager.write_summary(run.run_id, "Workflow run completed.")
 
     reader = WorkflowRunReader(tmp_path)
@@ -94,3 +107,5 @@ def test_workflow_run_reader_loads_run_detail_with_artifacts(tmp_path):
     assert artifact_titles["PLAN"].metadata["goals"] == 1
     assert artifact_titles["VERIFICATION"].metadata["verdict"] == "pass"
     assert artifact_titles["COMPLETION"].metadata["reason_details"] == []
+    assert artifact_titles["PLAN CHECK"].metadata["critical_issues"] == 1
+    assert artifact_titles["PLAN CHECK"].metadata["important_issues"] == 1
