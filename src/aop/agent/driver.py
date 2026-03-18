@@ -34,7 +34,6 @@ from ..state import StateManager
 from ..review import TwoStageReviewer
 from ..workflow.coordinator import WorkflowCoordinator
 from ..workflow import (
-    WorkflowPhase,
     WorkflowTask,
     WorkflowRuntime,
 )
@@ -140,22 +139,59 @@ class AgentDriver:
             report_progress=self._report_progress,
             execute_workflow_tasks=lambda tasks: self._execute_workflow_tasks(tasks),
         )
+
+        def initialize_workflow_tracking() -> None:
+            if self.context is not None:
+                self.workflow_runtime.initialize(self.context)
+
+        def finalize_workflow_run(status: str) -> None:
+            if self.context is not None:
+                self.workflow_runtime.finalize(
+                    self.context,
+                    status=status,
+                    summary=self._generate_summary(),
+                )
+
+        def sync_workflow_run_metadata() -> None:
+            if self.context is not None:
+                self.workflow_runtime.sync_metadata(self.context)
+
+        def update_workflow_phase(phase, status: str = "running") -> None:
+            if self.context is not None:
+                self.workflow_runtime.update_phase(
+                    self.context,
+                    phase,
+                    status=status,
+                )
+
+        def write_plan_artifact() -> None:
+            if self.context is not None:
+                self.workflow_runtime.write_plan(self.context)
+
+        def write_verification_artifact() -> None:
+            if self.context is not None:
+                self.workflow_runtime.write_verification(self.context)
+
+        def write_learnings_artifact() -> None:
+            if self.context is not None:
+                self.workflow_runtime.write_learnings(self.context)
+
         self.workflow_coordinator = WorkflowCoordinator(
             sprint_state_enum=SprintState,
             report_progress=self._report_progress,
-            initialize_tracking=lambda: self._initialize_workflow_tracking(),
+            initialize_tracking=initialize_workflow_tracking,
             save_context=lambda: self._save_context(),
             build_result=lambda: self._build_result(),
-            finalize_workflow_run=lambda status: self._finalize_workflow_run(status),
-            sync_workflow_run_metadata=lambda: self._sync_workflow_run_metadata(),
-            update_workflow_phase=lambda phase, status="running": self._update_workflow_phase(phase, status),
-            write_plan_artifact=lambda: self._write_plan_artifact(),
+            finalize_workflow_run=finalize_workflow_run,
+            sync_workflow_run_metadata=sync_workflow_run_metadata,
+            update_workflow_phase=update_workflow_phase,
+            write_plan_artifact=write_plan_artifact,
             write_execution_artifact=lambda sprint_id, results: self.workflow_runtime.write_execution(
                 sprint_id,
                 results,
             ),
-            write_verification_artifact=lambda: self._write_verification_artifact(),
-            write_learnings_artifact=lambda: self._write_learnings_artifact(),
+            write_verification_artifact=write_verification_artifact,
+            write_learnings_artifact=write_learnings_artifact,
             run_gap_closure_cycle=lambda: self._run_gap_closure_cycle(),
             clarify_requirement=lambda vague_input, callback: self._clarify_requirement(vague_input, callback),
             generate_hypotheses=lambda requirement: self._generate_hypotheses(requirement),
@@ -778,45 +814,6 @@ class AgentDriver:
             return "无活跃冲刺"
 
         return f"冲刺 {self.context.sprint_id} 已完成，共处理 {len(self.context.hypotheses)} 个假设"
-
-    def _sync_workflow_run_metadata(self):
-        """同步 workflow run 元数据。"""
-        if self.context:
-            self.workflow_runtime.sync_metadata(self.context)
-
-    def _initialize_workflow_tracking(self):
-        """为新冲刺重置并初始化 workflow 跟踪状态。"""
-        if self.context:
-            self.workflow_runtime.initialize(self.context)
-
-    def _update_workflow_phase(self, phase: WorkflowPhase, status: str = "running"):
-        """更新 workflow run 所处阶段。"""
-        if self.context:
-            self.workflow_runtime.update_phase(self.context, phase, status=status)
-
-    def _write_plan_artifact(self):
-        """生成并写入 PLAN.md。"""
-        if self.context:
-            self.workflow_runtime.write_plan(self.context)
-
-    def _write_verification_artifact(self):
-        """生成并写入 VERIFICATION.md。"""
-        if self.context:
-            self.workflow_runtime.write_verification(self.context)
-
-    def _write_learnings_artifact(self):
-        """生成并写入 LEARNINGS.md。"""
-        if self.context:
-            self.workflow_runtime.write_learnings(self.context)
-
-    def _finalize_workflow_run(self, status: str):
-        """写入最终 summary 并将 workflow run 标记为完成或失败。"""
-        if self.context:
-            self.workflow_runtime.finalize(
-                self.context,
-                status=status,
-                summary=self._generate_summary(),
-            )
 
     def _run_gap_closure_cycle(self):
         """Run one bounded repair wave when verification leaves structured gaps."""
