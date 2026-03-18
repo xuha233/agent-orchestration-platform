@@ -832,6 +832,65 @@ def get_workflow_run_detail(project_path: str, run_id: str):
     return None
 
 
+def summarize_workflow_runs(runs: List[Any]) -> Dict[str, int]:
+    """汇总最近 workflow runs 的状态分布"""
+    summary = {
+        "total": len(runs),
+        "completed": 0,
+        "active": 0,
+        "follow_up": 0,
+        "with_gaps": 0,
+        "with_guardrails": 0,
+    }
+    for run in runs:
+        if run.status == "completed":
+            summary["completed"] += 1
+        elif run.status in {"running", "partial"}:
+            summary["active"] += 1
+        else:
+            summary["follow_up"] += 1
+        if run.has_gaps:
+            summary["with_gaps"] += 1
+        if run.has_guardrails:
+            summary["with_guardrails"] += 1
+    return summary
+
+
+def render_workflow_run_overview(recent_runs: List[Any]) -> None:
+    """渲染 workflow run 摘要和待跟进队列"""
+    if not recent_runs:
+        return
+
+    counts = summarize_workflow_runs(recent_runs)
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Recent Runs", str(counts["total"]))
+    col2.metric("Completed", str(counts["completed"]))
+    col3.metric("Needs Follow-up", str(counts["follow_up"]))
+    col4.metric("Gap Flags", str(counts["with_gaps"]))
+
+    flagged_runs = [
+        run for run in recent_runs
+        if run.has_gaps or run.has_guardrails or run.status != "completed"
+    ]
+    if not flagged_runs:
+        st.caption("最近的 workflow runs 状态稳定，无待跟进项。")
+        return
+
+    st.markdown("**Follow-up Queue**")
+    for run in flagged_runs[:5]:
+        badges = []
+        if run.has_gaps:
+            badges.append("gaps")
+        if run.has_guardrails:
+            badges.append("guardrails")
+        if run.completion_status:
+            badges.append(run.completion_status)
+        badge_text = " | ".join(badges) if badges else run.status
+        st.markdown(
+            f"- `{run.run_id}` | phase `{run.current_phase}` | status `{run.status}` | {badge_text}"
+        )
+
+
 def render_workflow_artifact_panel(project_path: str, workflow_run) -> None:
     """渲染 workflow run 的 artifact 工作台"""
     if not workflow_run:
@@ -860,6 +919,9 @@ def render_workflow_artifact_panel(project_path: str, workflow_run) -> None:
         """<div class="glass-card"><div class="section-title"><span class="icon">🧭</span> Workflow Artifacts</div></div>""",
         unsafe_allow_html=True,
     )
+
+    render_workflow_run_overview(recent_runs)
+    st.markdown("---")
 
     col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Phase", selected_run.current_phase or "-")
