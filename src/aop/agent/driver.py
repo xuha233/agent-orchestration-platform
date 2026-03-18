@@ -383,34 +383,6 @@ class AgentDriver:
             auto_learn=self.config.auto_learn,
         )
 
-    def _continue_from_hypotheses(self) -> SprintResult:
-        """从假设生成后继续执行"""
-        return self.workflow_coordinator._continue_from_hypotheses(
-            context=self.context,
-            auto_execute=self.config.auto_execute,
-            auto_validate=self.config.auto_validate,
-            auto_learn=self.config.auto_learn,
-        )
-
-    def _continue_from_execution(self) -> SprintResult:
-        """从任务分解后继续执行"""
-        return self.workflow_coordinator._continue_from_execution(
-            context=self.context,
-            auto_validate_enabled=self.config.auto_validate,
-            auto_learn_enabled=self.config.auto_learn,
-        )
-
-    def _continue_from_validation(self) -> SprintResult:
-        """从执行后继续验证"""
-        return self.workflow_coordinator._continue_from_validation(
-            context=self.context,
-            auto_learn_enabled=self.config.auto_learn,
-        )
-
-    def _continue_from_learning(self) -> SprintResult:
-        """从验证后继续学习提取"""
-        return self.workflow_coordinator._continue_from_learning(self.context)
-
     def get_active_sprints(self) -> List[str]:
         """
         获取活跃冲刺列表
