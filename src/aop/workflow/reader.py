@@ -183,15 +183,18 @@ class WorkflowRunReader:
                 "truths": len(verification_payload.get("truths", []) or []),
                 "gaps": len(verification_payload.get("gaps", []) or []),
                 "checks": len(verification_payload.get("checks", []) or []),
+                "gap_details": list(verification_payload.get("gaps", []) or [])[:5],
             },
             "GAPS.md": {
                 "gaps": len(gap_payload.get("gaps", []) or []),
                 "repair_tasks": len(gap_payload.get("repair_tasks", []) or []),
                 "next_steps": len(gap_payload.get("next_verification_steps", []) or []),
+                "summary": gap_payload.get("summary", ""),
             },
             "GUARDRAILS.md": {
                 "should_stop": guardrail_payload.get("should_stop"),
                 "reasons": len(guardrail_payload.get("reasons", []) or []),
+                "reason_details": list(guardrail_payload.get("reasons", []) or [])[:5],
             },
             "LEARNINGS.md": {
                 "records": len(learnings_payload.get("records", []) or []),
@@ -200,6 +203,8 @@ class WorkflowRunReader:
                 "passed": completion_payload.get("passed"),
                 "status": completion_payload.get("status", ""),
                 "reasons": len(completion_payload.get("reasons", []) or []),
+                "reason_details": list(completion_payload.get("reasons", []) or [])[:5],
+                "summary": completion_payload.get("summary", ""),
             },
         }
 

@@ -87,6 +87,69 @@ def render_workflow_run_overview(recent_runs: List[Any]) -> None:
         )
 
 
+def render_follow_up_details(selected_detail: Any) -> None:
+    """Render structured follow-up details for the selected run."""
+    artifact_map = {artifact.title: artifact for artifact in selected_detail.artifacts}
+    verification = artifact_map.get("VERIFICATION")
+    gaps = artifact_map.get("GAPS")
+    guardrails = artifact_map.get("GUARDRAILS")
+    completion = artifact_map.get("COMPLETION")
+
+    detail_lines: List[str] = []
+    if completion and completion.metadata.get("summary"):
+        detail_lines.append(f"Completion: {completion.metadata['summary']}")
+    for reason in (completion.metadata.get("reason_details", []) if completion else []):
+        detail_lines.append(f"Completion reason: {reason}")
+    if gaps and gaps.metadata.get("summary"):
+        detail_lines.append(f"Gaps: {gaps.metadata['summary']}")
+    for gap in (verification.metadata.get("gap_details", []) if verification else []):
+        detail_lines.append(f"Gap: {gap}")
+    for reason in (guardrails.metadata.get("reason_details", []) if guardrails else []):
+        detail_lines.append(f"Guardrail: {reason}")
+
+    if not detail_lines:
+        st.caption("当前 run 没有额外的 follow-up 细节。")
+        return
+
+    st.markdown("**Follow-up Detail**")
+    for line in detail_lines[:8]:
+        st.markdown(f"- {line}")
+
+
+def render_run_comparison(selected_run: Any, recent_runs: List[Any]) -> None:
+    """Render a compact comparison against the previous run."""
+    previous_run = next((run for run in recent_runs if run.run_id != selected_run.run_id), None)
+    if previous_run is None:
+        st.caption("暂无可对比的上一条 workflow run。")
+        return
+
+    st.markdown("**Compare With Previous Run**")
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Previous Run", previous_run.run_id)
+    col2.metric("Prev Phase", previous_run.current_phase or "-")
+    col3.metric("Prev Verify", previous_run.verification_verdict or "-")
+    col4.metric("Prev Completion", previous_run.completion_status or "-")
+
+    delta_bits = []
+    if selected_run.status != previous_run.status:
+        delta_bits.append(f"status {previous_run.status} -> {selected_run.status}")
+    if selected_run.current_phase != previous_run.current_phase:
+        delta_bits.append(f"phase {previous_run.current_phase} -> {selected_run.current_phase}")
+    if selected_run.verification_verdict != previous_run.verification_verdict:
+        delta_bits.append(
+            f"verify {previous_run.verification_verdict or '-'} -> {selected_run.verification_verdict or '-'}"
+        )
+    if selected_run.completion_status != previous_run.completion_status:
+        delta_bits.append(
+            f"completion {previous_run.completion_status or '-'} -> {selected_run.completion_status or '-'}"
+        )
+
+    if delta_bits:
+        st.caption(" | ".join(delta_bits))
+    else:
+        st.caption("与上一条 run 的核心状态一致。")
+
+
 def render_artifact_metadata_summary(artifact: Any) -> None:
     """Render compact structured summaries for key workflow artifacts."""
     metadata = getattr(artifact, "metadata", {}) or {}
@@ -185,6 +248,14 @@ def render_workflow_artifact_panel(project_path: str, workflow_run) -> None:
         st.caption(f"Clarified: {selected_run.clarified_summary}")
     if selected_run.success_criteria:
         st.caption("Success Criteria: " + " | ".join(selected_run.success_criteria[:4]))
+
+    compare_col, followup_col = st.columns(2)
+    with compare_col:
+        render_run_comparison(selected_run, recent_runs)
+    with followup_col:
+        render_follow_up_details(selected_detail)
+
+    st.markdown("---")
 
     artifact_tabs = st.tabs([artifact.title for artifact in selected_detail.artifacts])
     for tab, artifact in zip(artifact_tabs, selected_detail.artifacts):
