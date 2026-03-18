@@ -32,6 +32,7 @@ from ..core.engine import ExecutionEngine
 
 from ..state import StateManager
 from ..review import TwoStageReviewer
+from ..workflow.coordinator import WorkflowCoordinator
 from ..workflow import (
     WorkflowPhase,
     WorkflowTask,
@@ -138,6 +139,25 @@ class AgentDriver:
             storage_path=self.storage_path,
             report_progress=self._report_progress,
             execute_workflow_tasks=lambda tasks: self._execute_workflow_tasks(tasks),
+        )
+        self.workflow_coordinator = WorkflowCoordinator(
+            sprint_state_enum=SprintState,
+            report_progress=self._report_progress,
+            initialize_tracking=lambda: self._initialize_workflow_tracking(),
+            save_context=lambda: self._save_context(),
+            build_result=lambda: self._build_result(),
+            finalize_workflow_run=lambda status: self._finalize_workflow_run(status),
+            sync_workflow_run_metadata=lambda: self._sync_workflow_run_metadata(),
+            update_workflow_phase=lambda phase, status="running": self._update_workflow_phase(phase, status),
+            write_plan_artifact=lambda: self._write_plan_artifact(),
+            write_verification_artifact=lambda: self._write_verification_artifact(),
+            write_learnings_artifact=lambda: self._write_learnings_artifact(),
+            run_gap_closure_cycle=lambda: self._run_gap_closure_cycle(),
+            clarify_requirement=lambda vague_input, callback: self._clarify_requirement(vague_input, callback),
+            generate_hypotheses=lambda requirement: self._generate_hypotheses(requirement),
+            execute_tasks=lambda: self._execute_tasks(),
+            auto_validate=lambda hypotheses, results: self._auto_validate(hypotheses, results),
+            extract_learnings=lambda results: self._extract_learnings(results),
         )
 
         # 初始化两阶段审查器
@@ -264,77 +284,18 @@ class AgentDriver:
             original_input=vague_input,
             state=SprintState.INITIALIZED,
         )
-        self._initialize_workflow_tracking()
-        
-        # 保存初始状态
-        self.persistence.save(self.context)
-
-        try:
-            # 阶段1: 澄清需求
-            self._report_progress("clarifying", "澄清需求中...")
-            self._update_workflow_phase(WorkflowPhase.CLARIFY)
-            clarified = self._clarify_requirement(vague_input, clarifications_callback)
-            self.context.clarified_requirement = clarified
-            self.context.state = SprintState.CLARIFIED
-            self._sync_workflow_run_metadata()
-            self.persistence.save(self.context)  # 增量保存
-
-            # 阶段2: 生成假设
-            self._report_progress("generating_hypotheses", "生成假设中...")
-            hypotheses = self._generate_hypotheses(clarified)
-            self.context.hypotheses = hypotheses
-            self.context.state = SprintState.HYPOTHESES_GENERATED
-            self._sync_workflow_run_metadata()
-            self.persistence.save(self.context)  # 增量保存
-            self._write_plan_artifact()
-
-            # 阶段3: 构建任务图
-            self._report_progress("decomposing_tasks", "分解任务中...")
-            self.context.state = SprintState.TASKS_DECOMPOSED
-            self.persistence.save(self.context)  # 增量保存
-
-            # 阶段4: 并行执行 (简化版)
-            if self.config.auto_execute:
-                self._report_progress("executing", "并行执行中...")
-                self._update_workflow_phase(WorkflowPhase.EXECUTE)
-                results = self._execute_tasks()
-                self.context.execution_results = results
-                self.context.state = SprintState.EXECUTED
-                self.persistence.save(self.context)  # 增量保存
-                self.workflow_runtime.workflow_artifacts.write_execution(
-                    self.context.sprint_id,
-                    results,
-                )
-
-                # 阶段5: 自动验证
-                if self.config.auto_validate:
-                    self._report_progress("validating", "验证结果中...")
-                    self._update_workflow_phase(WorkflowPhase.VERIFY)
-                    self._auto_validate(hypotheses, results)
-                    self.context.state = SprintState.VALIDATED
-                    self.persistence.save(self.context)  # 增量保存
-                    self._write_verification_artifact()
-                    self._run_gap_closure_cycle()
-
-                # 阶段6: 学习提取
-                if self.config.auto_learn:
-                    self._report_progress("learning", "提取学习中...")
-                    self._update_workflow_phase(WorkflowPhase.LEARN)
-                    learnings = self._extract_learnings(results)
-                    self.context.learnings = learnings
-                    self.context.state = SprintState.COMPLETED
-                    self.persistence.save(self.context)  # 增量保存
-                    self._write_learnings_artifact()
-
-            self._finalize_workflow_run("completed")
-
-            return self._build_result()
-
-        except Exception:
-            self.context.state = SprintState.FAILED
-            self.persistence.save(self.context)  # 保存失败状态
-            self._finalize_workflow_run("failed")
-            raise
+        return self.workflow_coordinator.run_new(
+            context=self.context,
+            vague_input=vague_input,
+            clarifications_callback=clarifications_callback,
+            auto_execute=self.config.auto_execute,
+            auto_validate=self.config.auto_validate,
+            auto_learn=self.config.auto_learn,
+            write_execution=lambda sprint_id, results: self.workflow_runtime.workflow_artifacts.write_execution(
+                sprint_id,
+                results,
+            ),
+        )
 
     def run_from_clarified_requirement(
         self,
@@ -349,29 +310,16 @@ class AgentDriver:
             clarified_requirement=ClarifiedRequirement(**requirement),
             state=SprintState.CLARIFIED,
         )
-        self._initialize_workflow_tracking()
-        
-        self.persistence.save(self.context)
-
-        hypotheses = self._generate_hypotheses(self.context.clarified_requirement)
-        self.context.hypotheses = hypotheses
-        self.persistence.save(self.context)
-
-        if self.config.auto_execute:
-            results = self._execute_tasks()
-            self.context.execution_results = results
-            self.persistence.save(self.context)
-
-            if self.config.auto_validate:
-                self._auto_validate(hypotheses, results)
-                self.persistence.save(self.context)
-
-            if self.config.auto_learn:
-                learnings = self._extract_learnings(results)
-                self.context.learnings = learnings
-                self.persistence.save(self.context)
-
-        return self._build_result()
+        return self.workflow_coordinator.run_from_clarified(
+            context=self.context,
+            auto_execute=self.config.auto_execute,
+            auto_validate=self.config.auto_validate,
+            auto_learn=self.config.auto_learn,
+            write_execution=lambda sprint_id, results: self.workflow_runtime.workflow_artifacts.write_execution(
+                sprint_id,
+                results,
+            ),
+        )
 
     def resume_sprint(self, sprint_id: str | None = None) -> SprintResult:
         """
@@ -396,108 +344,52 @@ class AgentDriver:
 
         if self.context is None:
             raise ValueError(f"冲刺 {sprint_id} 不存在或已损坏")
-
-        self._report_progress("resuming", f"恢复冲刺 {self.context.sprint_id}，当前状态: {self.context.state.value}")
-
-        # 根据当前状态继续执行
-        if self.context.state == SprintState.INITIALIZED:
-            # 重新开始澄清需求
-            return self.run_from_vague_description(
-                self.context.original_input,
-                clarifications_callback=None,
-            )
-
-        elif self.context.state == SprintState.CLARIFIED:
-            # 从生成假设继续
-            self._report_progress("generating_hypotheses", "生成假设中...")
-            hypotheses = self._generate_hypotheses(self.context.clarified_requirement)
-            self.context.hypotheses = hypotheses
-            self.context.state = SprintState.HYPOTHESES_GENERATED
-            self.persistence.save(self.context)
-            return self._continue_from_hypotheses()
-
-        elif self.context.state == SprintState.HYPOTHESES_GENERATED:
-            return self._continue_from_hypotheses()
-
-        elif self.context.state == SprintState.TASKS_DECOMPOSED:
-            return self._continue_from_execution()
-
-        elif self.context.state == SprintState.EXECUTED:
-            return self._continue_from_validation()
-
-        elif self.context.state == SprintState.VALIDATED:
-            return self._continue_from_learning()
-
-        elif self.context.state == SprintState.COMPLETED:
-            self._report_progress("completed", "冲刺已完成")
-            return self._build_result()
-
-        elif self.context.state == SprintState.FAILED:
-            self._report_progress("failed", "冲刺之前失败，请检查错误日志")
-            return self._build_result()
-
-        return self._build_result()
+        return self.workflow_coordinator.resume(
+            context=self.context,
+            auto_execute=self.config.auto_execute,
+            auto_validate=self.config.auto_validate,
+            auto_learn=self.config.auto_learn,
+            write_execution=lambda sprint_id, results: self.workflow_runtime.workflow_artifacts.write_execution(
+                sprint_id,
+                results,
+            ),
+        )
 
     def _continue_from_hypotheses(self) -> SprintResult:
         """从假设生成后继续执行"""
-        self._report_progress("decomposing_tasks", "分解任务中...")
-        self.context.state = SprintState.TASKS_DECOMPOSED
-        self.persistence.save(self.context)
-        self._write_plan_artifact()
-
-        if self.config.auto_execute:
-            return self._continue_from_execution()
-        
-        return self._build_result()
+        return self.workflow_coordinator._continue_from_hypotheses(
+            context=self.context,
+            auto_execute=self.config.auto_execute,
+            auto_validate=self.config.auto_validate,
+            auto_learn=self.config.auto_learn,
+            write_execution=lambda sprint_id, results: self.workflow_runtime.workflow_artifacts.write_execution(
+                sprint_id,
+                results,
+            ),
+        )
 
     def _continue_from_execution(self) -> SprintResult:
         """从任务分解后继续执行"""
-        if self.config.auto_execute:
-            self._report_progress("executing", "并行执行中...")
-            self._update_workflow_phase(WorkflowPhase.EXECUTE)
-            results = self._execute_tasks()
-            self.context.execution_results = results
-            self.context.state = SprintState.EXECUTED
-            self.persistence.save(self.context)
-            self.workflow_runtime.workflow_artifacts.write_execution(
-                self.context.sprint_id,
+        return self.workflow_coordinator._continue_from_execution(
+            context=self.context,
+            auto_validate_enabled=self.config.auto_validate,
+            auto_learn_enabled=self.config.auto_learn,
+            write_execution=lambda sprint_id, results: self.workflow_runtime.workflow_artifacts.write_execution(
+                sprint_id,
                 results,
-            )
-
-            if self.config.auto_validate:
-                return self._continue_from_validation()
-        
-        return self._build_result()
+            ),
+        )
 
     def _continue_from_validation(self) -> SprintResult:
         """从执行后继续验证"""
-        if self.config.auto_validate:
-            self._report_progress("validating", "验证结果中...")
-            self._update_workflow_phase(WorkflowPhase.VERIFY)
-            self._auto_validate(self.context.hypotheses, self.context.execution_results)
-            self.context.state = SprintState.VALIDATED
-            self.persistence.save(self.context)
-            self._write_verification_artifact()
-            self._run_gap_closure_cycle()
-
-            if self.config.auto_learn:
-                return self._continue_from_learning()
-        
-        return self._build_result()
+        return self.workflow_coordinator._continue_from_validation(
+            context=self.context,
+            auto_learn_enabled=self.config.auto_learn,
+        )
 
     def _continue_from_learning(self) -> SprintResult:
         """从验证后继续学习提取"""
-        if self.config.auto_learn:
-            self._report_progress("learning", "提取学习中...")
-            self._update_workflow_phase(WorkflowPhase.LEARN)
-            learnings = self._extract_learnings(self.context.execution_results)
-            self.context.learnings = learnings
-            self.context.state = SprintState.COMPLETED
-            self.persistence.save(self.context)
-            self._write_learnings_artifact()
-            self._finalize_workflow_run("completed")
-        
-        return self._build_result()
+        return self.workflow_coordinator._continue_from_learning(self.context)
 
     def get_active_sprints(self) -> List[str]:
         """
