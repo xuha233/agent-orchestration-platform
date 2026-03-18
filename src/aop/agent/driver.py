@@ -36,9 +36,11 @@ from ..workflow import (
     CompletionGate,
     GapClosurePlan,
     GapItem,
+    GuardrailReport,
     VerificationCheck,
     VerificationReport,
     WorkflowArtifactManager,
+    WorkflowLoopDetector,
     WorkflowPhase,
     WorkflowPlan,
     WorkflowPlanChecker,
@@ -146,8 +148,10 @@ class AgentDriver:
         self.workflow_run: WorkflowRun | None = None
         self.plan_checker = WorkflowPlanChecker()
         self.completion_gate = CompletionGate()
+        self.loop_detector = WorkflowLoopDetector()
         self.latest_verification_report: VerificationReport | None = None
         self.latest_gap_closure_plan: GapClosurePlan | None = None
+        self.latest_guardrail_report: GuardrailReport | None = None
         self.repair_attempts = 0
 
         # 初始化两阶段审查器
@@ -937,6 +941,7 @@ class AgentDriver:
 
         self.latest_verification_report = None
         self.latest_gap_closure_plan = None
+        self.latest_guardrail_report = None
         self.repair_attempts = 0
         self.workflow_run = WorkflowRun(
             run_id=self.context.sprint_id,
@@ -1030,8 +1035,15 @@ class AgentDriver:
             else WorkflowPhase.GAP_CLOSE
         )
         final_status = decision.status if status == "completed" else status
+        if self.latest_guardrail_report and self.latest_guardrail_report.should_stop:
+            final_status = "needs_follow_up"
         self._update_workflow_phase(final_phase, status=final_status)
         self.workflow_artifacts.write_completion(self.context.sprint_id, decision)
+        if self.latest_guardrail_report is not None:
+            self.workflow_artifacts.write_guardrails(
+                self.context.sprint_id,
+                self.latest_guardrail_report,
+            )
         self.workflow_artifacts.write_summary(
             self.context.sprint_id,
             self._generate_summary(),
@@ -1190,6 +1202,10 @@ class AgentDriver:
         if not self.latest_gap_closure_plan.repair_tasks:
             return
         if self.repair_attempts >= 1:
+            self.latest_guardrail_report = self.loop_detector.evaluate(
+                self.context.execution_results,
+                repair_attempts=self.repair_attempts,
+            )
             return
 
         self.repair_attempts += 1
@@ -1208,6 +1224,13 @@ class AgentDriver:
         self._auto_validate(self.context.hypotheses, self.context.execution_results)
         self.persistence.save(self.context)
         self._write_verification_artifact()
+        if self.latest_gap_closure_plan is not None:
+            self.latest_guardrail_report = self.loop_detector.evaluate(
+                self.context.execution_results,
+                repair_attempts=self.repair_attempts,
+            )
+        else:
+            self.latest_guardrail_report = None
 
     def _execute_workflow_tasks(self, tasks: List[WorkflowTask]) -> List[Dict[str, Any]]:
         """Execute workflow-native tasks for repair waves."""

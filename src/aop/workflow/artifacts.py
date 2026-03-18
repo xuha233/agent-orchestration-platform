@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
-from .checks import CompletionDecision, PlanCheckReport
+from .checks import CompletionDecision, GuardrailReport, PlanCheckReport
 from .types import GapClosurePlan, VerificationReport, WorkflowPlan, WorkflowRun
 
 
@@ -311,6 +311,32 @@ class WorkflowArtifactManager:
         ]
         lines.extend(self._format_bullets(decision.reasons))
         return self._write_markdown(run_dir / "COMPLETION.md", lines)
+
+    def write_guardrails(self, run_id: str, report: GuardrailReport) -> Path:
+        """Persist loop/budget guardrail decisions."""
+        run_dir = self.get_run_dir(run_id)
+        self._write_json(
+            run_dir / "guardrails.json",
+            {
+                "should_stop": report.should_stop,
+                "summary": report.summary,
+                "reasons": report.reasons,
+            },
+        )
+        lines = [
+            "# GUARDRAILS",
+            "",
+            f"- Should stop: {report.should_stop}",
+            "",
+            "## Summary",
+            "",
+            report.summary,
+            "",
+            "## Reasons",
+            "",
+        ]
+        lines.extend(self._format_bullets(report.reasons))
+        return self._write_markdown(run_dir / "GUARDRAILS.md", lines)
 
     def _run_payload(self, run: WorkflowRun) -> Dict[str, Any]:
         return {

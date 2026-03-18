@@ -2,6 +2,7 @@
 
 from aop.workflow import (
     CompletionGate,
+    WorkflowLoopDetector,
     VerificationReport,
     WorkflowPlan,
     WorkflowPlanChecker,
@@ -46,3 +47,18 @@ def test_completion_gate_requires_passing_verification():
     assert decision.passed is False
     assert decision.status == "needs_follow_up"
     assert any("partial" in reason for reason in decision.reasons)
+
+
+def test_loop_detector_stops_after_repeated_failures():
+    detector = WorkflowLoopDetector()
+
+    report = detector.evaluate(
+        execution_results=[
+            {"task_id": "task-1", "hypothesis_id": "H-001", "success": False},
+            {"task_id": "repair-1", "hypothesis_id": "H-001", "success": False},
+        ],
+        repair_attempts=1,
+    )
+
+    assert report.should_stop is True
+    assert any("H-001" in reason for reason in report.reasons)

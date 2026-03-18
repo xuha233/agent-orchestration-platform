@@ -13,7 +13,15 @@ from .learning import LearningLog
 from .team import TeamOrchestrator
 from .persistence import PersistenceManager, get_persistence_manager
 from .artifacts import WorkflowArtifactManager
-from .checks import CompletionDecision, CompletionGate, PlanCheckIssue, PlanCheckReport, WorkflowPlanChecker
+from .checks import (
+    CompletionDecision,
+    CompletionGate,
+    GuardrailReport,
+    PlanCheckIssue,
+    PlanCheckReport,
+    WorkflowLoopDetector,
+    WorkflowPlanChecker,
+)
 from .types import (
     GapClosurePlan,
     GapItem,
@@ -37,6 +45,8 @@ __all__ = [
     "PlanCheckReport",
     "CompletionGate",
     "CompletionDecision",
+    "WorkflowLoopDetector",
+    "GuardrailReport",
     "GapItem",
     "GapClosurePlan",
     "WorkflowPhase",

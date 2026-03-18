@@ -439,6 +439,12 @@ The first automatic execution policy should stay conservative:
 
 Move execution semantics under the new workflow engine and shrink direct workflow logic in `AgentDriver`.
 
+Before a broader orchestrator refactor, AOP should first make stop conditions explicit:
+
+- detect repeated failures against the same hypothesis or task
+- stop after the bounded repair budget is exhausted
+- persist a guardrail artifact so the next session can distinguish "stopped intentionally" from "failed accidentally"
+
 ### Phase 5: Dashboard and CLI convergence
 
 Refactor CLI and dashboard to read the same workflow run model.

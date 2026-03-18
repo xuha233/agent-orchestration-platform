@@ -1,4 +1,4 @@
-"""Workflow quality gates for plan and completion."""
+"""Workflow quality gates for plan, completion, and repair guardrails."""
 
 from __future__ import annotations
 
@@ -31,6 +31,15 @@ class CompletionDecision:
 
     passed: bool
     status: str
+    summary: str
+    reasons: List[str] = field(default_factory=list)
+
+
+@dataclass
+class GuardrailReport:
+    """Guardrail decision for bounded repair execution."""
+
+    should_stop: bool
     summary: str
     reasons: List[str] = field(default_factory=list)
 
@@ -139,5 +148,49 @@ class CompletionGate:
             passed=True,
             status="completed",
             summary="Completion gate passed.",
+            reasons=[],
+        )
+
+
+class WorkflowLoopDetector:
+    """Detect repeated failure patterns and repair-budget exhaustion."""
+
+    def evaluate(
+        self,
+        execution_results: List[dict] | None,
+        repair_attempts: int,
+        max_repair_attempts: int = 1,
+        repeated_failure_threshold: int = 2,
+    ) -> GuardrailReport:
+        reasons: List[str] = []
+        failure_counts: dict[str, int] = {}
+
+        for result in execution_results or []:
+            if result.get("success", False):
+                continue
+            key = result.get("hypothesis_id") or result.get("task_id") or "unknown"
+            failure_counts[key] = failure_counts.get(key, 0) + 1
+
+        for key, count in failure_counts.items():
+            if count >= repeated_failure_threshold:
+                reasons.append(
+                    f"Repeated failure threshold reached for {key}: {count} failures."
+                )
+
+        if repair_attempts >= max_repair_attempts:
+            reasons.append(
+                f"Repair budget exhausted at {repair_attempts} attempt(s)."
+            )
+
+        if reasons:
+            return GuardrailReport(
+                should_stop=True,
+                summary="Repair guardrails require the workflow to stop and re-plan.",
+                reasons=reasons,
+            )
+
+        return GuardrailReport(
+            should_stop=False,
+            summary="Repair guardrails allow another bounded step.",
             reasons=[],
         )
