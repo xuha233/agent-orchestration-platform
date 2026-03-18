@@ -193,6 +193,7 @@ class WorkflowRunReader:
             },
             "GUARDRAILS.md": {
                 "should_stop": guardrail_payload.get("should_stop"),
+                "categories": list(guardrail_payload.get("categories", []) or []),
                 "reasons": len(guardrail_payload.get("reasons", []) or []),
                 "reason_details": list(guardrail_payload.get("reasons", []) or [])[:5],
             },

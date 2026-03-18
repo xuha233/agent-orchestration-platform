@@ -320,6 +320,7 @@ class WorkflowArtifactManager:
             {
                 "should_stop": report.should_stop,
                 "summary": report.summary,
+                "categories": report.categories,
                 "reasons": report.reasons,
             },
         )
@@ -332,9 +333,15 @@ class WorkflowArtifactManager:
             "",
             report.summary,
             "",
-            "## Reasons",
+            "## Categories",
             "",
         ]
+        lines.extend(self._format_bullets(report.categories))
+        lines.extend([
+            "",
+            "## Reasons",
+            "",
+        ])
         lines.extend(self._format_bullets(report.reasons))
         return self._write_markdown(run_dir / "GUARDRAILS.md", lines)
 

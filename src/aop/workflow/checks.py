@@ -41,6 +41,7 @@ class GuardrailReport:
 
     should_stop: bool
     summary: str
+    categories: List[str] = field(default_factory=list)
     reasons: List[str] = field(default_factory=list)
 
 
@@ -187,6 +188,7 @@ class WorkflowLoopDetector:
         failure_ratio_threshold: float = 0.5,
     ) -> GuardrailReport:
         reasons: List[str] = []
+        categories: List[str] = []
         failure_counts: dict[str, int] = {}
         total_results = len(execution_results or [])
         failed_results = 0
@@ -200,11 +202,15 @@ class WorkflowLoopDetector:
 
         for key, count in failure_counts.items():
             if count >= repeated_failure_threshold:
+                if "repeated_failures" not in categories:
+                    categories.append("repeated_failures")
                 reasons.append(
                     f"Repeated failure threshold reached for {key}: {count} failures."
                 )
 
         if repair_attempts >= max_repair_attempts:
+            if "repair_budget" not in categories:
+                categories.append("repair_budget")
             reasons.append(
                 f"Repair budget exhausted at {repair_attempts} attempt(s)."
             )
@@ -212,6 +218,8 @@ class WorkflowLoopDetector:
         if total_results >= max_execution_results and total_results > 0:
             failure_ratio = failed_results / total_results
             if failure_ratio >= failure_ratio_threshold:
+                if "failure_pressure" not in categories:
+                    categories.append("failure_pressure")
                 reasons.append(
                     "Execution context pressure is high: too many failed results accumulated."
                 )
@@ -220,11 +228,13 @@ class WorkflowLoopDetector:
             return GuardrailReport(
                 should_stop=True,
                 summary="Repair guardrails require the workflow to stop and re-plan.",
+                categories=categories,
                 reasons=reasons,
             )
 
         return GuardrailReport(
             should_stop=False,
             summary="Repair guardrails allow another bounded step.",
+            categories=[],
             reasons=[],
         )

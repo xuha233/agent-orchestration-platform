@@ -61,6 +61,7 @@ def test_loop_detector_stops_after_repeated_failures():
     )
 
     assert report.should_stop is True
+    assert "repeated_failures" in report.categories
     assert any("H-001" in reason for reason in report.reasons)
 
 
@@ -109,4 +110,5 @@ def test_loop_detector_stops_when_failure_pressure_is_high():
     )
 
     assert report.should_stop is True
+    assert "failure_pressure" in report.categories
     assert any("context pressure" in reason.lower() for reason in report.reasons)

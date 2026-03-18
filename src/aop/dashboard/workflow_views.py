@@ -208,9 +208,13 @@ def render_artifact_metadata_summary(artifact: Any) -> None:
         col2.metric("Repair Tasks", str(metadata.get("repair_tasks", 0)))
         col3.metric("Next Steps", str(metadata.get("next_steps", 0)))
     elif artifact.title == "GUARDRAILS":
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         col1.metric("Should Stop", str(metadata.get("should_stop", "-")))
         col2.metric("Reasons", str(metadata.get("reasons", 0)))
+        categories = metadata.get("categories", [])
+        col3.metric("Categories", str(len(categories)))
+        if categories:
+            st.caption(" | ".join(categories))
     elif artifact.title == "LEARNINGS":
         st.metric("Learning Records", str(metadata.get("records", 0)))
     elif artifact.title == "COMPLETION":
