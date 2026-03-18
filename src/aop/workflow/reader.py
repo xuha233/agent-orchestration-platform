@@ -9,6 +9,20 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
+DEFAULT_WORKFLOW_ARTIFACTS = (
+    ("RUN.md", "RUN"),
+    ("PLAN.md", "PLAN"),
+    ("PLAN_CHECK.md", "PLAN CHECK"),
+    ("EXECUTION.md", "EXECUTION"),
+    ("VERIFICATION.md", "VERIFICATION"),
+    ("GAPS.md", "GAPS"),
+    ("GUARDRAILS.md", "GUARDRAILS"),
+    ("LEARNINGS.md", "LEARNINGS"),
+    ("COMPLETION.md", "COMPLETION"),
+    ("SUMMARY.md", "SUMMARY"),
+)
+
+
 @dataclass
 class WorkflowRunSummary:
     """Compact view of a persisted workflow run."""
@@ -26,6 +40,24 @@ class WorkflowRunSummary:
     completion_status: str = ""
     has_gaps: bool = False
     has_guardrails: bool = False
+
+
+@dataclass
+class WorkflowArtifactDocument:
+    """Single artifact document for a workflow run."""
+
+    filename: str
+    title: str
+    content: str = ""
+    exists: bool = False
+
+
+@dataclass
+class WorkflowRunDetail:
+    """Expanded workflow run data including artifact contents."""
+
+    summary: WorkflowRunSummary
+    artifacts: List[WorkflowArtifactDocument] = field(default_factory=list)
 
 
 class WorkflowRunReader:
@@ -82,6 +114,36 @@ class WorkflowRunReader:
             has_guardrails=(run_dir / "GUARDRAILS.md").exists(),
         )
 
+    def load_run_detail(self, run_id: str) -> Optional[WorkflowRunDetail]:
+        """Load a run summary together with its artifact documents."""
+        summary = self.load_run(run_id)
+        if summary is None:
+            return None
+        return WorkflowRunDetail(
+            summary=summary,
+            artifacts=self.list_artifacts(run_id),
+        )
+
+    def list_artifacts(self, run_id: str) -> List[WorkflowArtifactDocument]:
+        """Return ordered artifact documents for a workflow run."""
+        run_dir = self.runs_dir / run_id
+        if not run_dir.exists():
+            return []
+
+        artifacts: List[WorkflowArtifactDocument] = []
+        for filename, title in DEFAULT_WORKFLOW_ARTIFACTS:
+            path = run_dir / filename
+            content = self._read_text(path)
+            artifacts.append(
+                WorkflowArtifactDocument(
+                    filename=filename,
+                    title=title,
+                    content=content or "",
+                    exists=path.exists() and bool(content),
+                )
+            )
+        return artifacts
+
     def _sort_key(self, run_dir: Path) -> datetime:
         payload = self._read_json(run_dir / "run.json") or {}
         updated_at = payload.get("updated_at") or payload.get("created_at")
@@ -98,4 +160,12 @@ class WorkflowRunReader:
         try:
             return json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            return None
+
+    def _read_text(self, path: Path) -> str | None:
+        if not path.exists():
+            return None
+        try:
+            return path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
             return None
