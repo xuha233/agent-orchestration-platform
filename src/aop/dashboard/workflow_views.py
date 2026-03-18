@@ -87,6 +87,28 @@ def render_workflow_run_overview(recent_runs: List[Any]) -> None:
         )
 
 
+def render_follow_up_queue_controls(
+    recent_runs: List[Any],
+    selected_run_key: str,
+) -> None:
+    """Render clickable follow-up queue shortcuts."""
+    flagged_runs = [
+        run for run in recent_runs
+        if run.has_gaps or run.has_guardrails or run.status != "completed"
+    ]
+    if not flagged_runs:
+        return
+
+    st.markdown("**Jump To Follow-up Run**")
+    queue_cols = st.columns(min(3, len(flagged_runs[:3])) or 1)
+    for index, run in enumerate(flagged_runs[:3]):
+        with queue_cols[index % len(queue_cols)]:
+            label = f"{run.run_id} ({run.current_phase})"
+            if st.button(label, key=f"workflow_jump_{run.run_id}", use_container_width=True):
+                st.session_state[selected_run_key] = run.run_id
+                st.rerun()
+
+
 def render_follow_up_details(selected_detail: Any) -> None:
     """Render structured follow-up details for the selected run."""
     artifact_map = {artifact.title: artifact for artifact in selected_detail.artifacts}
@@ -206,21 +228,8 @@ def render_workflow_artifact_panel(project_path: str, workflow_run) -> None:
 
     reader = WorkflowRunReader(Path(project_path))
     recent_runs = reader.list_runs(limit=12)
-    run_options = [run.run_id for run in recent_runs] or [workflow_run.run_id]
-    default_index = run_options.index(workflow_run.run_id) if workflow_run.run_id in run_options else 0
-
-    selected_run_id = st.selectbox(
-        "Workflow Run",
-        options=run_options,
-        index=default_index,
-        key=f"workflow_run_select_{Path(project_path).resolve()}",
-    )
-    selected_detail = get_workflow_run_detail(project_path, selected_run_id)
-    if not selected_detail:
-        st.warning("无法读取所选 workflow run 详情")
-        return
-
-    selected_run = selected_detail.summary
+    state_key = f"workflow_run_select_{Path(project_path).resolve()}"
+    filter_key = f"workflow_follow_up_only_{Path(project_path).resolve()}"
 
     st.markdown(
         """<div class="glass-card"><div class="section-title"><span class="icon">🧭</span> Workflow Artifacts</div></div>""",
@@ -228,7 +237,34 @@ def render_workflow_artifact_panel(project_path: str, workflow_run) -> None:
     )
 
     render_workflow_run_overview(recent_runs)
+    follow_up_only = st.checkbox("仅显示待跟进 runs", key=filter_key)
+    render_follow_up_queue_controls(recent_runs, state_key)
     st.markdown("---")
+
+    filtered_runs = (
+        [
+            run for run in recent_runs
+            if run.has_gaps or run.has_guardrails or run.status != "completed"
+        ]
+        if follow_up_only
+        else recent_runs
+    )
+    run_options = [run.run_id for run in filtered_runs] or [workflow_run.run_id]
+
+    if state_key not in st.session_state or st.session_state[state_key] not in run_options:
+        st.session_state[state_key] = workflow_run.run_id if workflow_run.run_id in run_options else run_options[0]
+
+    selected_run_id = st.selectbox(
+        "Workflow Run",
+        options=run_options,
+        key=state_key,
+    )
+    selected_detail = get_workflow_run_detail(project_path, selected_run_id)
+    if not selected_detail:
+        st.warning("无法读取所选 workflow run 详情")
+        return
+
+    selected_run = selected_detail.summary
 
     col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Phase", selected_run.current_phase or "-")
