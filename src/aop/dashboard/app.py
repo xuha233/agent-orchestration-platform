@@ -822,6 +822,65 @@ def get_latest_workflow_run(project_path: str = "."):
         return None
 
 
+def read_workflow_artifact(project_path: str, run_id: str, filename: str) -> str:
+    """读取 workflow artifact 文本内容"""
+    try:
+        base = Path(project_path)
+        aop_dir = base if base.name == ".aop" else base / ".aop"
+        artifact_path = aop_dir / "runs" / run_id / filename
+        if artifact_path.exists():
+            return artifact_path.read_text(encoding="utf-8")
+    except Exception:
+        pass
+    return ""
+
+
+def render_workflow_artifact_panel(project_path: str, workflow_run) -> None:
+    """渲染最新 workflow run 的 artifact 面板"""
+    if not workflow_run:
+        st.info("暂无 workflow run artifact")
+        return
+
+    st.markdown(
+        """<div class="glass-card"><div class="section-title"><span class="icon">🧭</span> Workflow Artifacts</div></div>""",
+        unsafe_allow_html=True,
+    )
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Phase", workflow_run.current_phase or "-")
+    col2.metric("Status", workflow_run.status or "-")
+    col3.metric("Verify", workflow_run.verification_verdict or "-")
+    flags = []
+    if workflow_run.has_gaps:
+        flags.append("gaps")
+    if workflow_run.has_guardrails:
+        flags.append("guardrails")
+    col4.metric("Flags", ", ".join(flags) if flags else "-")
+
+    tab_names = ["RUN", "PLAN", "VERIFICATION", "GAPS", "GUARDRAILS"]
+    run_tab, plan_tab, verification_tab, gaps_tab, guardrails_tab = st.tabs(tab_names)
+
+    with run_tab:
+        content = read_workflow_artifact(project_path, workflow_run.run_id, "RUN.md")
+        st.code(content or "未找到 RUN.md", language="markdown")
+
+    with plan_tab:
+        content = read_workflow_artifact(project_path, workflow_run.run_id, "PLAN.md")
+        st.code(content or "未找到 PLAN.md", language="markdown")
+
+    with verification_tab:
+        content = read_workflow_artifact(project_path, workflow_run.run_id, "VERIFICATION.md")
+        st.code(content or "未找到 VERIFICATION.md", language="markdown")
+
+    with gaps_tab:
+        content = read_workflow_artifact(project_path, workflow_run.run_id, "GAPS.md")
+        st.code(content or "当前无 GAPS.md", language="markdown")
+
+    with guardrails_tab:
+        content = read_workflow_artifact(project_path, workflow_run.run_id, "GUARDRAILS.md")
+        st.code(content or "当前无 GUARDRAILS.md", language="markdown")
+
+
 def parse_md_section(content: str, section_title: str) -> str:
     """从 Markdown 内容中提取指定章节"""
     if not content:
@@ -1289,6 +1348,9 @@ def page_home():
         if h_pending > 0:
             next_h = [h for h in hypotheses if h.get("state") == "pending"][0]
             st.markdown(f"**下一个假设**: {next_h.get('statement', '-')[:50]}...")
+
+        st.markdown("---")
+        render_workflow_artifact_panel(project_path, workflow_run)
         
         st.markdown("---")
         
