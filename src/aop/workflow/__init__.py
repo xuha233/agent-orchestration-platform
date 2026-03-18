@@ -22,6 +22,7 @@ from .checks import (
     WorkflowLoopDetector,
     WorkflowPlanChecker,
 )
+from .reader import WorkflowRunReader, WorkflowRunSummary
 from .types import (
     GapClosurePlan,
     GapItem,
@@ -40,6 +41,8 @@ __all__ = [
     "PersistenceManager",
     "get_persistence_manager",
     "WorkflowArtifactManager",
+    "WorkflowRunReader",
+    "WorkflowRunSummary",
     "WorkflowPlanChecker",
     "PlanCheckIssue",
     "PlanCheckReport",

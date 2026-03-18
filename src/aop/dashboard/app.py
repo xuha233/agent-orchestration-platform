@@ -32,6 +32,7 @@ _logger = logging.getLogger(__name__)
 from aop.memory import build_agent_system_prompt
 from aop.session import get_session_manager
 from aop.utils.claude_config import get_claude_full_cmd, get_claude_cmd_prefix
+from aop.workflow import WorkflowRunReader
 from aop import __version__
 
 
@@ -812,6 +813,15 @@ def get_sprint_data() -> Optional[Dict]:
     return None
 
 
+def get_latest_workflow_run(project_path: str = "."):
+    """获取最新 workflow run 摘要"""
+    try:
+        reader = WorkflowRunReader(Path(project_path))
+        return reader.get_latest_run()
+    except Exception:
+        return None
+
+
 def parse_md_section(content: str, section_title: str) -> str:
     """从 Markdown 内容中提取指定章节"""
     if not content:
@@ -1253,12 +1263,29 @@ def page_home():
         # === 1. 项目进度 ===
         st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">📈</span> 项目进度</div></div>""", unsafe_allow_html=True)
         
+        workflow_run = get_latest_workflow_run(".")
+
         if sprint:
             st.markdown(f"**当前冲刺**: {sprint.get('original_input', '无')[:60]}")
             st.caption(f"ID: {sprint.get('sprint_id', '-')}")
         else:
             st.info("暂无活跃冲刺")
-        
+
+        if workflow_run:
+            flags = []
+            if workflow_run.has_gaps:
+                flags.append("gaps")
+            if workflow_run.has_guardrails:
+                flags.append("guardrails")
+            flag_text = f" | Flags: {', '.join(flags)}" if flags else ""
+            st.markdown(
+                f"**Workflow Run**: `{workflow_run.run_id}` | "
+                f"Status: `{workflow_run.status}` | "
+                f"Phase: `{workflow_run.current_phase}` | "
+                f"Verify: `{workflow_run.verification_verdict or '-'}`"
+                f"{flag_text}"
+            )
+
         if h_pending > 0:
             next_h = [h for h in hypotheses if h.get("state") == "pending"][0]
             st.markdown(f"**下一个假设**: {next_h.get('statement', '-')[:50]}...")
