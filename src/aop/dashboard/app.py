@@ -11,7 +11,6 @@ import threading
 import re
 import sys
 import streamlit as st
-import json
 import subprocess
 from pathlib import Path
 from typing import Optional, Dict, List, Any
@@ -32,7 +31,16 @@ _logger = logging.getLogger(__name__)
 from aop.memory import build_agent_system_prompt
 from aop.session import get_session_manager
 from aop.utils.claude_config import get_claude_full_cmd, get_claude_cmd_prefix
-from aop.workflow import WorkflowRunReader
+from aop.dashboard.home_views import (
+    get_project_progress_data,
+    render_home_header,
+    render_home_metrics,
+    render_agent_status,
+    render_current_iteration,
+    render_issue_queue,
+    render_project_progress,
+    render_recent_activity,
+)
 from aop import __version__
 
 
@@ -813,74 +821,6 @@ def get_sprint_data() -> Optional[Dict]:
     return None
 
 
-def get_latest_workflow_run(project_path: str = "."):
-    """获取最新 workflow run 摘要"""
-    try:
-        reader = WorkflowRunReader(Path(project_path))
-        return reader.get_latest_run()
-    except Exception:
-        return None
-
-
-def read_workflow_artifact(project_path: str, run_id: str, filename: str) -> str:
-    """读取 workflow artifact 文本内容"""
-    try:
-        base = Path(project_path)
-        aop_dir = base if base.name == ".aop" else base / ".aop"
-        artifact_path = aop_dir / "runs" / run_id / filename
-        if artifact_path.exists():
-            return artifact_path.read_text(encoding="utf-8")
-    except Exception:
-        pass
-    return ""
-
-
-def render_workflow_artifact_panel(project_path: str, workflow_run) -> None:
-    """渲染最新 workflow run 的 artifact 面板"""
-    if not workflow_run:
-        st.info("暂无 workflow run artifact")
-        return
-
-    st.markdown(
-        """<div class="glass-card"><div class="section-title"><span class="icon">🧭</span> Workflow Artifacts</div></div>""",
-        unsafe_allow_html=True,
-    )
-
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Phase", workflow_run.current_phase or "-")
-    col2.metric("Status", workflow_run.status or "-")
-    col3.metric("Verify", workflow_run.verification_verdict or "-")
-    flags = []
-    if workflow_run.has_gaps:
-        flags.append("gaps")
-    if workflow_run.has_guardrails:
-        flags.append("guardrails")
-    col4.metric("Flags", ", ".join(flags) if flags else "-")
-
-    tab_names = ["RUN", "PLAN", "VERIFICATION", "GAPS", "GUARDRAILS"]
-    run_tab, plan_tab, verification_tab, gaps_tab, guardrails_tab = st.tabs(tab_names)
-
-    with run_tab:
-        content = read_workflow_artifact(project_path, workflow_run.run_id, "RUN.md")
-        st.code(content or "未找到 RUN.md", language="markdown")
-
-    with plan_tab:
-        content = read_workflow_artifact(project_path, workflow_run.run_id, "PLAN.md")
-        st.code(content or "未找到 PLAN.md", language="markdown")
-
-    with verification_tab:
-        content = read_workflow_artifact(project_path, workflow_run.run_id, "VERIFICATION.md")
-        st.code(content or "未找到 VERIFICATION.md", language="markdown")
-
-    with gaps_tab:
-        content = read_workflow_artifact(project_path, workflow_run.run_id, "GAPS.md")
-        st.code(content or "当前无 GAPS.md", language="markdown")
-
-    with guardrails_tab:
-        content = read_workflow_artifact(project_path, workflow_run.run_id, "GUARDRAILS.md")
-        st.code(content or "当前无 GUARDRAILS.md", language="markdown")
-
-
 def parse_md_section(content: str, section_title: str) -> str:
     """从 Markdown 内容中提取指定章节"""
     if not content:
@@ -900,123 +840,6 @@ def parse_md_section(content: str, section_title: str) -> str:
 
     return "\n".join(section_lines).strip()
 
-
-
-def get_project_progress_data(project_path: str) -> dict:
-    """获取项目进度数据
-    
-    Args:
-        project_path: 项目根目录路径
-        
-    Returns:
-        包含假设、学习、Git、测试状态的字典
-    """
-    result = {
-        "hypotheses": {"total": 0, "validated": 0, "testing": 0, "pending": 0},
-        "learnings": {"total": 0, "latest": ""},
-        "git": {"branch": "unknown", "changes": 0},
-        "tests": {"passed": 0, "total": 0}
-    }
-    
-    aop_dir = Path(project_path) / ".aop"
-    
-    # 假设数据
-    hypotheses_file = aop_dir / "hypotheses.json"
-    if hypotheses_file.exists():
-        try:
-            data = json.loads(hypotheses_file.read_text(encoding="utf-8"))
-            hypotheses = list(data.get("data", {}).values())
-            result["hypotheses"]["total"] = len(hypotheses)
-            for h in hypotheses:
-                status = h.get("state", "pending")
-                if status == "validated":
-                    result["hypotheses"]["validated"] += 1
-                elif status == "testing":
-                    result["hypotheses"]["testing"] += 1
-                else:
-                    result["hypotheses"]["pending"] += 1
-        except Exception:
-            pass
-    
-    # 学习记录
-    learning_file = aop_dir / "learning.json"
-    if learning_file.exists():
-        try:
-            data = json.loads(learning_file.read_text(encoding="utf-8"))
-            learnings = data.get("data", {}).get("records", [])
-            result["learnings"]["total"] = len(learnings)
-            if learnings:
-                insights = learnings[-1].get("insights", [])
-                if insights:
-                    result["learnings"]["latest"] = insights[-1][:50]
-        except Exception:
-            pass
-    
-    # Git 状态
-    try:
-        branch_result = subprocess.run(
-            ["git", "branch", "--show-current"],
-            cwd=project_path,
-            capture_output=True,
-            encoding='utf-8',
-            errors='replace',
-            timeout=5
-        )
-        result["git"]["branch"] = branch_result.stdout.strip() or "unknown"
-        
-        status_result = subprocess.run(
-            ["git", "status", "--porcelain"],
-            cwd=project_path,
-            capture_output=True,
-            encoding='utf-8',
-            errors='replace',
-            timeout=5
-        )
-        changes = [line for line in status_result.stdout.strip().split("\n") if line]
-        result["git"]["changes"] = len(changes)
-    except Exception:
-        pass
-    
-    # 测试状态（运行 pytest）
-    try:
-        test_result = subprocess.run(
-            ["pytest", "--collect-only", "-q"],
-            cwd=project_path,
-            capture_output=True,
-            encoding='utf-8',
-            errors='replace',
-            timeout=30
-        )
-        # 解析测试收集结果
-        output = test_result.stdout + test_result.stderr
-        import re as regex
-        # 匹配 "X tests collected" 或 "X items collected"
-        match = regex.search(r"(\d+)\s+(?:tests?|items?)\s+(?:collected|selected)", output, regex.IGNORECASE)
-        if match:
-            result["tests"]["total"] = int(match.group(1))
-        
-        # 运行测试获取通过数
-        run_result = subprocess.run(
-            ["pytest", "-q", "--tb=no", "-x"],
-            cwd=project_path,
-            capture_output=True,
-            encoding='utf-8',
-            errors='replace',
-            timeout=60
-        )
-        # 解析测试结果
-        run_output = run_result.stdout + run_result.stderr
-        # 匹配 "X passed"
-        passed_match = regex.search(r"(\d+)\s+passed", run_output)
-        if passed_match:
-            result["tests"]["passed"] = int(passed_match.group(1))
-        elif result["tests"]["total"] > 0 and run_result.returncode == 0:
-            # 如果测试全部通过，passed = total
-            result["tests"]["passed"] = result["tests"]["total"]
-    except Exception:
-        pass
-    
-    return result
 
 
 # ============ 页面组件 ============
@@ -1254,195 +1077,33 @@ def page_home():
     else:
         project_path = str(Path.home())  # 使用用户主目录，避免硬编码
     progress_data = get_project_progress_data(project_path)
-    
-    # ========== 头部 ========== 
     project_name = st.session_state.current_workspace.name if st.session_state.current_workspace else "AOP 仪表板"
-    
-    st.markdown(f"""
-    <div class="header-gradient">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div>
-                <h1 style="margin: 0; font-size: 1.35rem; color: white; font-weight: 600;">{project_name}</h1>
-                <p style="margin: 0.2rem 0 0 0; color: rgba(255,255,255,0.75); font-size: 0.75rem;">Agent 编排平台</p>
-            </div>
-            <div style="display: flex; gap: 0.4rem; align-items: center;">
-                <span class="status-badge {'status-online' if agents else 'status-offline'}">{'● ' + str(len(agents)) + ' 个 Agent' if agents else '○ 无 Agent'}</span>
-                <span class="status-badge status-info">📊 {stats['file_count']} 个文件</span>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # ========== 核心指标（4 个卡片）==========
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="label">假设验证</div>
-            <div class="value">{h_validated}/{h_total}</div>
-            <div class="progress-bar"><div class="fill" style="width: {progress_pct}%;"></div></div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        t = progress_data["tests"]
-        test_status = f"{t['passed']}/{t['total']}" if t['total'] > 0 else "无"
-        test_class = "success" if t['passed'] == t['total'] and t['total'] > 0 else "warning"
-        st.markdown(f"""
-        <div class="metric-card {test_class}">
-            <div class="label">测试通过</div>
-            <div class="value">{test_status}</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col3:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="label">代码行数</div>
-            <div class="value">{stats['line_count']:,}</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col4:
-        g = progress_data["git"]
-        git_status = "✓" if g['changes'] == 0 else f"±{g['changes']}"
-        st.markdown(f"""
-        <div class="metric-card {'success' if g['changes'] == 0 else 'warning'}">
-            <div class="label">Git: {g['branch']}</div>
-            <div class="value">{git_status}</div>
-        </div>
-        """, unsafe_allow_html=True)
+    render_home_header(project_name, agents, stats)
+    render_home_metrics(progress_data, stats, h_validated, h_total, progress_pct)
     
     # ========== 两栏布局 ==========
     left_col, right_col = st.columns([2, 1])
     
     # ========== 左栏 ==========
     with left_col:
-        # === 1. 项目进度 ===
-        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">📈</span> 项目进度</div></div>""", unsafe_allow_html=True)
-        
-        workflow_run = get_latest_workflow_run(".")
-
-        if sprint:
-            st.markdown(f"**当前冲刺**: {sprint.get('original_input', '无')[:60]}")
-            st.caption(f"ID: {sprint.get('sprint_id', '-')}")
-        else:
-            st.info("暂无活跃冲刺")
-
-        if workflow_run:
-            flags = []
-            if workflow_run.has_gaps:
-                flags.append("gaps")
-            if workflow_run.has_guardrails:
-                flags.append("guardrails")
-            flag_text = f" | Flags: {', '.join(flags)}" if flags else ""
-            st.markdown(
-                f"**Workflow Run**: `{workflow_run.run_id}` | "
-                f"Status: `{workflow_run.status}` | "
-                f"Phase: `{workflow_run.current_phase}` | "
-                f"Verify: `{workflow_run.verification_verdict or '-'}`"
-                f"{flag_text}"
-            )
-
-        if h_pending > 0:
-            next_h = [h for h in hypotheses if h.get("state") == "pending"][0]
-            st.markdown(f"**下一个假设**: {next_h.get('statement', '-')[:50]}...")
-
-        st.markdown("---")
-        render_workflow_artifact_panel(project_path, workflow_run)
+        render_project_progress(project_path, sprint, hypotheses)
         
         st.markdown("---")
         
-        # === 2. 最近活动 ===
-        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">📋</span> 最近活动</div></div>""", unsafe_allow_html=True)
-        
-        activities = []
-        for h in hypotheses[:6]:
-            state = h.get("state", "pending")
-            statement = h.get("statement", "")[:30]
-            icon = "✅" if state == "validated" else "🔬" if state == "testing" else "📝"
-            state_text = "已验证" if state == "validated" else "测试中" if state == "testing" else "待处理"
-            activities.append({"icon": icon, "text": statement + "...", "state": state_text})
-        
-        if activities:
-            for act in activities:
-                st.markdown(f"""<div class="activity-item"><span class="icon">{act['icon']}</span><span class="text">{act['text']}</span><span style="color: var(--text-muted); font-size: 0.65rem;">{act['state']}</span></div>""", unsafe_allow_html=True)
-        else:
-            st.info("暂无最近活动")
+        render_recent_activity(hypotheses)
         
         st.markdown("---")
-        
-        # === 3. 当前迭代 ===
-        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">🎯</span> 当前迭代</div></div>""", unsafe_allow_html=True)
         
         memory_content = read_aop_file("PROJECT_MEMORY.md")
-        if memory_content:
-            in_progress = parse_md_section(memory_content, "进行中")
-            if in_progress:
-                st.markdown(in_progress[:350])
-            else:
-                st.info("暂无进行中的迭代目标")
-        else:
-            st.info("未找到项目记忆文件")
+        render_current_iteration(memory_content, parse_md_section)
     
     # ========== 右栏 ==========
     with right_col:
-        # === 1. Agent 状态 ===
-        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">🤖</span> Agent 状态</div></div>""", unsafe_allow_html=True)
-        
-        # 主 Agent
-        if primary_agent_id:
-            agent_names = {"claude_code": "Claude Code", "opencode": "OpenCode", "codex": "Codex", "openclaw": "OpenClaw"}
-            agent_name = agent_names.get(primary_agent_id, primary_agent_id)
-            is_available = any(a.id == primary_agent_id for a in agents)
-            badge = "status-online" if is_available else "status-offline"
-            status_icon = "●" if is_available else "○"
-            status_text = "可用" if is_available else "离线"
-            st.markdown(f"""
-            <div class="agent-row">
-                <div><div class="name">{agent_name}</div><div class="role">主 Agent · {status_text}</div></div>
-                <span class="status-badge {badge}">{status_icon}</span>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        # 子 Agent
-        sub_agents = [
-            {"name": "开发者", "role": "实现"},
-            {"name": "审查者", "role": "代码审查"},
-            {"name": "测试者", "role": "验证"},
-        ]
-        
-        for agent in sub_agents:
-            active_h = [h for h in hypotheses if h.get("state") == "testing"]
-            status = "忙碌" if active_h else "空闲"
-            badge = "status-busy" if active_h else "status-info"
-            icon = "●" if active_h else "○"
-            st.markdown(f"""
-            <div class="agent-row">
-                <div><div class="name">{agent['name']}</div><div class="role">{agent['role']}</div></div>
-                <span class="status-badge {badge}">{icon} {status}</span>
-            </div>
-            """, unsafe_allow_html=True)
+        render_agent_status(primary_agent_id, agents, hypotheses)
         
         st.markdown("---")
         
-        # === 2. 待处理问题 ===
-        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">⚠️</span> 待处理</div></div>""", unsafe_allow_html=True)
-        
-        issues = []
-        if h_pending > 0:
-            issues.append({"text": f"📋 {h_pending} 个假设待验证", "type": ""})
-        if h_testing > 0:
-            issues.append({"text": f"🔬 {h_testing} 个假设测试中", "type": "info"})
-        if not agents:
-            issues.append({"text": "🔴 无可用 Agent", "type": "error"})
-        
-        if issues:
-            for issue in issues:
-                st.markdown(f"""<div class="issue-badge {issue['type']}">{issue['text']}</div>""", unsafe_allow_html=True)
-        else:
-            st.success("✅ 状态良好")
+        render_issue_queue(h_pending, h_testing, agents)
         
         st.markdown("---")
         

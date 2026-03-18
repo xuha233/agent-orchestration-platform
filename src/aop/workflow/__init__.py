@@ -22,7 +22,7 @@ from .checks import (
     WorkflowLoopDetector,
     WorkflowPlanChecker,
 )
-from .reader import WorkflowRunReader, WorkflowRunSummary
+from .reader import WorkflowArtifactDocument, WorkflowRunDetail, WorkflowRunReader, WorkflowRunSummary
 from .runtime import WorkflowRuntime
 from .types import (
     GapClosurePlan,
@@ -44,6 +44,8 @@ __all__ = [
     "WorkflowArtifactManager",
     "WorkflowRunReader",
     "WorkflowRunSummary",
+    "WorkflowRunDetail",
+    "WorkflowArtifactDocument",
     "WorkflowRuntime",
     "WorkflowPlanChecker",
     "PlanCheckIssue",
