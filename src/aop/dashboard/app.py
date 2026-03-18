@@ -32,6 +32,7 @@ _logger = logging.getLogger(__name__)
 from aop.memory import build_agent_system_prompt
 from aop.session import get_session_manager
 from aop.utils.claude_config import get_claude_full_cmd, get_claude_cmd_prefix
+from aop.workflow import WorkflowRunReader
 from aop import __version__
 
 
@@ -812,6 +813,74 @@ def get_sprint_data() -> Optional[Dict]:
     return None
 
 
+def get_latest_workflow_run(project_path: str = "."):
+    """获取最新 workflow run 摘要"""
+    try:
+        reader = WorkflowRunReader(Path(project_path))
+        return reader.get_latest_run()
+    except Exception:
+        return None
+
+
+def read_workflow_artifact(project_path: str, run_id: str, filename: str) -> str:
+    """读取 workflow artifact 文本内容"""
+    try:
+        base = Path(project_path)
+        aop_dir = base if base.name == ".aop" else base / ".aop"
+        artifact_path = aop_dir / "runs" / run_id / filename
+        if artifact_path.exists():
+            return artifact_path.read_text(encoding="utf-8")
+    except Exception:
+        pass
+    return ""
+
+
+def render_workflow_artifact_panel(project_path: str, workflow_run) -> None:
+    """渲染最新 workflow run 的 artifact 面板"""
+    if not workflow_run:
+        st.info("暂无 workflow run artifact")
+        return
+
+    st.markdown(
+        """<div class="glass-card"><div class="section-title"><span class="icon">🧭</span> Workflow Artifacts</div></div>""",
+        unsafe_allow_html=True,
+    )
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Phase", workflow_run.current_phase or "-")
+    col2.metric("Status", workflow_run.status or "-")
+    col3.metric("Verify", workflow_run.verification_verdict or "-")
+    flags = []
+    if workflow_run.has_gaps:
+        flags.append("gaps")
+    if workflow_run.has_guardrails:
+        flags.append("guardrails")
+    col4.metric("Flags", ", ".join(flags) if flags else "-")
+
+    tab_names = ["RUN", "PLAN", "VERIFICATION", "GAPS", "GUARDRAILS"]
+    run_tab, plan_tab, verification_tab, gaps_tab, guardrails_tab = st.tabs(tab_names)
+
+    with run_tab:
+        content = read_workflow_artifact(project_path, workflow_run.run_id, "RUN.md")
+        st.code(content or "未找到 RUN.md", language="markdown")
+
+    with plan_tab:
+        content = read_workflow_artifact(project_path, workflow_run.run_id, "PLAN.md")
+        st.code(content or "未找到 PLAN.md", language="markdown")
+
+    with verification_tab:
+        content = read_workflow_artifact(project_path, workflow_run.run_id, "VERIFICATION.md")
+        st.code(content or "未找到 VERIFICATION.md", language="markdown")
+
+    with gaps_tab:
+        content = read_workflow_artifact(project_path, workflow_run.run_id, "GAPS.md")
+        st.code(content or "当前无 GAPS.md", language="markdown")
+
+    with guardrails_tab:
+        content = read_workflow_artifact(project_path, workflow_run.run_id, "GUARDRAILS.md")
+        st.code(content or "当前无 GUARDRAILS.md", language="markdown")
+
+
 def parse_md_section(content: str, section_title: str) -> str:
     """从 Markdown 内容中提取指定章节"""
     if not content:
@@ -1253,15 +1322,35 @@ def page_home():
         # === 1. 项目进度 ===
         st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">📈</span> 项目进度</div></div>""", unsafe_allow_html=True)
         
+        workflow_run = get_latest_workflow_run(".")
+
         if sprint:
             st.markdown(f"**当前冲刺**: {sprint.get('original_input', '无')[:60]}")
             st.caption(f"ID: {sprint.get('sprint_id', '-')}")
         else:
             st.info("暂无活跃冲刺")
-        
+
+        if workflow_run:
+            flags = []
+            if workflow_run.has_gaps:
+                flags.append("gaps")
+            if workflow_run.has_guardrails:
+                flags.append("guardrails")
+            flag_text = f" | Flags: {', '.join(flags)}" if flags else ""
+            st.markdown(
+                f"**Workflow Run**: `{workflow_run.run_id}` | "
+                f"Status: `{workflow_run.status}` | "
+                f"Phase: `{workflow_run.current_phase}` | "
+                f"Verify: `{workflow_run.verification_verdict or '-'}`"
+                f"{flag_text}"
+            )
+
         if h_pending > 0:
             next_h = [h for h in hypotheses if h.get("state") == "pending"][0]
             st.markdown(f"**下一个假设**: {next_h.get('statement', '-')[:50]}...")
+
+        st.markdown("---")
+        render_workflow_artifact_panel(project_path, workflow_run)
         
         st.markdown("---")
         

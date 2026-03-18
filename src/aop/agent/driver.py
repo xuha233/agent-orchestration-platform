@@ -10,11 +10,9 @@ AgentDriver - 全自动 Agent 团队驱动器
 from __future__ import annotations
 
 import hashlib
-import json
-from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import List, Callable, Dict, Any, TYPE_CHECKING, Literal
+from typing import List, Callable, Dict, Any, TYPE_CHECKING
 
 from .types import (
     SprintContext,
@@ -31,36 +29,18 @@ from .learning_extractor import LearningExtractor
 from .persistence import SprintPersistence
 from .scheduler import TaskScheduler
 from ..core.engine import ExecutionEngine
-from ..skills import SkillManager, SkillContext, create_skill_manager
 
 from ..state import StateManager
 from ..review import TwoStageReviewer
+from ..workflow.coordinator import WorkflowCoordinator
+from ..workflow import (
+    WorkflowTask,
+    WorkflowRuntime,
+)
 if TYPE_CHECKING:
-    from ..llm import LLMClient, ClaudeClient, LocalLLMClient
-    from ..orchestrator import OrchestratorClient, OrchestratorConfig
+    from ..llm import LLMClient
+    from ..orchestrator import OrchestratorClient
     from ..review import TwoStageReviewResult
-
-def _generate_fix_prompt(self, issues: list, current_content: str) -> str:
-        """生成修复提示"""
-        issue_descriptions = []
-        for issue in issues[:10]:  # 限制到10个问题
-            issue_descriptions.append(f"- [{issue.severity}] {issue.description}")
-            if issue.suggestion:
-                issue_descriptions.append(f"  Suggestion: {issue.suggestion}")
-        
-        return f"""Please fix the following issues in the content:
-
-Issues to fix:
-{chr(10).join(issue_descriptions)}
-
-Current content:
-`
-{current_content[:2000]}  # 限制长度
-`
-
-Please provide the fixed content that addresses these issues.
-"""
-
 
 class AgentDriver:
     """
@@ -143,13 +123,82 @@ class AgentDriver:
         )
 
         # 存储路径
-        self.storage_path = self.config.storage_path or Path(".aop")
+        self.storage_path = (
+            Path(self.config.storage_path)
+            if self.config.storage_path is not None
+            else Path(".aop")
+        )
 
         # 初始化状态管理器（STATE.md 跨会话记忆）
         self.state_manager = StateManager(project_path=self.storage_path)
 
         # 初始化持久化管理器
         self.persistence = SprintPersistence(str(self.storage_path / "sprints"))
+        self.workflow_runtime = WorkflowRuntime(
+            storage_path=self.storage_path,
+            report_progress=self._report_progress,
+            execute_workflow_tasks=lambda tasks: self._execute_workflow_tasks(tasks),
+        )
+
+        def initialize_workflow_tracking() -> None:
+            if self.context is not None:
+                self.workflow_runtime.initialize(self.context)
+
+        def finalize_workflow_run(status: str) -> None:
+            if self.context is not None:
+                self.workflow_runtime.finalize(
+                    self.context,
+                    status=status,
+                    summary=self._generate_summary(),
+                )
+
+        def sync_workflow_run_metadata() -> None:
+            if self.context is not None:
+                self.workflow_runtime.sync_metadata(self.context)
+
+        def update_workflow_phase(phase, status: str = "running") -> None:
+            if self.context is not None:
+                self.workflow_runtime.update_phase(
+                    self.context,
+                    phase,
+                    status=status,
+                )
+
+        def write_plan_artifact() -> None:
+            if self.context is not None:
+                self.workflow_runtime.write_plan(self.context)
+
+        def write_verification_artifact() -> None:
+            if self.context is not None:
+                self.workflow_runtime.write_verification(self.context)
+
+        def write_learnings_artifact() -> None:
+            if self.context is not None:
+                self.workflow_runtime.write_learnings(self.context)
+
+        self.workflow_coordinator = WorkflowCoordinator(
+            sprint_state_enum=SprintState,
+            report_progress=self._report_progress,
+            initialize_tracking=initialize_workflow_tracking,
+            save_context=lambda: self._save_context(),
+            build_result=lambda: self._build_result(),
+            finalize_workflow_run=finalize_workflow_run,
+            sync_workflow_run_metadata=sync_workflow_run_metadata,
+            update_workflow_phase=update_workflow_phase,
+            write_plan_artifact=write_plan_artifact,
+            write_execution_artifact=lambda sprint_id, results: self.workflow_runtime.write_execution(
+                sprint_id,
+                results,
+            ),
+            write_verification_artifact=write_verification_artifact,
+            write_learnings_artifact=write_learnings_artifact,
+            run_gap_closure_cycle=lambda: self._run_gap_closure_cycle(),
+            clarify_requirement=lambda vague_input, callback: self._clarify_requirement(vague_input, callback),
+            generate_hypotheses=lambda requirement: self._generate_hypotheses(requirement),
+            execute_tasks=lambda: self._execute_tasks(),
+            auto_validate=lambda hypotheses, results: self._auto_validate(hypotheses, results),
+            extract_learnings=lambda results: self._extract_learnings(results),
+        )
 
         # 初始化两阶段审查器
         self.reviewer = TwoStageReviewer()
@@ -275,59 +324,14 @@ class AgentDriver:
             original_input=vague_input,
             state=SprintState.INITIALIZED,
         )
-        
-        # 保存初始状态
-        self.persistence.save(self.context)
-
-        try:
-            # 阶段1: 澄清需求
-            self._report_progress("clarifying", "澄清需求中...")
-            clarified = self._clarify_requirement(vague_input, clarifications_callback)
-            self.context.clarified_requirement = clarified
-            self.context.state = SprintState.CLARIFIED
-            self.persistence.save(self.context)  # 增量保存
-
-            # 阶段2: 生成假设
-            self._report_progress("generating_hypotheses", "生成假设中...")
-            hypotheses = self._generate_hypotheses(clarified)
-            self.context.hypotheses = hypotheses
-            self.context.state = SprintState.HYPOTHESES_GENERATED
-            self.persistence.save(self.context)  # 增量保存
-
-            # 阶段3: 构建任务图
-            self._report_progress("decomposing_tasks", "分解任务中...")
-            self.context.state = SprintState.TASKS_DECOMPOSED
-            self.persistence.save(self.context)  # 增量保存
-
-            # 阶段4: 并行执行 (简化版)
-            if self.config.auto_execute:
-                self._report_progress("executing", "并行执行中...")
-                results = self._execute_tasks()
-                self.context.execution_results = results
-                self.context.state = SprintState.EXECUTED
-                self.persistence.save(self.context)  # 增量保存
-
-                # 阶段5: 自动验证
-                if self.config.auto_validate:
-                    self._report_progress("validating", "验证结果中...")
-                    self._auto_validate(hypotheses, results)
-                    self.context.state = SprintState.VALIDATED
-                    self.persistence.save(self.context)  # 增量保存
-
-                # 阶段6: 学习提取
-                if self.config.auto_learn:
-                    self._report_progress("learning", "提取学习中...")
-                    learnings = self._extract_learnings(results)
-                    self.context.learnings = learnings
-                    self.context.state = SprintState.COMPLETED
-                    self.persistence.save(self.context)  # 增量保存
-
-            return self._build_result()
-
-        except Exception as e:
-            self.context.state = SprintState.FAILED
-            self.persistence.save(self.context)  # 保存失败状态
-            raise
+        return self.workflow_coordinator.run_new(
+            context=self.context,
+            vague_input=vague_input,
+            clarifications_callback=clarifications_callback,
+            auto_execute=self.config.auto_execute,
+            auto_validate=self.config.auto_validate,
+            auto_learn=self.config.auto_learn,
+        )
 
     def run_from_clarified_requirement(
         self,
@@ -342,28 +346,12 @@ class AgentDriver:
             clarified_requirement=ClarifiedRequirement(**requirement),
             state=SprintState.CLARIFIED,
         )
-        
-        self.persistence.save(self.context)
-
-        hypotheses = self._generate_hypotheses(self.context.clarified_requirement)
-        self.context.hypotheses = hypotheses
-        self.persistence.save(self.context)
-
-        if self.config.auto_execute:
-            results = self._execute_tasks()
-            self.context.execution_results = results
-            self.persistence.save(self.context)
-
-            if self.config.auto_validate:
-                self._auto_validate(hypotheses, results)
-                self.persistence.save(self.context)
-
-            if self.config.auto_learn:
-                learnings = self._extract_learnings(results)
-                self.context.learnings = learnings
-                self.persistence.save(self.context)
-
-        return self._build_result()
+        return self.workflow_coordinator.run_from_clarified(
+            context=self.context,
+            auto_execute=self.config.auto_execute,
+            auto_validate=self.config.auto_validate,
+            auto_learn=self.config.auto_learn,
+        )
 
     def resume_sprint(self, sprint_id: str | None = None) -> SprintResult:
         """
@@ -388,96 +376,12 @@ class AgentDriver:
 
         if self.context is None:
             raise ValueError(f"冲刺 {sprint_id} 不存在或已损坏")
-
-        self._report_progress("resuming", f"恢复冲刺 {self.context.sprint_id}，当前状态: {self.context.state.value}")
-
-        # 根据当前状态继续执行
-        if self.context.state == SprintState.INITIALIZED:
-            # 重新开始澄清需求
-            return self.run_from_vague_description(
-                self.context.original_input,
-                clarifications_callback=None,
-            )
-
-        elif self.context.state == SprintState.CLARIFIED:
-            # 从生成假设继续
-            self._report_progress("generating_hypotheses", "生成假设中...")
-            hypotheses = self._generate_hypotheses(self.context.clarified_requirement)
-            self.context.hypotheses = hypotheses
-            self.context.state = SprintState.HYPOTHESES_GENERATED
-            self.persistence.save(self.context)
-            return self._continue_from_hypotheses()
-
-        elif self.context.state == SprintState.HYPOTHESES_GENERATED:
-            return self._continue_from_hypotheses()
-
-        elif self.context.state == SprintState.TASKS_DECOMPOSED:
-            return self._continue_from_execution()
-
-        elif self.context.state == SprintState.EXECUTED:
-            return self._continue_from_validation()
-
-        elif self.context.state == SprintState.VALIDATED:
-            return self._continue_from_learning()
-
-        elif self.context.state == SprintState.COMPLETED:
-            self._report_progress("completed", "冲刺已完成")
-            return self._build_result()
-
-        elif self.context.state == SprintState.FAILED:
-            self._report_progress("failed", "冲刺之前失败，请检查错误日志")
-            return self._build_result()
-
-        return self._build_result()
-
-    def _continue_from_hypotheses(self) -> SprintResult:
-        """从假设生成后继续执行"""
-        self._report_progress("decomposing_tasks", "分解任务中...")
-        self.context.state = SprintState.TASKS_DECOMPOSED
-        self.persistence.save(self.context)
-
-        if self.config.auto_execute:
-            return self._continue_from_execution()
-        
-        return self._build_result()
-
-    def _continue_from_execution(self) -> SprintResult:
-        """从任务分解后继续执行"""
-        if self.config.auto_execute:
-            self._report_progress("executing", "并行执行中...")
-            results = self._execute_tasks()
-            self.context.execution_results = results
-            self.context.state = SprintState.EXECUTED
-            self.persistence.save(self.context)
-
-            if self.config.auto_validate:
-                return self._continue_from_validation()
-        
-        return self._build_result()
-
-    def _continue_from_validation(self) -> SprintResult:
-        """从执行后继续验证"""
-        if self.config.auto_validate:
-            self._report_progress("validating", "验证结果中...")
-            self._auto_validate(self.context.hypotheses, self.context.execution_results)
-            self.context.state = SprintState.VALIDATED
-            self.persistence.save(self.context)
-
-            if self.config.auto_learn:
-                return self._continue_from_learning()
-        
-        return self._build_result()
-
-    def _continue_from_learning(self) -> SprintResult:
-        """从验证后继续学习提取"""
-        if self.config.auto_learn:
-            self._report_progress("learning", "提取学习中...")
-            learnings = self._extract_learnings(self.context.execution_results)
-            self.context.learnings = learnings
-            self.context.state = SprintState.COMPLETED
-            self.persistence.save(self.context)
-        
-        return self._build_result()
+        return self.workflow_coordinator.resume(
+            context=self.context,
+            auto_execute=self.config.auto_execute,
+            auto_validate=self.config.auto_validate,
+            auto_learn=self.config.auto_learn,
+        )
 
     def get_active_sprints(self) -> List[str]:
         """
@@ -652,8 +556,6 @@ class AgentDriver:
         if not self.context or not self.context.hypotheses:
             return []
 
-        results: List[Dict[str, Any]] = []
-
         # 优先使用 OrchestratorClient 执行
         if self._orchestrator and self._orchestrator.supports(
             self._get_capability("task_execution")
@@ -747,7 +649,7 @@ class AgentDriver:
             hypotheses_for_scheduler.append(h_dict)
 
         # 调度任务
-        assignments = scheduler.schedule(hypotheses_for_scheduler)
+        scheduler.schedule(hypotheses_for_scheduler)
 
         # 执行任务
         results = []
@@ -854,15 +756,21 @@ class AgentDriver:
 
         # 转换学习
         learnings_data = []
-        for l in (self.context.learnings if self.context else []):
+        for learning in (self.context.learnings if self.context else []):
             learnings_data.append({
-                "phase": getattr(l, 'phase', ''),
-                "insights": getattr(l, 'insights', []),
+                "phase": getattr(learning, 'phase', ''),
+                "insights": getattr(learning, 'insights', []),
             })
 
         return SprintResult(
             sprint_id=self.context.sprint_id if self.context else "",
-            success=self.context.state == SprintState.COMPLETED if self.context else False,
+            success=(
+                self.context.state == SprintState.COMPLETED
+                and (
+                    self.workflow_runtime.workflow_run is None
+                    or self.workflow_runtime.workflow_run.status == "completed"
+                )
+            ) if self.context else False,
             state=self.context.state if self.context else SprintState.FAILED,
             clarified_requirement=req_dict,
             hypotheses=hypotheses_data,
@@ -878,6 +786,202 @@ class AgentDriver:
             return "无活跃冲刺"
 
         return f"冲刺 {self.context.sprint_id} 已完成，共处理 {len(self.context.hypotheses)} 个假设"
+
+    def _run_gap_closure_cycle(self):
+        """Run one bounded repair wave when verification leaves structured gaps."""
+        if not self.context:
+            return
+        self.workflow_runtime.run_gap_closure_cycle(
+            self.context,
+            auto_execute=self.config.auto_execute,
+            auto_validate=self._auto_validate,
+        )
+        self.persistence.save(self.context)
+
+    def _execute_workflow_tasks(self, tasks: List[WorkflowTask]) -> List[Dict[str, Any]]:
+        """Execute workflow-native tasks for repair waves."""
+        if self._orchestrator and self._orchestrator.supports(
+            self._get_capability("task_execution")
+        ):
+            return self._execute_workflow_tasks_with_orchestrator(tasks)
+        return self._execute_workflow_tasks_with_engine(tasks)
+
+    def _execute_workflow_tasks_with_orchestrator(
+        self,
+        tasks: List[WorkflowTask],
+    ) -> List[Dict[str, Any]]:
+        """Execute workflow-native tasks through the orchestrator."""
+        results: List[Dict[str, Any]] = []
+
+        for task in tasks:
+            prompt = self._build_workflow_task_prompt(task)
+            try:
+                response = self._orchestrator.execute(
+                    prompt=prompt,
+                    repo_root=str(self.storage_path),
+                )
+                success = response.finish_reason == "stop"
+                results.append(
+                    {
+                        "task_id": task.task_id,
+                        "hypothesis_id": task.hypothesis_id,
+                        "success": success,
+                        "state": "completed" if success else "failed",
+                        "provider_results": {
+                            "orchestrator": {
+                                "success": success,
+                                "output": response.content,
+                            }
+                        },
+                        "duration_seconds": 0,
+                        "errors": [] if success else [response.finish_reason],
+                        "repair_wave": True,
+                    }
+                )
+            except Exception as exc:
+                results.append(
+                    {
+                        "task_id": task.task_id,
+                        "hypothesis_id": task.hypothesis_id,
+                        "success": False,
+                        "state": "failed",
+                        "errors": [str(exc)],
+                        "repair_wave": True,
+                    }
+                )
+
+        return results
+
+    def _execute_workflow_tasks_with_engine(
+        self,
+        tasks: List[WorkflowTask],
+    ) -> List[Dict[str, Any]]:
+        """Execute workflow-native tasks through the legacy execution engine."""
+        engine = ExecutionEngine(
+            providers=self.config.providers,
+            default_timeout=self.config.default_timeout,
+        )
+        results: List[Dict[str, Any]] = []
+
+        for task in tasks:
+            prompt = self._build_workflow_task_prompt(task)
+            try:
+                exec_result = engine.execute(
+                    prompt=prompt,
+                    repo_root=str(self.storage_path),
+                )
+                results.append(
+                    {
+                        "task_id": task.task_id,
+                        "hypothesis_id": task.hypothesis_id,
+                        "success": exec_result.success,
+                        "state": exec_result.terminal_state.value,
+                        "provider_results": {
+                            pid: {
+                                "success": result.success,
+                                "output": result.output if hasattr(result, "output") else str(result),
+                            }
+                            for pid, result in exec_result.provider_results.items()
+                        },
+                        "duration_seconds": exec_result.duration_seconds,
+                        "errors": exec_result.errors,
+                        "repair_wave": True,
+                    }
+                )
+            except Exception as exc:
+                results.append(
+                    {
+                        "task_id": task.task_id,
+                        "hypothesis_id": task.hypothesis_id,
+                        "success": False,
+                        "state": "failed",
+                        "errors": [str(exc)],
+                        "repair_wave": True,
+                    }
+                )
+
+        return results
+
+    def _build_workflow_task_prompt(self, task: WorkflowTask) -> str:
+        """Build a bounded execution prompt for workflow-native tasks."""
+        verification_steps = "\n".join(
+            f"- {step}" for step in task.verification_steps
+        ) or "- None"
+        return f"""Task: {task.title}
+
+Objective:
+{task.objective or task.description or task.title}
+
+Expected output:
+{task.output_format or 'Provide concrete execution evidence.'}
+
+Tool guidance:
+{task.tools_guidance or 'Use the available execution tools carefully.'}
+
+Boundaries:
+{task.boundaries or 'Stay within the scoped task.'}
+
+Verification steps:
+{verification_steps}
+"""
+
+    def _get_hypothesis_id(self, hypothesis: Any, index: int) -> str:
+        if hasattr(hypothesis, "id") and getattr(hypothesis, "id"):
+            return getattr(hypothesis, "id")
+        if hasattr(hypothesis, "hypothesis_id") and getattr(hypothesis, "hypothesis_id"):
+            return getattr(hypothesis, "hypothesis_id")
+        if isinstance(hypothesis, dict):
+            return hypothesis.get("id") or hypothesis.get("hypothesis_id") or f"h{index}"
+        return f"h{index}"
+
+    def _get_hypothesis_statement(self, hypothesis: Any) -> str:
+        if hasattr(hypothesis, "statement"):
+            return getattr(hypothesis, "statement", "")
+        if isinstance(hypothesis, dict):
+            return hypothesis.get("statement", "")
+        return ""
+
+    def _get_hypothesis_validation_method(self, hypothesis: Any) -> str:
+        if hasattr(hypothesis, "validation_method"):
+            return getattr(hypothesis, "validation_method", "")
+        if isinstance(hypothesis, dict):
+            return hypothesis.get("validation_method", "")
+        return ""
+
+    def _get_hypothesis_dependencies(self, hypothesis: Any) -> List[str]:
+        if hasattr(hypothesis, "dependencies"):
+            return list(getattr(hypothesis, "dependencies", []) or [])
+        if isinstance(hypothesis, dict):
+            return list(hypothesis.get("dependencies", []) or [])
+        return []
+
+    def _get_hypothesis_success_criteria(self, hypothesis: Any) -> List[str]:
+        if hasattr(hypothesis, "success_criteria"):
+            return list(getattr(hypothesis, "success_criteria", []) or [])
+        if isinstance(hypothesis, dict):
+            return list(hypothesis.get("success_criteria", []) or [])
+        return []
+
+    def _get_hypothesis_tools_guidance(self, hypothesis: Any) -> str:
+        if hasattr(hypothesis, "tools_guidance"):
+            return getattr(hypothesis, "tools_guidance", "")
+        if isinstance(hypothesis, dict):
+            return hypothesis.get("tools_guidance", "")
+        return ""
+
+    def _get_hypothesis_boundaries(self, hypothesis: Any) -> str:
+        if hasattr(hypothesis, "boundaries"):
+            return getattr(hypothesis, "boundaries", "")
+        if isinstance(hypothesis, dict):
+            return hypothesis.get("boundaries", "")
+        return ""
+
+    def _get_hypothesis_effort_budget(self, hypothesis: Any) -> int:
+        if hasattr(hypothesis, "effort_budget"):
+            return int(getattr(hypothesis, "effort_budget", 10) or 10)
+        if isinstance(hypothesis, dict):
+            return int(hypothesis.get("effort_budget", 10) or 10)
+        return 10
 
     def _generate_sprint_id(self) -> str:
         """生成冲刺ID"""
@@ -966,8 +1070,6 @@ class AgentDriver:
         Returns:
             (审查结果, 最终内容)
         """
-        from ..review import ReviewIssue
-        
         current_content = content
         
         def fix_callback(issues: list) -> str:
