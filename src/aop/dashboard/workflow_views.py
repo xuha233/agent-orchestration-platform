@@ -185,12 +185,17 @@ def render_artifact_metadata_summary(artifact: Any) -> None:
         col3.metric("Checks", str(metadata.get("verification_steps", 0)))
         col4.metric("Risks", str(metadata.get("risks", 0)))
     elif artifact.title == "PLAN CHECK":
-        col1, col2 = st.columns(2)
+        col1, col2, col3, col4 = st.columns(4)
         col1.metric("Passed", str(metadata.get("passed", "-")))
         col2.metric("Issues", str(metadata.get("issues", 0)))
+        col3.metric("Critical", str(metadata.get("critical_issues", 0)))
+        col4.metric("Important", str(metadata.get("important_issues", 0)))
         summary = metadata.get("summary")
         if summary:
             st.caption(summary)
+        issue_details = metadata.get("issue_details", [])
+        for issue in issue_details[:3]:
+            st.markdown(f"- {issue}")
     elif artifact.title == "EXECUTION":
         col1, col2, col3 = st.columns(3)
         col1.metric("Results", str(metadata.get("results", 0)))
