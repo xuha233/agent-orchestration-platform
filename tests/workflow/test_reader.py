@@ -91,3 +91,5 @@ def test_workflow_run_reader_loads_run_detail_with_artifacts(tmp_path):
     assert artifact_titles["SUMMARY"].exists is True
     assert artifact_titles["EXECUTION"].exists is False
     assert "Ship workflow dashboard" in artifact_titles["PLAN"].content
+    assert artifact_titles["PLAN"].metadata["goals"] == 1
+    assert artifact_titles["VERIFICATION"].metadata["verdict"] == "pass"

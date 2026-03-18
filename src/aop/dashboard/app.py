@@ -891,6 +891,54 @@ def render_workflow_run_overview(recent_runs: List[Any]) -> None:
         )
 
 
+def render_artifact_metadata_summary(artifact: Any) -> None:
+    """Render compact structured summaries for key workflow artifacts."""
+    metadata = getattr(artifact, "metadata", {}) or {}
+    if not metadata:
+        return
+
+    if artifact.title == "PLAN":
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Goals", str(metadata.get("goals", 0)))
+        col2.metric("Tasks", str(metadata.get("tasks", 0)))
+        col3.metric("Checks", str(metadata.get("verification_steps", 0)))
+        col4.metric("Risks", str(metadata.get("risks", 0)))
+    elif artifact.title == "PLAN CHECK":
+        col1, col2 = st.columns(2)
+        col1.metric("Passed", str(metadata.get("passed", "-")))
+        col2.metric("Issues", str(metadata.get("issues", 0)))
+        summary = metadata.get("summary")
+        if summary:
+            st.caption(summary)
+    elif artifact.title == "EXECUTION":
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Results", str(metadata.get("results", 0)))
+        col2.metric("Failed", str(metadata.get("failed", 0)))
+        col3.metric("Repair Waves", str(metadata.get("repair_waves", 0)))
+    elif artifact.title == "VERIFICATION":
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Verdict", str(metadata.get("verdict", "-")))
+        col2.metric("Truths", str(metadata.get("truths", 0)))
+        col3.metric("Gaps", str(metadata.get("gaps", 0)))
+        col4.metric("Checks", str(metadata.get("checks", 0)))
+    elif artifact.title == "GAPS":
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Gap Items", str(metadata.get("gaps", 0)))
+        col2.metric("Repair Tasks", str(metadata.get("repair_tasks", 0)))
+        col3.metric("Next Steps", str(metadata.get("next_steps", 0)))
+    elif artifact.title == "GUARDRAILS":
+        col1, col2 = st.columns(2)
+        col1.metric("Should Stop", str(metadata.get("should_stop", "-")))
+        col2.metric("Reasons", str(metadata.get("reasons", 0)))
+    elif artifact.title == "LEARNINGS":
+        st.metric("Learning Records", str(metadata.get("records", 0)))
+    elif artifact.title == "COMPLETION":
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Passed", str(metadata.get("passed", "-")))
+        col2.metric("Status", str(metadata.get("status", "-")))
+        col3.metric("Reasons", str(metadata.get("reasons", 0)))
+
+
 def render_workflow_artifact_panel(project_path: str, workflow_run) -> None:
     """渲染 workflow run 的 artifact 工作台"""
     if not workflow_run:
@@ -948,6 +996,9 @@ def render_workflow_artifact_panel(project_path: str, workflow_run) -> None:
             caption = artifact.filename
             if artifact.exists:
                 st.caption(caption)
+                render_artifact_metadata_summary(artifact)
+                if artifact.metadata:
+                    st.markdown("---")
                 st.code(artifact.content, language="markdown")
             else:
                 st.caption(caption)
