@@ -33,7 +33,9 @@ from aop.memory import build_agent_system_prompt
 from aop.session import get_session_manager
 from aop.utils.claude_config import get_claude_full_cmd, get_claude_cmd_prefix
 from aop.dashboard.home_views import (
+    render_agent_status,
     render_current_iteration,
+    render_issue_queue,
     render_project_progress,
     render_recent_activity,
 )
@@ -1268,61 +1270,11 @@ def page_home():
     
     # ========== 右栏 ==========
     with right_col:
-        # === 1. Agent 状态 ===
-        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">🤖</span> Agent 状态</div></div>""", unsafe_allow_html=True)
-        
-        # 主 Agent
-        if primary_agent_id:
-            agent_names = {"claude_code": "Claude Code", "opencode": "OpenCode", "codex": "Codex", "openclaw": "OpenClaw"}
-            agent_name = agent_names.get(primary_agent_id, primary_agent_id)
-            is_available = any(a.id == primary_agent_id for a in agents)
-            badge = "status-online" if is_available else "status-offline"
-            status_icon = "●" if is_available else "○"
-            status_text = "可用" if is_available else "离线"
-            st.markdown(f"""
-            <div class="agent-row">
-                <div><div class="name">{agent_name}</div><div class="role">主 Agent · {status_text}</div></div>
-                <span class="status-badge {badge}">{status_icon}</span>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        # 子 Agent
-        sub_agents = [
-            {"name": "开发者", "role": "实现"},
-            {"name": "审查者", "role": "代码审查"},
-            {"name": "测试者", "role": "验证"},
-        ]
-        
-        for agent in sub_agents:
-            active_h = [h for h in hypotheses if h.get("state") == "testing"]
-            status = "忙碌" if active_h else "空闲"
-            badge = "status-busy" if active_h else "status-info"
-            icon = "●" if active_h else "○"
-            st.markdown(f"""
-            <div class="agent-row">
-                <div><div class="name">{agent['name']}</div><div class="role">{agent['role']}</div></div>
-                <span class="status-badge {badge}">{icon} {status}</span>
-            </div>
-            """, unsafe_allow_html=True)
+        render_agent_status(primary_agent_id, agents, hypotheses)
         
         st.markdown("---")
         
-        # === 2. 待处理问题 ===
-        st.markdown("""<div class="glass-card"><div class="section-title"><span class="icon">⚠️</span> 待处理</div></div>""", unsafe_allow_html=True)
-        
-        issues = []
-        if h_pending > 0:
-            issues.append({"text": f"📋 {h_pending} 个假设待验证", "type": ""})
-        if h_testing > 0:
-            issues.append({"text": f"🔬 {h_testing} 个假设测试中", "type": "info"})
-        if not agents:
-            issues.append({"text": "🔴 无可用 Agent", "type": "error"})
-        
-        if issues:
-            for issue in issues:
-                st.markdown(f"""<div class="issue-badge {issue['type']}">{issue['text']}</div>""", unsafe_allow_html=True)
-        else:
-            st.success("✅ 状态良好")
+        render_issue_queue(h_pending, h_testing, agents)
         
         st.markdown("---")
         
