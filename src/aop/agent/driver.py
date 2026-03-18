@@ -33,19 +33,9 @@ from ..core.engine import ExecutionEngine
 from ..state import StateManager
 from ..review import TwoStageReviewer
 from ..workflow import (
-    CompletionGate,
-    GapClosurePlan,
-    GapItem,
-    GuardrailReport,
-    VerificationCheck,
-    VerificationReport,
-    WorkflowArtifactManager,
-    WorkflowLoopDetector,
     WorkflowPhase,
-    WorkflowPlan,
-    WorkflowPlanChecker,
-    WorkflowRun,
     WorkflowTask,
+    WorkflowRuntime,
 )
 if TYPE_CHECKING:
     from ..llm import LLMClient
@@ -144,15 +134,11 @@ class AgentDriver:
 
         # 初始化持久化管理器
         self.persistence = SprintPersistence(str(self.storage_path / "sprints"))
-        self.workflow_artifacts = WorkflowArtifactManager(self.storage_path)
-        self.workflow_run: WorkflowRun | None = None
-        self.plan_checker = WorkflowPlanChecker()
-        self.completion_gate = CompletionGate()
-        self.loop_detector = WorkflowLoopDetector()
-        self.latest_verification_report: VerificationReport | None = None
-        self.latest_gap_closure_plan: GapClosurePlan | None = None
-        self.latest_guardrail_report: GuardrailReport | None = None
-        self.repair_attempts = 0
+        self.workflow_runtime = WorkflowRuntime(
+            storage_path=self.storage_path,
+            report_progress=self._report_progress,
+            execute_workflow_tasks=lambda tasks: self._execute_workflow_tasks(tasks),
+        )
 
         # 初始化两阶段审查器
         self.reviewer = TwoStageReviewer()
@@ -282,7 +268,6 @@ class AgentDriver:
         
         # 保存初始状态
         self.persistence.save(self.context)
-        self.workflow_artifacts.initialize_run(self.workflow_run)
 
         try:
             # 阶段1: 澄清需求
@@ -316,7 +301,10 @@ class AgentDriver:
                 self.context.execution_results = results
                 self.context.state = SprintState.EXECUTED
                 self.persistence.save(self.context)  # 增量保存
-                self.workflow_artifacts.write_execution(self.context.sprint_id, results)
+                self.workflow_runtime.workflow_artifacts.write_execution(
+                    self.context.sprint_id,
+                    results,
+                )
 
                 # 阶段5: 自动验证
                 if self.config.auto_validate:
@@ -471,7 +459,10 @@ class AgentDriver:
             self.context.execution_results = results
             self.context.state = SprintState.EXECUTED
             self.persistence.save(self.context)
-            self.workflow_artifacts.write_execution(self.context.sprint_id, results)
+            self.workflow_runtime.workflow_artifacts.write_execution(
+                self.context.sprint_id,
+                results,
+            )
 
             if self.config.auto_validate:
                 return self._continue_from_validation()
@@ -892,8 +883,8 @@ class AgentDriver:
             success=(
                 self.context.state == SprintState.COMPLETED
                 and (
-                    self.workflow_run is None
-                    or self.workflow_run.status == "completed"
+                    self.workflow_runtime.workflow_run is None
+                    or self.workflow_runtime.workflow_run.status == "completed"
                 )
             ) if self.context else False,
             state=self.context.state if self.context else SprintState.FAILED,
@@ -914,323 +905,65 @@ class AgentDriver:
 
     def _sync_workflow_run_metadata(self):
         """同步 workflow run 元数据。"""
-        if not self.context:
-            return
-
-        if self.workflow_run is None:
-            self.workflow_run = WorkflowRun(
-                run_id=self.context.sprint_id,
-                original_input=self.context.original_input,
-            )
-
-        clarified = self.context.clarified_requirement
-        self.workflow_run.clarified_summary = getattr(clarified, "summary", "")
-        self.workflow_run.success_criteria = list(
-            getattr(clarified, "success_criteria", []) or []
-        )
-        self.workflow_run.hypothesis_ids = [
-            self._get_hypothesis_id(h, index)
-            for index, h in enumerate(self.context.hypotheses or [])
-        ]
-        self.workflow_artifacts.update_run(self.workflow_run)
+        if self.context:
+            self.workflow_runtime.sync_metadata(self.context)
 
     def _initialize_workflow_tracking(self):
         """为新冲刺重置并初始化 workflow 跟踪状态。"""
-        if not self.context:
-            return
-
-        self.latest_verification_report = None
-        self.latest_gap_closure_plan = None
-        self.latest_guardrail_report = None
-        self.repair_attempts = 0
-        self.workflow_run = WorkflowRun(
-            run_id=self.context.sprint_id,
-            original_input=self.context.original_input,
-        )
-        self.workflow_artifacts.initialize_run(self.workflow_run)
+        if self.context:
+            self.workflow_runtime.initialize(self.context)
 
     def _update_workflow_phase(self, phase: WorkflowPhase, status: str = "running"):
         """更新 workflow run 所处阶段。"""
-        if not self.context:
-            return
-
-        if self.workflow_run is None:
-            self.workflow_run = WorkflowRun(
-                run_id=self.context.sprint_id,
-                original_input=self.context.original_input,
-            )
-
-        self.workflow_run.current_phase = phase
-        self.workflow_run.status = status
-        self._sync_workflow_run_metadata()
+        if self.context:
+            self.workflow_runtime.update_phase(self.context, phase, status=status)
 
     def _write_plan_artifact(self):
         """生成并写入 PLAN.md。"""
-        if not self.context or not self.context.clarified_requirement:
-            return
-
-        self._update_workflow_phase(WorkflowPhase.PLAN)
-        plan = self._build_workflow_plan()
-        self.workflow_artifacts.write_plan(self.context.sprint_id, plan)
-        self.workflow_artifacts.write_plan_check(
-            self.context.sprint_id,
-            self.plan_checker.check(plan),
-        )
+        if self.context:
+            self.workflow_runtime.write_plan(self.context)
 
     def _write_verification_artifact(self):
         """生成并写入 VERIFICATION.md。"""
-        if not self.context:
-            return
-
-        report = self._build_verification_report()
-        self.latest_verification_report = report
-        self.workflow_artifacts.write_verification(self.context.sprint_id, report)
-        if report.gaps:
-            self.latest_gap_closure_plan = self._build_gap_closure_plan(report)
-            self.workflow_artifacts.write_gap_closure(
-                self.context.sprint_id,
-                self.latest_gap_closure_plan,
-            )
-        else:
-            self.latest_gap_closure_plan = None
-            self.workflow_artifacts.clear_gap_closure(self.context.sprint_id)
+        if self.context:
+            self.workflow_runtime.write_verification(self.context)
 
     def _write_learnings_artifact(self):
         """生成并写入 LEARNINGS.md。"""
-        if not self.context:
-            return
-
-        learnings = []
-        for learning in self.context.learnings:
-            learnings.append(
-                {
-                    "phase": getattr(learning, "phase", ""),
-                    "insights": getattr(learning, "insights", []),
-                }
-            )
-        self.workflow_artifacts.write_learnings(self.context.sprint_id, learnings)
+        if self.context:
+            self.workflow_runtime.write_learnings(self.context)
 
     def _finalize_workflow_run(self, status: str):
         """写入最终 summary 并将 workflow run 标记为完成或失败。"""
-        if not self.context:
-            return
-
-        learnings = []
-        for learning in self.context.learnings or []:
-            learnings.append(
-                {
-                    "phase": getattr(learning, "phase", ""),
-                    "insights": getattr(learning, "insights", []),
-                }
+        if self.context:
+            self.workflow_runtime.finalize(
+                self.context,
+                status=status,
+                summary=self._generate_summary(),
             )
 
-        decision = self.completion_gate.evaluate(
-            verification_report=self.latest_verification_report,
-            execution_results=self.context.execution_results,
-            learnings=learnings,
-        )
-        final_phase = (
-            WorkflowPhase.COMPLETE
-            if decision.passed and status == "completed"
-            else WorkflowPhase.GAP_CLOSE
-        )
-        final_status = decision.status if status == "completed" else status
-        if self.latest_guardrail_report and self.latest_guardrail_report.should_stop:
-            final_status = "needs_follow_up"
-        self._update_workflow_phase(final_phase, status=final_status)
-        self.workflow_artifacts.write_completion(self.context.sprint_id, decision)
-        if self.latest_guardrail_report is not None:
-            self.workflow_artifacts.write_guardrails(
-                self.context.sprint_id,
-                self.latest_guardrail_report,
-            )
-        self.workflow_artifacts.write_summary(
-            self.context.sprint_id,
-            self._generate_summary(),
-        )
-
-    def _build_workflow_plan(self) -> WorkflowPlan:
+    def _build_workflow_plan(self):
         """根据当前上下文构建 workflow plan。"""
-        requirement = self.context.clarified_requirement
-        hypotheses = self.context.hypotheses or []
-        tasks = []
+        return self.workflow_runtime.build_workflow_plan(self.context)
 
-        for index, hypothesis in enumerate(hypotheses):
-            title = self._get_hypothesis_statement(hypothesis) or f"Hypothesis {index + 1}"
-            tasks.append(
-                WorkflowTask(
-                    task_id=f"task-{index + 1}",
-                    title=title[:100],
-                    description=self._get_hypothesis_validation_method(hypothesis) or title,
-                    hypothesis_id=self._get_hypothesis_id(hypothesis, index),
-                    dependencies=self._get_hypothesis_dependencies(hypothesis),
-                    verification_steps=self._get_hypothesis_success_criteria(hypothesis)
-                    or list(getattr(requirement, "success_criteria", []) or []),
-                    objective=title,
-                    output_format="Execution result with concrete artifact or repo change summary.",
-                    tools_guidance=self._get_hypothesis_tools_guidance(hypothesis)
-                    or "Use the configured orchestrator or execution engine.",
-                    boundaries=self._get_hypothesis_boundaries(hypothesis)
-                    or "Do not change unrelated files or exceed the scoped task.",
-                    effort_budget=self._get_hypothesis_effort_budget(hypothesis),
-                )
-            )
-
-        return WorkflowPlan(
-            summary=getattr(requirement, "summary", ""),
-            goals=list(getattr(requirement, "core_features", []) or [])
-            or [getattr(requirement, "summary", "")],
-            tasks=tasks,
-            verification_steps=list(getattr(requirement, "success_criteria", []) or []),
-            out_of_scope=[],
-            risks=list(getattr(requirement, "risks", []) or []),
-        )
-
-    def _build_verification_report(self) -> VerificationReport:
+    def _build_verification_report(self):
         """根据执行与验证结果构建验证报告。"""
-        truths = []
-        gaps = []
-        evidence = []
-        checks = []
-        verdict_by_hypothesis: Dict[str, str] = {}
+        return self.workflow_runtime.build_verification_report(self.context)
 
-        validation_results = getattr(self.context, "validation_results", []) or []
-        for validation in validation_results:
-            verdict = getattr(getattr(validation, "verdict", None), "value", None) or str(
-                getattr(validation, "verdict", "unknown")
-            )
-            hypothesis_id = getattr(validation, "hypothesis_id", "unknown")
-            reasoning = getattr(validation, "reasoning", "")
-            verdict_by_hypothesis[hypothesis_id] = verdict
-
-            checks.append(
-                VerificationCheck(
-                    name=f"hypothesis:{hypothesis_id}",
-                    status=verdict,
-                    details=reasoning,
-                )
-            )
-
-            if verdict == "validated":
-                truths.append(f"{hypothesis_id} validated")
-            elif verdict in {"refuted", "needs_more_info", "inconclusive"}:
-                gaps.append(f"{hypothesis_id} verification verdict: {verdict}")
-
-        for result in self.context.execution_results or []:
-            task_id = result.get("task_id", "unknown-task")
-            hypothesis_id = result.get("hypothesis_id", "unknown")
-            state = result.get("state", "unknown")
-            success = result.get("success", False)
-            evidence.append(
-                f"{task_id}: hypothesis={hypothesis_id}, state={state}, success={success}"
-            )
-            if success:
-                truths.append(f"{task_id} executed successfully")
-            elif verdict_by_hypothesis.get(hypothesis_id) == "validated":
-                truths.append(f"{task_id} failure was superseded by a validated repair.")
-            else:
-                gaps.append(f"{task_id} failed during execution")
-
-        verdict = "pass" if not gaps else "partial"
-        summary = "Verification passed with no recorded gaps." if not gaps else (
-            f"Verification found {len(gaps)} gap(s) that still need attention."
-        )
-
-        return VerificationReport(
-            summary=summary,
-            verdict=verdict,
-            truths=truths,
-            gaps=gaps,
-            evidence=evidence,
-            checks=checks,
-        )
-
-    def _build_gap_closure_plan(
-        self,
-        report: VerificationReport,
-    ) -> GapClosurePlan:
+    def _build_gap_closure_plan(self, report):
         """将验证缺口转换为有边界的修复计划。"""
-        gap_items: List[GapItem] = []
-        repair_tasks: List[WorkflowTask] = []
-
-        for index, gap in enumerate(report.gaps, start=1):
-            gap_id = f"gap-{index}"
-            gap_item = GapItem(
-                gap_id=gap_id,
-                title=f"Resolve {gap_id}",
-                description=gap,
-                source="verification",
-                severity="important",
-                suggested_action="Investigate the failing requirement and patch only the scoped issue.",
-                verification_target=gap,
-            )
-            gap_items.append(gap_item)
-            repair_tasks.append(
-                WorkflowTask(
-                    task_id=f"repair-{index}",
-                    title=gap_item.title,
-                    description=gap_item.description,
-                    verification_steps=[gap_item.verification_target],
-                    objective=gap_item.suggested_action,
-                    output_format="Minimal code or artifact update plus evidence of the fix.",
-                    tools_guidance="Focus only on the failing path and gather concrete verification evidence.",
-                    boundaries="Avoid unrelated refactors and stop after the scoped gap is addressed.",
-                    effort_budget=5,
-                )
-            )
-
-        return GapClosurePlan(
-            summary=f"Generated {len(gap_items)} repair task(s) from verification gaps.",
-            gaps=gap_items,
-            repair_tasks=repair_tasks,
-            stop_conditions=[
-                "Stop if the same gap remains after one targeted repair attempt.",
-                "Stop if fixing the gap requires broader scope than the current run allows.",
-            ],
-            next_verification_steps=[
-                *[gap.verification_target for gap in gap_items if gap.verification_target],
-                "Re-run verification after targeted repair tasks complete.",
-            ],
-        )
+        return self.workflow_runtime.build_gap_closure_plan(report)
 
     def _run_gap_closure_cycle(self):
         """Run one bounded repair wave when verification leaves structured gaps."""
-        if not self.context or not self.config.auto_execute:
+        if not self.context:
             return
-        if self.latest_gap_closure_plan is None:
-            return
-        if not self.latest_gap_closure_plan.repair_tasks:
-            return
-        if self.repair_attempts >= 1:
-            self.latest_guardrail_report = self.loop_detector.evaluate(
-                self.context.execution_results,
-                repair_attempts=self.repair_attempts,
-            )
-            return
-
-        self.repair_attempts += 1
-        self._report_progress("gap_closing", "执行有边界的修复任务中...")
-        self._update_workflow_phase(WorkflowPhase.GAP_CLOSE)
-
-        repair_results = self._execute_workflow_tasks(self.latest_gap_closure_plan.repair_tasks)
-        self.context.execution_results.extend(repair_results)
-        self.persistence.save(self.context)
-        self.workflow_artifacts.write_execution(
-            self.context.sprint_id,
-            self.context.execution_results,
+        self.workflow_runtime.run_gap_closure_cycle(
+            self.context,
+            auto_execute=self.config.auto_execute,
+            auto_validate=self._auto_validate,
         )
-
-        self._report_progress("revalidating", "修复后重新验证中...")
-        self._auto_validate(self.context.hypotheses, self.context.execution_results)
         self.persistence.save(self.context)
-        self._write_verification_artifact()
-        if self.latest_gap_closure_plan is not None:
-            self.latest_guardrail_report = self.loop_detector.evaluate(
-                self.context.execution_results,
-                repair_attempts=self.repair_attempts,
-            )
-        else:
-            self.latest_guardrail_report = None
 
     def _execute_workflow_tasks(self, tasks: List[WorkflowTask]) -> List[Dict[str, Any]]:
         """Execute workflow-native tasks for repair waves."""
