@@ -199,7 +199,7 @@ def render_run_risk_profile(selected_detail: Any) -> None:
         st.caption("当前 run 风险较低，未发现明显的计划或执行阻塞。")
 
 
-def render_next_action(selected_detail: Any) -> None:
+def render_next_action(selected_detail: Any, artifact_focus_key: str) -> None:
     """Render a concise next-step recommendation for the selected run."""
     artifact_map = {artifact.title: artifact for artifact in selected_detail.artifacts}
     plan_check = artifact_map.get("PLAN CHECK")
@@ -226,6 +226,17 @@ def render_next_action(selected_detail: Any) -> None:
     st.markdown("**Recommended Next Action**")
     st.markdown(f"- {headline}")
     st.caption("Suggested focus: " + " -> ".join(targets))
+
+    action_cols = st.columns(len(targets))
+    for index, target in enumerate(targets):
+        with action_cols[index]:
+            if st.button(
+                f"Open {target}",
+                key=f"next_action_{selected_detail.summary.run_id}_{target}",
+                use_container_width=True,
+            ):
+                st.session_state[artifact_focus_key] = target
+                st.rerun()
 
 
 def render_run_comparison(selected_run: Any, recent_runs: List[Any]) -> None:
@@ -322,12 +333,13 @@ def render_artifact_metadata_summary(artifact: Any) -> None:
 def render_artifact_focus_selector(selected_detail: Any) -> Any:
     """Choose a single artifact to focus on instead of scanning all tabs."""
     artifact_titles = [artifact.title for artifact in selected_detail.artifacts]
-    default_index = artifact_titles.index("SUMMARY") if "SUMMARY" in artifact_titles else 0
+    focus_key = f"artifact_focus_{selected_detail.summary.run_id}"
+    if focus_key not in st.session_state or st.session_state[focus_key] not in artifact_titles:
+        st.session_state[focus_key] = "SUMMARY" if "SUMMARY" in artifact_titles else artifact_titles[0]
     selected_title = st.selectbox(
         "Focus Artifact",
         options=artifact_titles,
-        index=default_index,
-        key=f"artifact_focus_{selected_detail.summary.run_id}",
+        key=focus_key,
     )
     return next(
         artifact for artifact in selected_detail.artifacts if artifact.title == selected_title
@@ -410,7 +422,10 @@ def render_workflow_artifact_panel(project_path: str, workflow_run) -> None:
         render_follow_up_details(selected_detail)
 
     st.markdown("---")
-    render_next_action(selected_detail)
+    render_next_action(
+        selected_detail,
+        artifact_focus_key=f"artifact_focus_{selected_detail.summary.run_id}",
+    )
     st.markdown("---")
 
     focused_artifact = render_artifact_focus_selector(selected_detail)
