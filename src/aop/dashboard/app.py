@@ -922,7 +922,7 @@ def render_sidebar():
             """, unsafe_allow_html=True)
 
         # 底部版本信息
-        st.markdown("""
+        st.markdown(f"""
         <div style="position: fixed; bottom: 1rem; left: 1rem; right: 1rem; font-size: 0.65rem; color: rgba(255,255,255,0.3);">
             <div>AOP v{__version__}</div>
             <a href="https://github.com/openclaw/aop" style="color: rgba(245,158,11,0.6); text-decoration: none;">GitHub</a>
