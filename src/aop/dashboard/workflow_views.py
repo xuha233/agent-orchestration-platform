@@ -10,6 +10,17 @@ import streamlit as st
 from aop.workflow import WorkflowRunReader
 
 
+PHASE_ORDER = [
+    ("clarify", "Clarify"),
+    ("plan", "Plan"),
+    ("execute", "Execute"),
+    ("verify", "Verify"),
+    ("gap_close", "Gap Close"),
+    ("learn", "Learn"),
+    ("complete", "Complete"),
+]
+
+
 def get_latest_workflow_run(project_path: str = "."):
     """Return the latest workflow run summary for the project."""
     try:
@@ -138,6 +149,22 @@ def render_follow_up_details(selected_detail: Any) -> None:
         st.markdown(f"- {line}")
 
 
+def render_phase_journey(current_phase: str) -> None:
+    """Render a simple workflow journey indicator."""
+    chips = []
+    phase_seen = True
+    for phase_key, label in PHASE_ORDER:
+        is_current = phase_key == current_phase
+        if is_current:
+            phase_seen = False
+        tone = "#f59e0b" if is_current else "#22c55e" if phase_seen else "#71717a"
+        chips.append(
+            f"<span style='padding:0.2rem 0.55rem;border:1px solid rgba(255,255,255,0.08);"
+            f"border-radius:999px;margin-right:0.35rem;color:{tone};font-size:0.72rem;'>{label}</span>"
+        )
+    st.markdown("".join(chips), unsafe_allow_html=True)
+
+
 def render_run_risk_profile(selected_detail: Any) -> None:
     """Render a top-level risk profile for the selected run."""
     artifact_map = {artifact.title: artifact for artifact in selected_detail.artifacts}
@@ -170,6 +197,35 @@ def render_run_risk_profile(selected_detail: Any) -> None:
             st.markdown(f"- {item}")
     else:
         st.caption("当前 run 风险较低，未发现明显的计划或执行阻塞。")
+
+
+def render_next_action(selected_detail: Any) -> None:
+    """Render a concise next-step recommendation for the selected run."""
+    artifact_map = {artifact.title: artifact for artifact in selected_detail.artifacts}
+    plan_check = artifact_map.get("PLAN CHECK")
+    verification = artifact_map.get("VERIFICATION")
+    guardrails = artifact_map.get("GUARDRAILS")
+    completion = artifact_map.get("COMPLETION")
+
+    headline = "当前 run 可以继续观察。"
+    targets = ["SUMMARY"]
+
+    if plan_check and plan_check.metadata.get("critical_issues", 0) > 0:
+        headline = "先修计划质量问题，再继续执行。"
+        targets = ["PLAN CHECK", "PLAN"]
+    elif guardrails and guardrails.metadata.get("categories", []):
+        headline = "当前 run 已被 guardrails 卡住，建议重新规划。"
+        targets = ["GUARDRAILS", "PLAN CHECK", "GAPS"]
+    elif verification and verification.metadata.get("gaps", 0) > 0:
+        headline = "先处理验证缺口，再决定是否继续修复。"
+        targets = ["VERIFICATION", "GAPS", "COMPLETION"]
+    elif completion and completion.metadata.get("status") not in {"", "completed"}:
+        headline = "当前 run 尚未满足完成条件，先查看 completion 原因。"
+        targets = ["COMPLETION", "VERIFICATION"]
+
+    st.markdown("**Recommended Next Action**")
+    st.markdown(f"- {headline}")
+    st.caption("Suggested focus: " + " -> ".join(targets))
 
 
 def render_run_comparison(selected_run: Any, recent_runs: List[Any]) -> None:
@@ -263,6 +319,21 @@ def render_artifact_metadata_summary(artifact: Any) -> None:
         col3.metric("Reasons", str(metadata.get("reasons", 0)))
 
 
+def render_artifact_focus_selector(selected_detail: Any) -> Any:
+    """Choose a single artifact to focus on instead of scanning all tabs."""
+    artifact_titles = [artifact.title for artifact in selected_detail.artifacts]
+    default_index = artifact_titles.index("SUMMARY") if "SUMMARY" in artifact_titles else 0
+    selected_title = st.selectbox(
+        "Focus Artifact",
+        options=artifact_titles,
+        index=default_index,
+        key=f"artifact_focus_{selected_detail.summary.run_id}",
+    )
+    return next(
+        artifact for artifact in selected_detail.artifacts if artifact.title == selected_title
+    )
+
+
 def render_workflow_artifact_panel(project_path: str, workflow_run) -> None:
     """Render the workflow artifact workspace for a project."""
     if not workflow_run:
@@ -327,6 +398,7 @@ def render_workflow_artifact_panel(project_path: str, workflow_run) -> None:
         st.caption(f"Clarified: {selected_run.clarified_summary}")
     if selected_run.success_criteria:
         st.caption("Success Criteria: " + " | ".join(selected_run.success_criteria[:4]))
+    render_phase_journey(selected_run.current_phase or "")
 
     render_run_risk_profile(selected_detail)
     st.markdown("---")
@@ -338,15 +410,15 @@ def render_workflow_artifact_panel(project_path: str, workflow_run) -> None:
         render_follow_up_details(selected_detail)
 
     st.markdown("---")
+    render_next_action(selected_detail)
+    st.markdown("---")
 
-    artifact_tabs = st.tabs([artifact.title for artifact in selected_detail.artifacts])
-    for tab, artifact in zip(artifact_tabs, selected_detail.artifacts):
-        with tab:
-            st.caption(artifact.filename)
-            if artifact.exists:
-                render_artifact_metadata_summary(artifact)
-                if artifact.metadata:
-                    st.markdown("---")
-                st.code(artifact.content, language="markdown")
-            else:
-                st.info(f"当前无 {artifact.filename}")
+    focused_artifact = render_artifact_focus_selector(selected_detail)
+    st.caption(focused_artifact.filename)
+    if focused_artifact.exists:
+        render_artifact_metadata_summary(focused_artifact)
+        if focused_artifact.metadata:
+            st.markdown("---")
+        st.code(focused_artifact.content, language="markdown")
+    else:
+        st.info(f"当前无 {focused_artifact.filename}")
