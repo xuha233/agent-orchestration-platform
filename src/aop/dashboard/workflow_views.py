@@ -239,6 +239,25 @@ def render_next_action(selected_detail: Any, artifact_focus_key: str) -> None:
                 st.rerun()
 
 
+def recommend_focus_targets(selected_detail: Any) -> List[str]:
+    """Return the best next artifacts to focus based on current risk state."""
+    artifact_map = {artifact.title: artifact for artifact in selected_detail.artifacts}
+    plan_check = artifact_map.get("PLAN CHECK")
+    verification = artifact_map.get("VERIFICATION")
+    guardrails = artifact_map.get("GUARDRAILS")
+    completion = artifact_map.get("COMPLETION")
+
+    if plan_check and plan_check.metadata.get("critical_issues", 0) > 0:
+        return ["PLAN CHECK", "PLAN"]
+    if guardrails and guardrails.metadata.get("categories", []):
+        return ["GUARDRAILS", "PLAN CHECK", "GAPS"]
+    if verification and verification.metadata.get("gaps", 0) > 0:
+        return ["VERIFICATION", "GAPS", "COMPLETION"]
+    if completion and completion.metadata.get("status") not in {"", "completed"}:
+        return ["COMPLETION", "VERIFICATION"]
+    return ["SUMMARY"]
+
+
 def render_run_comparison(selected_run: Any, recent_runs: List[Any]) -> None:
     """Render a compact comparison against the previous run."""
     previous_run = next((run for run in recent_runs if run.run_id != selected_run.run_id), None)
@@ -334,8 +353,18 @@ def render_artifact_focus_selector(selected_detail: Any) -> Any:
     """Choose a single artifact to focus on instead of scanning all tabs."""
     artifact_titles = [artifact.title for artifact in selected_detail.artifacts]
     focus_key = f"artifact_focus_{selected_detail.summary.run_id}"
+    recommended_targets = recommend_focus_targets(selected_detail)
+    recommended_focus = next(
+        (target for target in recommended_targets if target in artifact_titles),
+        "SUMMARY" if "SUMMARY" in artifact_titles else artifact_titles[0],
+    )
     if focus_key not in st.session_state or st.session_state[focus_key] not in artifact_titles:
-        st.session_state[focus_key] = "SUMMARY" if "SUMMARY" in artifact_titles else artifact_titles[0]
+        st.session_state[focus_key] = recommended_focus
+
+    current_focus = st.session_state.get(focus_key)
+    if current_focus == "SUMMARY" and recommended_focus != "SUMMARY":
+        st.session_state[focus_key] = recommended_focus
+
     selected_title = st.selectbox(
         "Focus Artifact",
         options=artifact_titles,
