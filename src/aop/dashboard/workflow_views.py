@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from html import escape
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -19,6 +20,41 @@ PHASE_ORDER = [
     ("learn", "Learn"),
     ("complete", "Complete"),
 ]
+
+STATUS_TONE_MAP = {
+    "completed": "status-online",
+    "running": "status-busy",
+    "partial": "status-info",
+    "needs_follow_up": "status-busy",
+    "failed": "status-offline",
+}
+
+ISSUE_TONE_MAP = {
+    "critical": "error",
+    "warning": "",
+    "info": "info",
+}
+
+
+def _status_badge(label: str, tone: str | None = None) -> str:
+    """Render a compact status badge."""
+    badge_class = tone or STATUS_TONE_MAP.get(label.lower(), "status-info")
+    return f"<span class='status-badge {badge_class}'>{escape(label)}</span>"
+
+
+def _issue_badge(label: str, tone: str = "warning") -> str:
+    """Render a compact issue badge."""
+    tone_class = ISSUE_TONE_MAP.get(tone, "")
+    suffix = f" {tone_class}" if tone_class else ""
+    return f"<div class='issue-badge{suffix}'>{escape(label)}</div>"
+
+
+def _format_phase_label(phase: str) -> str:
+    """Convert internal phase keys to a readable label."""
+    for phase_key, label in PHASE_ORDER:
+        if phase_key == phase:
+            return label
+    return phase.replace("_", " ").title() if phase else "-"
 
 
 def get_latest_workflow_run(project_path: str = "."):
@@ -98,6 +134,94 @@ def render_workflow_run_overview(recent_runs: List[Any]) -> None:
         )
 
 
+def render_workspace_header(selected_run: Any, selected_detail: Any) -> None:
+    """Render a more product-like header for the selected run."""
+    flags: List[str] = []
+    if selected_run.has_gaps:
+        flags.append("Gaps")
+    if selected_run.has_guardrails:
+        flags.append("Guardrails")
+    if selected_run.completion_status and selected_run.completion_status != "completed":
+        flags.append(selected_run.completion_status.replace("_", " ").title())
+
+    summary_line = selected_run.clarified_summary or selected_run.original_input or "No goal recorded."
+    success_line = " | ".join(selected_run.success_criteria[:3]) if selected_run.success_criteria else "No explicit success criteria."
+
+    artifact_map = {artifact.title: artifact for artifact in selected_detail.artifacts}
+    verification = artifact_map.get("VERIFICATION")
+    gaps = verification.metadata.get("gaps", 0) if verification else 0
+    plan_check = artifact_map.get("PLAN CHECK")
+    critical = plan_check.metadata.get("critical_issues", 0) if plan_check else 0
+    important = plan_check.metadata.get("important_issues", 0) if plan_check else 0
+
+    badge_row = " ".join(
+        [
+            _status_badge(selected_run.status or "-"),
+            _status_badge(f"Phase {_format_phase_label(selected_run.current_phase or '')}", "status-info"),
+            _status_badge(f"Verify {selected_run.verification_verdict or '-'}", "status-info"),
+            _status_badge(f"Completion {selected_run.completion_status or '-'}", "status-busy"),
+        ]
+    )
+    if flags:
+        badge_row += " " + " ".join(_status_badge(flag, "status-busy") for flag in flags[:3])
+
+    highlights: List[str] = []
+    if critical:
+        highlights.append(_issue_badge(f"{critical} critical plan issues", "critical"))
+    if important:
+        highlights.append(_issue_badge(f"{important} important plan issues", "warning"))
+    if gaps:
+        highlights.append(_issue_badge(f"{gaps} unresolved verification gaps", "info"))
+    if not highlights:
+        highlights.append(_issue_badge("Run looks stable. No prominent workflow blockers.", "info"))
+
+    st.markdown(
+        f"""
+        <div class="header-gradient">
+            <div style="display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;flex-wrap:wrap;">
+                <div style="flex:2;min-width:320px;">
+                    <div style="font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;opacity:0.85;">Workflow Workspace</div>
+                    <div style="font-size:1.6rem;font-weight:700;line-height:1.2;margin-top:0.3rem;">Run {escape(selected_run.run_id)}</div>
+                    <div style="margin-top:0.6rem;display:flex;gap:0.4rem;flex-wrap:wrap;">{badge_row}</div>
+                    <div style="margin-top:0.9rem;font-size:0.95rem;line-height:1.5;opacity:0.96;">{escape(summary_line)}</div>
+                    <div style="margin-top:0.45rem;font-size:0.78rem;opacity:0.8;">Success cues: {escape(success_line)}</div>
+                </div>
+                <div style="flex:1;min-width:260px;">
+                    <div class="glass-card" style="background:rgba(12,12,12,0.16);border-color:rgba(255,255,255,0.1);">
+                        <div class="section-title" style="border-bottom:none;margin-bottom:0.4rem;padding-bottom:0;">
+                            <span class="icon">⚡</span> Run Signals
+                        </div>
+                        {''.join(highlights)}
+                    </div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_workspace_controls(
+    run_options: List[str],
+    selected_run_key: str,
+    filter_key: str,
+    selected_detail: Any,
+) -> Any:
+    """Render the main interaction controls for the workspace."""
+    st.markdown(
+        """<div class="glass-card"><div class="section-title"><span class="icon">🎛️</span> Workspace Controls</div></div>""",
+        unsafe_allow_html=True,
+    )
+    controls_col, focus_col = st.columns([1.25, 1.0])
+    with controls_col:
+        st.checkbox("仅显示待跟进 runs", key=filter_key)
+        st.selectbox("Workflow Run", options=run_options, key=selected_run_key)
+    with focus_col:
+        focused_artifact = render_artifact_focus_selector(selected_detail)
+        st.caption(f"Focused artifact: {focused_artifact.title}")
+    return focused_artifact
+
+
 def render_follow_up_queue_controls(
     recent_runs: List[Any],
     selected_run_key: str,
@@ -162,7 +286,15 @@ def render_phase_journey(current_phase: str) -> None:
             f"<span style='padding:0.2rem 0.55rem;border:1px solid rgba(255,255,255,0.08);"
             f"border-radius:999px;margin-right:0.35rem;color:{tone};font-size:0.72rem;'>{label}</span>"
         )
-    st.markdown("".join(chips), unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div class="glass-card">
+            <div class="section-title"><span class="icon">🛣️</span> Phase Journey</div>
+            <div style="display:flex;gap:0.35rem;flex-wrap:wrap;">{''.join(chips)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def render_run_risk_profile(selected_detail: Any) -> None:
@@ -173,7 +305,10 @@ def render_run_risk_profile(selected_detail: Any) -> None:
     guardrails = artifact_map.get("GUARDRAILS")
     completion = artifact_map.get("COMPLETION")
 
-    st.markdown("**Risk Profile**")
+    st.markdown(
+        """<div class="glass-card"><div class="section-title"><span class="icon">🧪</span> Risk Profile</div></div>""",
+        unsafe_allow_html=True,
+    )
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Plan Critical", str((plan_check.metadata.get("critical_issues", 0) if plan_check else 0)))
     col2.metric("Plan Important", str((plan_check.metadata.get("important_issues", 0) if plan_check else 0)))
@@ -194,9 +329,10 @@ def render_run_risk_profile(selected_detail: Any) -> None:
 
     if highlights:
         for item in highlights[:4]:
-            st.markdown(f"- {item}")
+            tone = "critical" if "critical" in item.lower() else "info" if "guardrails" in item.lower() else "warning"
+            st.markdown(_issue_badge(item, tone), unsafe_allow_html=True)
     else:
-        st.caption("当前 run 风险较低，未发现明显的计划或执行阻塞。")
+        st.markdown(_issue_badge("当前 run 风险较低，未发现明显的计划或执行阻塞。", "info"), unsafe_allow_html=True)
 
 
 def render_next_action(selected_detail: Any, artifact_focus_key: str) -> None:
@@ -223,8 +359,11 @@ def render_next_action(selected_detail: Any, artifact_focus_key: str) -> None:
         headline = "当前 run 尚未满足完成条件，先查看 completion 原因。"
         targets = ["COMPLETION", "VERIFICATION"]
 
-    st.markdown("**Recommended Next Action**")
-    st.markdown(f"- {headline}")
+    st.markdown(
+        """<div class="glass-card"><div class="section-title"><span class="icon">🎯</span> Recommended Next Action</div></div>""",
+        unsafe_allow_html=True,
+    )
+    st.markdown(_issue_badge(headline, "info"), unsafe_allow_html=True)
     st.caption("Suggested focus: " + " -> ".join(targets))
 
     action_cols = st.columns(len(targets))
@@ -365,11 +504,7 @@ def render_artifact_focus_selector(selected_detail: Any) -> Any:
     if current_focus == "SUMMARY" and recommended_focus != "SUMMARY":
         st.session_state[focus_key] = recommended_focus
 
-    selected_title = st.selectbox(
-        "Focus Artifact",
-        options=artifact_titles,
-        key=focus_key,
-    )
+    selected_title = st.selectbox("Focus Artifact", options=artifact_titles, key=focus_key)
     return next(
         artifact for artifact in selected_detail.artifacts if artifact.title == selected_title
     )
@@ -392,7 +527,6 @@ def render_workflow_artifact_panel(project_path: str, workflow_run) -> None:
     )
 
     render_workflow_run_overview(recent_runs)
-    follow_up_only = st.checkbox("仅显示待跟进 runs", key=filter_key)
     render_follow_up_queue_controls(recent_runs, state_key)
     st.markdown("---")
 
@@ -401,7 +535,7 @@ def render_workflow_artifact_panel(project_path: str, workflow_run) -> None:
             run for run in recent_runs
             if run.has_gaps or run.has_guardrails or run.status != "completed"
         ]
-        if follow_up_only
+        if st.session_state.get(filter_key, False)
         else recent_runs
     )
     run_options = [run.run_id for run in filtered_runs] or [workflow_run.run_id]
@@ -409,11 +543,7 @@ def render_workflow_artifact_panel(project_path: str, workflow_run) -> None:
     if state_key not in st.session_state or st.session_state[state_key] not in run_options:
         st.session_state[state_key] = workflow_run.run_id if workflow_run.run_id in run_options else run_options[0]
 
-    selected_run_id = st.selectbox(
-        "Workflow Run",
-        options=run_options,
-        key=state_key,
-    )
+    selected_run_id = st.session_state[state_key]
     selected_detail = get_workflow_run_detail(project_path, selected_run_id)
     if not selected_detail:
         st.warning("无法读取所选 workflow run 详情")
@@ -421,24 +551,22 @@ def render_workflow_artifact_panel(project_path: str, workflow_run) -> None:
 
     selected_run = selected_detail.summary
 
-    col1, col2, col3, col4, col5 = st.columns(5)
-    col1.metric("Phase", selected_run.current_phase or "-")
-    col2.metric("Status", selected_run.status or "-")
-    col3.metric("Verify", selected_run.verification_verdict or "-")
-    flags = []
-    if selected_run.has_gaps:
-        flags.append("gaps")
-    if selected_run.has_guardrails:
-        flags.append("guardrails")
-    col4.metric("Completion", selected_run.completion_status or "-")
-    col5.metric("Flags", ", ".join(flags) if flags else "-")
+    render_workspace_header(selected_run, selected_detail)
+    focused_artifact = render_workspace_controls(run_options, state_key, filter_key, selected_detail)
+    if st.session_state[state_key] != selected_run.run_id:
+        selected_detail = get_workflow_run_detail(project_path, st.session_state[state_key])
+        if not selected_detail:
+            st.warning("无法读取切换后的 workflow run 详情")
+            return
+        selected_run = selected_detail.summary
+        focused_artifact = render_artifact_focus_selector(selected_detail)
 
-    if selected_run.original_input:
-        st.markdown(f"**Goal**: {selected_run.original_input}")
-    if selected_run.clarified_summary:
-        st.caption(f"Clarified: {selected_run.clarified_summary}")
-    if selected_run.success_criteria:
-        st.caption("Success Criteria: " + " | ".join(selected_run.success_criteria[:4]))
+    stats_col1, stats_col2, stats_col3, stats_col4 = st.columns(4)
+    stats_col1.metric("Phase", _format_phase_label(selected_run.current_phase or ""))
+    stats_col2.metric("Status", selected_run.status or "-")
+    stats_col3.metric("Verify", selected_run.verification_verdict or "-")
+    stats_col4.metric("Completion", selected_run.completion_status or "-")
+
     render_phase_journey(selected_run.current_phase or "")
 
     render_run_risk_profile(selected_detail)
@@ -457,7 +585,10 @@ def render_workflow_artifact_panel(project_path: str, workflow_run) -> None:
     )
     st.markdown("---")
 
-    focused_artifact = render_artifact_focus_selector(selected_detail)
+    st.markdown(
+        """<div class="glass-card"><div class="section-title"><span class="icon">📄</span> Focused Artifact</div></div>""",
+        unsafe_allow_html=True,
+    )
     st.caption(focused_artifact.filename)
     if focused_artifact.exists:
         render_artifact_metadata_summary(focused_artifact)
