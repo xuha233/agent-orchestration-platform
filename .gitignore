@@ -41,3 +41,12 @@ htmlcov/
 # Project specific
 *.json
 !pyproject.toml
+!desktop/package.json
+!desktop/package-lock.json
+!desktop/tsconfig.json
+!desktop/src-tauri/tauri.conf.json
+
+# Desktop app
+desktop/node_modules/
+desktop/dist/
+desktop/.npmrc.codex

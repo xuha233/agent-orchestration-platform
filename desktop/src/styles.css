@@ -28,12 +28,46 @@ body {
 }
 
 .hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(260px, 0.8fr);
+  gap: 20px;
   padding: 28px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.04);
   backdrop-filter: blur(14px);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+}
+
+.hero-status {
+  display: flex;
+  align-items: stretch;
+}
+
+.status-panel {
+  width: 100%;
+  padding: 18px;
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.status-label {
+  margin: 14px 0 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 11px;
+  color: rgba(248, 250, 252, 0.55);
+}
+
+.status-panel h2 {
+  margin: 0;
+  font-size: 28px;
+}
+
+.status-subtle {
+  margin: 8px 0 0;
+  color: rgba(248, 250, 252, 0.65);
 }
 
 .eyebrow {
@@ -61,25 +95,210 @@ body {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: minmax(0, 1.7fr) minmax(320px, 0.95fr);
   gap: 16px;
   margin-top: 24px;
 }
 
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.metric-card,
+.panel,
 .card {
   padding: 20px;
-  border-radius: 18px;
+  border-radius: 20px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.card h2 {
+.metric-card p {
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 11px;
+  color: rgba(248, 250, 252, 0.55);
+}
+
+.metric-card strong {
+  font-size: 28px;
+}
+
+.panel-wide {
+  min-width: 0;
+}
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.panel-eyebrow {
+  margin: 0 0 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 11px;
+  color: rgba(248, 250, 252, 0.55);
+}
+
+.panel-head h2,
+.card h2,
+.panel h2 {
   margin: 0 0 10px;
   font-size: 18px;
 }
 
+.panel p,
 .card p {
   margin: 0;
   color: rgba(248, 250, 252, 0.72);
   line-height: 1.55;
+}
+
+.chip-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.chip,
+.pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.pill-good {
+  color: #22c55e;
+  border-color: rgba(34, 197, 94, 0.3);
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.pill-warn {
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.28);
+  background: rgba(251, 191, 36, 0.12);
+}
+
+.pill-bad {
+  color: #fb7185;
+  border-color: rgba(251, 113, 133, 0.28);
+  background: rgba(251, 113, 133, 0.12);
+}
+
+.project-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.project-toolbar label {
+  font-size: 12px;
+  color: rgba(248, 250, 252, 0.7);
+}
+
+.project-toolbar select {
+  appearance: none;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #f8fafc;
+}
+
+.project-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.project-summary h3,
+.run-card h3,
+.provider-card h3,
+.empty-state h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.summary-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.summary-item {
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.summary-item span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: rgba(248, 250, 252, 0.6);
+}
+
+.summary-item strong {
+  font-size: 15px;
+}
+
+.provider-list,
+.run-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.provider-card,
+.run-card,
+.empty-state,
+.alert {
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.provider-title-row,
+.run-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.provider-meta {
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.alert {
+  margin-top: 20px;
+  color: #fecaca;
+  border-color: rgba(251, 113, 133, 0.2);
+  background: rgba(127, 29, 29, 0.25);
+}
+
+@media (max-width: 980px) {
+  .hero,
+  .grid,
+  .metrics {
+    grid-template-columns: 1fr;
+  }
 }
