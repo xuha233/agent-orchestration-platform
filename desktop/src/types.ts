@@ -49,3 +49,16 @@ export type WorkflowRunSummary = {
   has_gaps: boolean;
   has_guardrails: boolean;
 };
+
+export type WorkflowArtifactDocument = {
+  filename: string;
+  title: string;
+  content: string;
+  exists: boolean;
+  metadata: Record<string, unknown>;
+};
+
+export type WorkflowRunDetail = {
+  summary: WorkflowRunSummary;
+  artifacts: WorkflowArtifactDocument[];
+};

@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { invokeAppRuntime } from "./bridge";
-import type { DesktopAppHealth, DesktopProjectSummary, DesktopProviderStatus, WorkflowRunSummary } from "./types";
+import type {
+  DesktopAppHealth,
+  DesktopProjectSummary,
+  DesktopProviderStatus,
+  WorkflowArtifactDocument,
+  WorkflowRunDetail,
+  WorkflowRunSummary,
+} from "./types";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
 
@@ -15,6 +22,9 @@ export function App() {
   const [providers, setProviders] = useState<DesktopProviderStatus[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [runs, setRuns] = useState<WorkflowRunSummary[]>([]);
+  const [selectedRunId, setSelectedRunId] = useState("");
+  const [runDetail, setRunDetail] = useState<WorkflowRunDetail | null>(null);
+  const [selectedArtifactTitle, setSelectedArtifactTitle] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -55,6 +65,8 @@ export function App() {
     let cancelled = false;
     if (!selectedProjectId) {
       setRuns([]);
+      setSelectedRunId("");
+      setRunDetail(null);
       return;
     }
 
@@ -66,6 +78,7 @@ export function App() {
         });
         if (!cancelled) {
           setRuns(runData);
+          setSelectedRunId((current) => current || runData[0]?.run_id || "");
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -80,9 +93,45 @@ export function App() {
     };
   }, [selectedProjectId]);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedProjectId || !selectedRunId) {
+      setRunDetail(null);
+      setSelectedArtifactTitle("");
+      return;
+    }
+
+    async function loadRunDetail() {
+      try {
+        const detail = await invokeAppRuntime<WorkflowRunDetail>("run_detail", {
+          project_id: selectedProjectId,
+          run_id: selectedRunId,
+        });
+        if (cancelled) {
+          return;
+        }
+        setRunDetail(detail);
+        setSelectedArtifactTitle((current) => current || detail.artifacts.find((artifact) => artifact.exists)?.title || detail.artifacts[0]?.title || "");
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : "Failed to load workflow run detail.");
+        }
+      }
+    }
+
+    void loadRunDetail();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedProjectId, selectedRunId]);
+
   const selectedProject = useMemo(
     () => projects.find((project) => project.project_id === selectedProjectId) ?? null,
     [projects, selectedProjectId],
+  );
+  const selectedArtifact = useMemo(
+    () => runDetail?.artifacts.find((artifact) => artifact.title === selectedArtifactTitle) ?? null,
+    [runDetail, selectedArtifactTitle],
   );
 
   return (
@@ -203,24 +252,77 @@ export function App() {
         {runs.length === 0 ? (
           <EmptyState title="No workflow runs yet" body="Once a project starts producing workflow artifacts, runs will show up here." />
         ) : (
-          <div className="run-list">
-            {runs.map((run) => (
-              <article key={run.run_id} className="run-card">
-                <div className="run-top">
-                  <div>
-                    <h3>{run.run_id}</h3>
-                    <p>{run.clarified_summary || run.original_input || "No summary available."}</p>
+          <div className="workflow-layout">
+            <div className="run-list">
+              {runs.map((run) => (
+                <button
+                  key={run.run_id}
+                  type="button"
+                  className={`run-card run-button ${selectedRunId === run.run_id ? "run-card-active" : ""}`}
+                  onClick={() => setSelectedRunId(run.run_id)}
+                >
+                  <div className="run-top">
+                    <div>
+                      <h3>{run.run_id}</h3>
+                      <p>{run.clarified_summary || run.original_input || "No summary available."}</p>
+                    </div>
+                    <span className={`pill ${run.status === "completed" ? "pill-good" : "pill-warn"}`}>{run.status}</span>
                   </div>
-                  <span className={`pill ${run.status === "completed" ? "pill-good" : "pill-warn"}`}>{run.status}</span>
-                </div>
-                <div className="summary-row">
-                  <SummaryItem label="Phase" value={run.current_phase || "-"} />
-                  <SummaryItem label="Verify" value={run.verification_verdict || "-"} />
-                  <SummaryItem label="Completion" value={run.completion_status || "-"} />
-                  <SummaryItem label="Flags" value={run.has_gaps || run.has_guardrails ? "attention" : "stable"} />
-                </div>
-              </article>
-            ))}
+                  <div className="summary-row">
+                    <SummaryItem label="Phase" value={run.current_phase || "-"} />
+                    <SummaryItem label="Verify" value={run.verification_verdict || "-"} />
+                    <SummaryItem label="Completion" value={run.completion_status || "-"} />
+                    <SummaryItem label="Flags" value={run.has_gaps || run.has_guardrails ? "attention" : "stable"} />
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <div className="artifact-panel">
+              {runDetail ? (
+                <>
+                  <div className="panel-head">
+                    <div>
+                      <p className="panel-eyebrow">Artifact detail</p>
+                      <h2>{runDetail.summary.run_id}</h2>
+                    </div>
+                    <span className={`pill ${runDetail.summary.status === "completed" ? "pill-good" : "pill-warn"}`}>
+                      {runDetail.summary.status}
+                    </span>
+                  </div>
+
+                  <div className="summary-row">
+                    <SummaryItem label="Phase" value={runDetail.summary.current_phase || "-"} />
+                    <SummaryItem label="Verify" value={runDetail.summary.verification_verdict || "-"} />
+                    <SummaryItem label="Completion" value={runDetail.summary.completion_status || "-"} />
+                    <SummaryItem label="Artifacts" value={String(runDetail.artifacts.filter((artifact) => artifact.exists).length)} />
+                  </div>
+
+                  <div className="artifact-toolbar">
+                    <label htmlFor="artifact-select">Focused artifact</label>
+                    <select
+                      id="artifact-select"
+                      value={selectedArtifactTitle}
+                      onChange={(event) => setSelectedArtifactTitle(event.target.value)}
+                    >
+                      {runDetail.artifacts.map((artifact) => (
+                        <option key={artifact.title} value={artifact.title}>
+                          {artifact.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {selectedArtifact ? (
+                    <ArtifactViewer artifact={selectedArtifact} />
+                  ) : (
+                    <EmptyState title="No artifact selected" body="Choose an artifact to inspect its contents." />
+                  )}
+                </>
+              ) : (
+                <EmptyState title="No run detail loaded" body="Choose a workflow run to inspect persisted artifacts." />
+              )}
+            </div>
           </div>
         )}
       </section>
@@ -251,6 +353,43 @@ function EmptyState({ title, body }: { title: string; body: string }) {
     <div className="empty-state">
       <h3>{title}</h3>
       <p>{body}</p>
+    </div>
+  );
+}
+
+function ArtifactViewer({ artifact }: { artifact: WorkflowArtifactDocument }) {
+  const metadataEntries = Object.entries(artifact.metadata || {}).filter(([, value]) => {
+    if (Array.isArray(value)) {
+      return value.length > 0;
+    }
+    return value !== "" && value !== null && value !== undefined;
+  });
+
+  return (
+    <div className="artifact-viewer">
+      <div className="artifact-heading">
+        <div>
+          <p className="panel-eyebrow">Artifact file</p>
+          <h3>{artifact.filename}</h3>
+        </div>
+        <span className={`pill ${artifact.exists ? "pill-good" : "pill-warn"}`}>
+          {artifact.exists ? "Available" : "Missing"}
+        </span>
+      </div>
+
+      {metadataEntries.length > 0 ? (
+        <div className="artifact-metadata">
+          {metadataEntries.slice(0, 6).map(([key, value]) => (
+            <SummaryItem
+              key={key}
+              label={key.split("_").join(" ")}
+              value={Array.isArray(value) ? String(value.length) : String(value)}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      <pre className="artifact-content">{artifact.content || "No artifact content available."}</pre>
     </div>
   );
 }
