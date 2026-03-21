@@ -13,6 +13,7 @@ from aop.primary import get_registry
 from aop.primary.workspace import SettingsManager, WorkspaceManager
 from aop.workflow import WorkflowRunDetail, WorkflowRunReader, WorkflowRunSummary
 
+from .config_store import DesktopConfigStore
 from .models import DesktopAppHealth, DesktopProjectSummary, DesktopProviderStatus
 
 
@@ -40,9 +41,11 @@ class DesktopAppService:
         self,
         workspace_manager: WorkspaceManager | None = None,
         settings_manager: SettingsManager | None = None,
+        config_store: DesktopConfigStore | None = None,
     ) -> None:
         self.workspace_manager = workspace_manager or WorkspaceManager()
         self.settings_manager = settings_manager or SettingsManager()
+        self.config_store = config_store or DesktopConfigStore()
 
     def get_app_health(self) -> DesktopAppHealth:
         """Return a lightweight runtime summary for the desktop shell."""
@@ -112,13 +115,21 @@ class DesktopAppService:
         """Return provider availability and config state."""
         detector = get_platform_detector()
         install_commands = detector.get_provider_install_commands()
+        runtime_config = self.config_store.load()
+        preferred_provider = str(runtime_config.get("preferred_provider", "") or "")
+        stored_provider_envs = runtime_config.get("provider_envs", {})
         statuses: List[DesktopProviderStatus] = []
 
         for provider_id, adapter in get_adapter_registry().items():
             presence = adapter.detect()
             required_env_vars = list(PROVIDER_ENV_VARS.get(provider_id, []))
+            stored_env_vars = stored_provider_envs.get(provider_id, {})
+            if not isinstance(stored_env_vars, dict):
+                stored_env_vars = {}
             configured_env_vars = [
-                var_name for var_name in required_env_vars if os.environ.get(var_name)
+                var_name
+                for var_name in required_env_vars
+                if os.environ.get(var_name) or stored_env_vars.get(var_name)
             ]
             missing_env_vars = [
                 var_name for var_name in required_env_vars if var_name not in configured_env_vars
@@ -136,6 +147,8 @@ class DesktopAppService:
                     required_env_vars=required_env_vars,
                     configured_env_vars=configured_env_vars,
                     missing_env_vars=missing_env_vars,
+                    stored_env_vars={key: str(value) for key, value in stored_env_vars.items()},
+                    preferred=provider_id == preferred_provider,
                 )
             )
         return statuses
@@ -143,11 +156,29 @@ class DesktopAppService:
     def get_settings(self) -> Dict[str, object]:
         """Return the minimal settings needed by the desktop MVP."""
         settings = self.settings_manager.load()
+        runtime_config = self.config_store.load()
         return {
             "primary_agent": settings.get("primary_agent"),
             "enable_mem0_memory": settings.get("enable_mem0_memory", False),
             "show_dev_console": settings.get("show_dev_console", False),
+            "preferred_provider": runtime_config.get("preferred_provider", ""),
         }
+
+    def update_provider_config(
+        self,
+        provider_id: str,
+        env_values: Dict[str, str] | None = None,
+        preferred: bool = False,
+    ) -> DesktopProviderStatus | None:
+        """Persist desktop-side provider config and return refreshed status."""
+        if env_values:
+            self.config_store.update_provider(provider_id, env_values)
+        if preferred:
+            self.config_store.set_preferred_provider(provider_id)
+        return next(
+            (status for status in self.get_provider_status() if status.provider_id == provider_id),
+            None,
+        )
 
     def _load_latest_run(self, project_path: str) -> WorkflowRunSummary | None:
         path = Path(project_path)

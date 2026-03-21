@@ -32,6 +32,8 @@ export type DesktopProviderStatus = {
   required_env_vars: string[];
   configured_env_vars: string[];
   missing_env_vars: string[];
+  stored_env_vars: Record<string, string>;
+  preferred: boolean;
 };
 
 export type WorkflowRunSummary = {

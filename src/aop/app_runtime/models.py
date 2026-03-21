@@ -55,6 +55,8 @@ class DesktopProviderStatus:
     required_env_vars: List[str] = field(default_factory=list)
     configured_env_vars: List[str] = field(default_factory=list)
     missing_env_vars: List[str] = field(default_factory=list)
+    stored_env_vars: Dict[str, str] = field(default_factory=dict)
+    preferred: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

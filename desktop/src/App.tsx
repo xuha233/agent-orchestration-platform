@@ -25,6 +25,7 @@ export function App() {
   const [selectedRunId, setSelectedRunId] = useState("");
   const [runDetail, setRunDetail] = useState<WorkflowRunDetail | null>(null);
   const [selectedArtifactTitle, setSelectedArtifactTitle] = useState("");
+  const [providerDrafts, setProviderDrafts] = useState<Record<string, Record<string, string>>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -44,6 +45,11 @@ export function App() {
         setHealth(healthData);
         setProjects(projectData);
         setProviders(providerData);
+        setProviderDrafts(
+          Object.fromEntries(
+            providerData.map((provider) => [provider.provider_id, provider.stored_env_vars || {}]),
+          ),
+        );
         setSelectedProjectId((current) => current || projectData[0]?.project_id || "");
         setLoadState("ready");
       } catch (loadError) {
@@ -133,6 +139,33 @@ export function App() {
     () => runDetail?.artifacts.find((artifact) => artifact.title === selectedArtifactTitle) ?? null,
     [runDetail, selectedArtifactTitle],
   );
+
+  async function saveProviderConfig(providerId: string, preferred: boolean) {
+    try {
+      const updated = await invokeAppRuntime<DesktopProviderStatus>("update_provider", {
+        provider_id: providerId,
+        env_values: providerDrafts[providerId] || {},
+        preferred,
+      });
+      setProviders((current) =>
+        current.map((provider) => {
+          if (provider.provider_id === updated.provider_id) {
+            return updated;
+          }
+          if (preferred) {
+            return { ...provider, preferred: false };
+          }
+          return provider;
+        }),
+      );
+      setProviderDrafts((current) => ({
+        ...current,
+        [providerId]: updated.stored_env_vars,
+      }));
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Failed to save provider config.");
+    }
+  }
 
   return (
     <main className="shell">
@@ -227,15 +260,54 @@ export function App() {
             {providers.map((provider) => (
               <div key={provider.provider_id} className="provider-card">
                 <div className="provider-title-row">
-                  <h3>{provider.label}</h3>
-                  <span className={`pill ${provider.detected ? "pill-good" : "pill-bad"}`}>
-                    {provider.detected ? "Detected" : "Missing"}
-                  </span>
+                  <div>
+                    <h3>{provider.label}</h3>
+                    {provider.preferred ? <p className="provider-preferred">Preferred desktop provider</p> : null}
+                  </div>
+                  <span className={`pill ${provider.detected ? "pill-good" : "pill-bad"}`}>{provider.detected ? "Detected" : "Missing"}</span>
                 </div>
                 <p>{provider.auth_ok ? "Authentication ready" : provider.reason || "Needs setup"}</p>
                 {provider.missing_env_vars.length > 0 ? (
                   <p className="provider-meta">Missing env: {provider.missing_env_vars.join(", ")}</p>
                 ) : null}
+                {provider.required_env_vars.length > 0 ? (
+                  <div className="provider-config-list">
+                    {provider.required_env_vars.map((envName) => (
+                      <label key={envName} className="provider-field">
+                        <span>{envName}</span>
+                        <input
+                          type="password"
+                          value={providerDrafts[provider.provider_id]?.[envName] ?? ""}
+                          placeholder={`Enter ${envName}`}
+                          onChange={(event) =>
+                            setProviderDrafts((current) => ({
+                              ...current,
+                              [provider.provider_id]: {
+                                ...(current[provider.provider_id] || {}),
+                                [envName]: event.target.value,
+                              },
+                            }))
+                          }
+                        />
+                      </label>
+                    ))}
+                  </div>
+                ) : null}
+                {provider.install_commands.length > 0 ? (
+                  <div className="provider-command-list">
+                    {provider.install_commands.slice(0, 2).map((command) => (
+                      <code key={command}>{command}</code>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="provider-actions">
+                  <button type="button" className="action-button" onClick={() => void saveProviderConfig(provider.provider_id, false)}>
+                    Save values
+                  </button>
+                  <button type="button" className="action-button action-button-accent" onClick={() => void saveProviderConfig(provider.provider_id, true)}>
+                    Make preferred
+                  </button>
+                </div>
               </div>
             ))}
           </div>

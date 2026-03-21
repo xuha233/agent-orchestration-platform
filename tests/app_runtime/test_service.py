@@ -99,3 +99,48 @@ def test_desktop_app_service_returns_minimal_settings(tmp_path):
 
     assert payload["primary_agent"] == "codex"
     assert payload["enable_mem0_memory"] is True
+
+
+def test_desktop_app_service_updates_provider_config(tmp_path, monkeypatch):
+    workspace_home = tmp_path / "aop-home"
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    service = DesktopAppService(
+        workspace_manager=WorkspaceManager(workspace_home),
+        settings_manager=SettingsManager(workspace_home),
+    )
+
+    status = service.update_provider_config(
+        "codex",
+        env_values={"OPENAI_API_KEY": "desktop-token"},
+        preferred=True,
+    )
+
+    assert status is not None
+    assert status.provider_id == "codex"
+    assert status.preferred is True
+    assert status.stored_env_vars["OPENAI_API_KEY"] == "desktop-token"
+    assert "OPENAI_API_KEY" in status.configured_env_vars
+
+
+def test_desktop_app_bridge_updates_provider_payload(tmp_path):
+    workspace_home = tmp_path / "aop-home"
+    service = DesktopAppService(
+        workspace_manager=WorkspaceManager(workspace_home),
+        settings_manager=SettingsManager(workspace_home),
+    )
+    bridge = DesktopAppBridge(service)
+
+    response = bridge.dispatch(
+        "update_provider",
+        {
+            "provider_id": "codex",
+            "env_values": {"OPENAI_API_KEY": "bridge-token"},
+            "preferred": True,
+        },
+    )
+
+    assert response["ok"] is True
+    assert response["data"]["provider_id"] == "codex"
+    assert response["data"]["preferred"] is True
+    assert response["data"]["stored_env_vars"]["OPENAI_API_KEY"] == "bridge-token"

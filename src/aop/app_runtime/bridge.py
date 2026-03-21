@@ -50,4 +50,20 @@ class DesktopAppBridge:
                     "artifacts": [artifact.__dict__ for artifact in detail.artifacts],
                 },
             }
+        if action == "update_provider":
+            provider_id = str(data.get("provider_id", "")).strip()
+            if not provider_id:
+                return {"ok": False, "error": "provider_id_required"}
+            env_values = data.get("env_values", {})
+            if not isinstance(env_values, dict):
+                return {"ok": False, "error": "env_values_must_be_object"}
+            preferred = bool(data.get("preferred", False))
+            status = self.service.update_provider_config(
+                provider_id=provider_id,
+                env_values={str(key): str(value) for key, value in env_values.items()},
+                preferred=preferred,
+            )
+            if status is None:
+                return {"ok": False, "error": "provider_not_found"}
+            return {"ok": True, "data": status.to_dict()}
         return {"ok": False, "error": f"unknown_action:{action}"}
