@@ -7,10 +7,11 @@ import type {
   DesktopProviderStatus,
   DesktopRunJob,
   DesktopRunLaunchResult,
-  WorkflowArtifactDocument,
   WorkflowRunDetail,
   WorkflowRunSummary,
 } from "./types";
+import { EmptyState, MetricCard, SummaryItem } from "./ui";
+import { RunWorkspace, WorkflowWorkspace } from "./workflow_views";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
 type ViewName = "home" | "projects" | "providers" | "run" | "workflow";
@@ -237,10 +238,6 @@ export function App() {
   const selectedProject = useMemo(
     () => projects.find((project) => project.project_id === selectedProjectId) ?? null,
     [projects, selectedProjectId],
-  );
-  const selectedArtifact = useMemo(
-    () => runDetail?.artifacts.find((artifact) => artifact.title === selectedArtifactTitle) ?? null,
-    [runDetail, selectedArtifactTitle],
   );
   const preferredProvider = useMemo(
     () => providers.find((provider) => provider.preferred) ?? null,
@@ -753,380 +750,49 @@ export function App() {
         ) : null}
 
         {activeView === "run" ? (
-          <section className="panel">
-            <div className="panel-head">
-              <div>
-                <p className="panel-eyebrow">Run</p>
-                <h2>Start a workflow from desktop</h2>
-              </div>
-            </div>
-            <div className="run-composer">
-              {statusMessage ? <section className="status-banner">{statusMessage}</section> : null}
-              <div className="run-guidance-card">
-                <div>
-                  <p className="panel-eyebrow">Recommended next action</p>
-                  <h3>{runGuidance.title}</h3>
-                  <p>{runGuidance.body}</p>
-                </div>
-                <div className="provider-actions">
-                  <button type="button" className="action-button" onClick={() => setActiveView("workflow")}>
-                    Open workflow
-                  </button>
-                  <button type="button" className="action-button" onClick={() => setActiveView("providers")}>
-                    Check providers
-                  </button>
-                </div>
-              </div>
-              {runInFlight ? (
-                <div className="live-run-banner">
-                  <div>
-                    <p className="panel-eyebrow">Live run monitor</p>
-                    <h3>{runJob?.status === "queued" ? "Preparing desktop worker" : "Workflow running"}</h3>
-                    <p>
-                      {runJob?.status === "queued"
-                        ? "The background worker is being started. AOP will start refreshing workflow data as soon as the run appears."
-                        : "AOP is polling the local worker, refreshing project state, and tracking new workflow artifacts for you."}
-                    </p>
-                  </div>
-                  <div className="summary-row">
-                    <SummaryItem label="Polls" value={String(jobPollCount)} />
-                    <SummaryItem label="Job" value={runJob?.job_id.slice(0, 12) || "-"} />
-                    <SummaryItem label="State" value={runJob?.state || runJob?.status || "-"} />
-                    <SummaryItem label="Live run" value={runJob?.sprint_id || activeRunSummary?.run_id || "Waiting"} />
-                  </div>
-                  <div className="provider-actions">
-                    <button
-                      type="button"
-                      className="action-button"
-                      onClick={() => setActiveView("workflow")}
-                    >
-                      Watch workflow
-                    </button>
-                    <button
-                      type="button"
-                      className="action-button"
-                      onClick={() => void refreshWorkflowRuns(runJob?.sprint_id || undefined, selectedProjectId)}
-                      disabled={workflowRefreshing}
-                    >
-                      {workflowRefreshing ? "Refreshing..." : "Refresh now"}
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-              {(runInFlight || runResult) && (activeRunSummary || trackedRunDetail) ? (
-                <div className="run-progress-grid">
-                  <SummaryItem label="Run id" value={activeRunSummary?.run_id || runResult?.sprint_id || "-"} />
-                  <SummaryItem label="Phase" value={activeRunSummary?.current_phase || "waiting"} />
-                  <SummaryItem label="Verify" value={activeRunSummary?.verification_verdict || "-"} />
-                  <SummaryItem label="Completion" value={activeRunSummary?.completion_status || runResult?.state || "-"} />
-                </div>
-              ) : null}
-              {trackedArtifacts.length > 0 ? (
-                <div className="artifact-snapshot-card">
-                  <div className="panel-head">
-                    <div>
-                      <p className="panel-eyebrow">Live artifact snapshot</p>
-                      <h3>{trackedRunDetail?.summary.run_id}</h3>
-                    </div>
-                    <span className="pill pill-good">{trackedArtifacts.length} ready</span>
-                  </div>
-                  <div className="artifact-snapshot-list">
-                    {trackedArtifacts.slice(0, 4).map((artifact) => (
-                      <button
-                        key={artifact.title}
-                        type="button"
-                        className="artifact-snapshot-button"
-                        onClick={() => {
-                          setSelectedRunId(trackedRunDetail?.summary.run_id || "");
-                          setSelectedArtifactTitle(artifact.title);
-                          setActiveView("workflow");
-                        }}
-                      >
-                        <strong>{artifact.title}</strong>
-                        <span>{artifact.filename}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-              <label htmlFor="run-prompt">What should AOP build or validate?</label>
-              <textarea
-                id="run-prompt"
-                value={runPrompt}
-                onChange={(event) => setRunPrompt(event.target.value)}
-                placeholder="Describe the idea, feature, or prototype you want AOP to work on."
-              />
-              {runBlockerMessage ? <div className="inline-note">{runBlockerMessage}</div> : null}
-              <div className="provider-actions">
-                <button
-                  type="button"
-                  className="action-button action-button-accent"
-                  onClick={() => void submitRun()}
-                  disabled={runSubmitting || Boolean(runBlockerMessage)}
-                >
-                  {runSubmitting ? "Running..." : "Start run"}
-                </button>
-                {runJob?.sprint_id ? (
-                  <button
-                    type="button"
-                    className="action-button"
-                    onClick={() => setActiveView("workflow")}
-                  >
-                    Open workflow
-                  </button>
-                ) : null}
-              </div>
-              {runJob && !runResult ? (
-                <div className="run-result-card">
-                  <div className="run-top">
-                    <div>
-                      <h3>{runJob.job_id}</h3>
-                      <p>
-                        {runJob.status === "queued"
-                          ? "Queued and waiting for the desktop worker to start."
-                          : runJob.status === "running"
-                            ? "Running now. Workflow runs and artifacts will refresh automatically when it finishes."
-                            : runJob.summary || runJob.error || "Desktop run finished."}
-                      </p>
-                    </div>
-                    <span
-                      className={`pill ${
-                        runJob.status === "completed"
-                          ? "pill-good"
-                          : runJob.status === "failed"
-                            ? "pill-bad"
-                            : "pill-warn"
-                      }`}
-                    >
-                      {runJob.status}
-                    </span>
-                  </div>
-                  <div className="summary-row">
-                    <SummaryItem label="Project" value={selectedProject?.name || runJob.project_id} />
-                    <SummaryItem label="Sprint" value={runJob.sprint_id || "-"} />
-                    <SummaryItem label="State" value={runJob.state || "-"} />
-                    <SummaryItem label="Updated" value={runJob.updated_at.replace("T", " ").slice(0, 19)} />
-                  </div>
-                  {runJob.next_steps.length > 0 ? (
-                    <div className="provider-command-list">
-                      {runJob.next_steps.map((step) => (
-                        <code key={step}>{step}</code>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-              {runResult ? (
-                <div className="run-result-card">
-                  <div className="run-top">
-                    <div>
-                      <h3>{runResult.sprint_id}</h3>
-                      <p>{runResult.summary}</p>
-                    </div>
-                    <span className={`pill ${runResult.success ? "pill-good" : "pill-warn"}`}>{runResult.state}</span>
-                  </div>
-                  {runResult.next_steps.length > 0 ? (
-                    <div className="provider-command-list">
-                      {runResult.next_steps.map((step) => (
-                        <code key={step}>{step}</code>
-                      ))}
-                    </div>
-                  ) : null}
-                  <div className="provider-actions">
-                    <button type="button" className="action-button" onClick={() => setActiveView("workflow")}>
-                      Open workflow details
-                    </button>
-                    <button type="button" className="action-button" onClick={() => setActiveView("providers")}>
-                      Review provider setup
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </section>
+          <RunWorkspace
+            statusMessage={statusMessage}
+            runGuidance={runGuidance}
+            setActiveView={setActiveView}
+            runInFlight={runInFlight}
+            runJob={runJob}
+            jobPollCount={jobPollCount}
+            activeRunSummary={activeRunSummary}
+            workflowRefreshing={workflowRefreshing}
+            refreshWorkflowRuns={refreshWorkflowRuns}
+            selectedProjectId={selectedProjectId}
+            trackedArtifacts={trackedArtifacts}
+            trackedRunDetail={trackedRunDetail}
+            setSelectedRunId={setSelectedRunId}
+            setSelectedArtifactTitle={setSelectedArtifactTitle}
+            runPrompt={runPrompt}
+            setRunPrompt={setRunPrompt}
+            runBlockerMessage={runBlockerMessage}
+            submitRun={submitRun}
+            runSubmitting={runSubmitting}
+            runResult={runResult}
+            selectedProject={selectedProject}
+          />
         ) : null}
 
         {activeView === "workflow" ? (
-          <section className="panel">
-            <div className="panel-head">
-              <div>
-                <p className="panel-eyebrow">Workflow</p>
-                <h2>Recent runs and artifact details</h2>
-              </div>
-              <div className="provider-actions compact-actions">
-                <button
-                  type="button"
-                  className="action-button"
-                  onClick={() => void refreshWorkflowRuns()}
-                  disabled={workflowRefreshing || !selectedProjectId}
-                >
-                  {workflowRefreshing ? "Refreshing..." : "Refresh runs"}
-                </button>
-              </div>
-            </div>
-            {statusMessage ? <section className="status-banner">{statusMessage}</section> : null}
-            {runInFlight ? (
-              <section className="workflow-live-strip">
-                <div>
-                  <p className="panel-eyebrow">Live sync</p>
-                  <h3>{runJob?.status === "queued" ? "Waiting for run to appear" : "Tracking active workflow"}</h3>
-                  <p>
-                    {runJob?.sprint_id
-                      ? `Focused on ${runJob.sprint_id}. Runs refresh automatically while the desktop worker is active.`
-                      : "The desktop worker is active. This view will refresh runs automatically as soon as workflow artifacts land."}
-                  </p>
-                </div>
-                <div className="summary-row">
-                  <SummaryItem label="Job" value={runJob?.job_id.slice(0, 10) || "-"} />
-                  <SummaryItem label="Status" value={runJob?.status || "-"} />
-                  <SummaryItem label="State" value={runJob?.state || "-"} />
-                  <SummaryItem label="Polls" value={String(jobPollCount)} />
-                </div>
-              </section>
-            ) : null}
-            {runs.length === 0 ? (
-              <EmptyState title="No workflow runs yet" body="Once a project starts producing workflow artifacts, runs will show up here." />
-            ) : (
-              <div className="workflow-layout">
-                <div className="run-list">
-                  {runs.map((run) => (
-                    <button
-                      key={run.run_id}
-                      type="button"
-                      className={`run-card run-button ${selectedRunId === run.run_id ? "run-card-active" : ""}`}
-                      onClick={() => setSelectedRunId(run.run_id)}
-                    >
-                      <div className="run-top">
-                        <div>
-                          <h3>{run.run_id}</h3>
-                          <p>{run.clarified_summary || run.original_input || "No summary available."}</p>
-                        </div>
-                        <span className={`pill ${run.status === "completed" ? "pill-good" : "pill-warn"}`}>{run.status}</span>
-                      </div>
-                      <div className="summary-row">
-                        <SummaryItem label="Phase" value={run.current_phase || "-"} />
-                        <SummaryItem label="Verify" value={run.verification_verdict || "-"} />
-                        <SummaryItem label="Completion" value={run.completion_status || "-"} />
-                        <SummaryItem label="Flags" value={run.has_gaps || run.has_guardrails ? "attention" : "stable"} />
-                      </div>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="artifact-panel">
-                  {runDetail ? (
-                    <>
-                      <div className="panel-head">
-                        <div>
-                          <p className="panel-eyebrow">Artifact detail</p>
-                          <h2>{runDetail.summary.run_id}</h2>
-                        </div>
-                        <span className={`pill ${runDetail.summary.status === "completed" ? "pill-good" : "pill-warn"}`}>
-                          {runDetail.summary.status}
-                        </span>
-                      </div>
-
-                      <div className="summary-row">
-                        <SummaryItem label="Phase" value={runDetail.summary.current_phase || "-"} />
-                        <SummaryItem label="Verify" value={runDetail.summary.verification_verdict || "-"} />
-                        <SummaryItem label="Completion" value={runDetail.summary.completion_status || "-"} />
-                        <SummaryItem label="Artifacts" value={String(runDetail.artifacts.filter((artifact) => artifact.exists).length)} />
-                      </div>
-
-                      <div className="artifact-toolbar">
-                        <label htmlFor="artifact-select">Focused artifact</label>
-                        <select
-                          id="artifact-select"
-                          value={selectedArtifactTitle}
-                          onChange={(event) => setSelectedArtifactTitle(event.target.value)}
-                        >
-                          {runDetail.artifacts.map((artifact) => (
-                            <option key={artifact.title} value={artifact.title}>
-                              {artifact.title}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {selectedArtifact ? (
-                        <ArtifactViewer artifact={selectedArtifact} />
-                      ) : (
-                        <EmptyState title="No artifact selected" body="Choose an artifact to inspect its contents." />
-                      )}
-                    </>
-                  ) : (
-                    <EmptyState title="No run detail loaded" body="Choose a workflow run to inspect persisted artifacts." />
-                  )}
-                </div>
-              </div>
-            )}
-          </section>
+          <WorkflowWorkspace
+            statusMessage={statusMessage}
+            workflowRefreshing={workflowRefreshing}
+            selectedProjectId={selectedProjectId}
+            refreshWorkflowRuns={refreshWorkflowRuns}
+            runInFlight={runInFlight}
+            runJob={runJob}
+            jobPollCount={jobPollCount}
+            runs={runs}
+            selectedRunId={selectedRunId}
+            setSelectedRunId={setSelectedRunId}
+            runDetail={runDetail}
+            selectedArtifactTitle={selectedArtifactTitle}
+            setSelectedArtifactTitle={setSelectedArtifactTitle}
+          />
         ) : null}
       </main>
-    </div>
-  );
-}
-
-function MetricCard({ label, value }: { label: string; value: string }) {
-  return (
-    <article className="metric-card">
-      <p>{label}</p>
-      <strong>{value}</strong>
-    </article>
-  );
-}
-
-function SummaryItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="summary-item">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function EmptyState({ title, body }: { title: string; body: string }) {
-  return (
-    <div className="empty-state">
-      <h3>{title}</h3>
-      <p>{body}</p>
-    </div>
-  );
-}
-
-function ArtifactViewer({ artifact }: { artifact: WorkflowArtifactDocument }) {
-  const metadataEntries = Object.entries(artifact.metadata || {}).filter(([, value]) => {
-    if (Array.isArray(value)) {
-      return value.length > 0;
-    }
-    return value !== "" && value !== null && value !== undefined;
-  });
-
-  return (
-    <div className="artifact-viewer">
-      <div className="artifact-heading">
-        <div>
-          <p className="panel-eyebrow">Artifact file</p>
-          <h3>{artifact.filename}</h3>
-        </div>
-        <span className={`pill ${artifact.exists ? "pill-good" : "pill-warn"}`}>
-          {artifact.exists ? "Available" : "Missing"}
-        </span>
-      </div>
-
-      {metadataEntries.length > 0 ? (
-        <div className="artifact-metadata">
-          {metadataEntries.slice(0, 6).map(([key, value]) => (
-            <SummaryItem
-              key={key}
-              label={key.split("_").join(" ")}
-              value={Array.isArray(value) ? String(value.length) : String(value)}
-            />
-          ))}
-        </div>
-      ) : null}
-
-      <pre className="artifact-content">{artifact.content || "No artifact content available."}</pre>
     </div>
   );
 }
