@@ -258,6 +258,52 @@ export function App() {
     }
     return runs.find((run) => run.run_id === runJob.sprint_id) ?? null;
   }, [runJob?.sprint_id, runs]);
+  const trackedRunDetail = useMemo(() => {
+    if (!runJob?.sprint_id || !runDetail || runDetail.summary.run_id !== runJob.sprint_id) {
+      return null;
+    }
+    return runDetail;
+  }, [runDetail, runJob?.sprint_id]);
+  const trackedArtifacts = useMemo(
+    () => trackedRunDetail?.artifacts.filter((artifact) => artifact.exists) ?? [],
+    [trackedRunDetail],
+  );
+  const runGuidance = useMemo(() => {
+    if (runJob?.status === "queued") {
+      return {
+        title: "Preparing worker",
+        body: "The desktop sidecar is starting. Stay here for live status or jump to Workflow once the run id appears.",
+      };
+    }
+    if (activeRunSummary?.has_guardrails) {
+      return {
+        title: "Needs workflow review",
+        body: "Guardrails were triggered for the active run. Open workflow details and inspect guardrail or completion artifacts first.",
+      };
+    }
+    if (activeRunSummary?.has_gaps) {
+      return {
+        title: "Gap closure likely",
+        body: "Verification gaps are present. Check verification and gaps artifacts to see what still needs to be repaired.",
+      };
+    }
+    if (runJob?.status === "running") {
+      return {
+        title: "Artifacts are landing",
+        body: "AOP is actively refreshing run data. As soon as PLAN or EXECUTION artifacts appear, you can inspect them from the workflow page.",
+      };
+    }
+    if (runResult?.success) {
+      return {
+        title: "Review the final trace",
+        body: "The run finished successfully. The next best step is to inspect completion and summary artifacts before starting another workflow.",
+      };
+    }
+    return {
+      title: "Ready for the next run",
+      body: "Use this page to launch a workflow, then watch the active run and its artifacts from a single place.",
+    };
+  }, [activeRunSummary?.has_gaps, activeRunSummary?.has_guardrails, runJob?.status, runResult?.success]);
 
   const runBlockerMessage = useMemo(() => {
     if (!selectedProjectId) {
@@ -716,6 +762,21 @@ export function App() {
             </div>
             <div className="run-composer">
               {statusMessage ? <section className="status-banner">{statusMessage}</section> : null}
+              <div className="run-guidance-card">
+                <div>
+                  <p className="panel-eyebrow">Recommended next action</p>
+                  <h3>{runGuidance.title}</h3>
+                  <p>{runGuidance.body}</p>
+                </div>
+                <div className="provider-actions">
+                  <button type="button" className="action-button" onClick={() => setActiveView("workflow")}>
+                    Open workflow
+                  </button>
+                  <button type="button" className="action-button" onClick={() => setActiveView("providers")}>
+                    Check providers
+                  </button>
+                </div>
+              </div>
               {runInFlight ? (
                 <div className="live-run-banner">
                   <div>
@@ -749,6 +810,42 @@ export function App() {
                     >
                       {workflowRefreshing ? "Refreshing..." : "Refresh now"}
                     </button>
+                  </div>
+                </div>
+              ) : null}
+              {(runInFlight || runResult) && (activeRunSummary || trackedRunDetail) ? (
+                <div className="run-progress-grid">
+                  <SummaryItem label="Run id" value={activeRunSummary?.run_id || runResult?.sprint_id || "-"} />
+                  <SummaryItem label="Phase" value={activeRunSummary?.current_phase || "waiting"} />
+                  <SummaryItem label="Verify" value={activeRunSummary?.verification_verdict || "-"} />
+                  <SummaryItem label="Completion" value={activeRunSummary?.completion_status || runResult?.state || "-"} />
+                </div>
+              ) : null}
+              {trackedArtifacts.length > 0 ? (
+                <div className="artifact-snapshot-card">
+                  <div className="panel-head">
+                    <div>
+                      <p className="panel-eyebrow">Live artifact snapshot</p>
+                      <h3>{trackedRunDetail?.summary.run_id}</h3>
+                    </div>
+                    <span className="pill pill-good">{trackedArtifacts.length} ready</span>
+                  </div>
+                  <div className="artifact-snapshot-list">
+                    {trackedArtifacts.slice(0, 4).map((artifact) => (
+                      <button
+                        key={artifact.title}
+                        type="button"
+                        className="artifact-snapshot-button"
+                        onClick={() => {
+                          setSelectedRunId(trackedRunDetail?.summary.run_id || "");
+                          setSelectedArtifactTitle(artifact.title);
+                          setActiveView("workflow");
+                        }}
+                      >
+                        <strong>{artifact.title}</strong>
+                        <span>{artifact.filename}</span>
+                      </button>
+                    ))}
                   </div>
                 </div>
               ) : null}
