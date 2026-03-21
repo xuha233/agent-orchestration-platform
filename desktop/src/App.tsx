@@ -42,6 +42,8 @@ export function App() {
   const [projectPathDraft, setProjectPathDraft] = useState("");
   const [projectAgentDraft, setProjectAgentDraft] = useState("codex");
   const [projectSubmitting, setProjectSubmitting] = useState(false);
+  const [workflowRefreshing, setWorkflowRefreshing] = useState(false);
+  const [statusMessage, setStatusMessage] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -187,6 +189,27 @@ export function App() {
     return "";
   }, [preferredProvider, selectedProjectId]);
 
+  function formatRuntimeError(message: string): string {
+    if (message.startsWith("preferred_provider_missing_env:")) {
+      const [, providerId, missing] = message.split(":");
+      return `Preferred provider ${providerId} still needs ${missing} before desktop runs can start.`;
+    }
+    if (message.startsWith("preferred_provider_unavailable:")) {
+      const [, providerId] = message.split(":");
+      return `Preferred provider ${providerId} is not available on this machine yet.`;
+    }
+    if (message.startsWith("project_path_missing:")) {
+      return "The selected project path no longer exists. Update or re-register the workspace.";
+    }
+    if (message.startsWith("workspace_not_found:")) {
+      return "The selected workspace could not be found. Refresh projects and try again.";
+    }
+    if (message === "prompt_required") {
+      return "Enter a prompt before starting a desktop run.";
+    }
+    return message;
+  }
+
   async function refreshProjectData(nextProjectId?: string) {
     const [projectData, providerData] = await Promise.all([
       invokeAppRuntime<DesktopProjectSummary[]>("projects"),
@@ -201,6 +224,29 @@ export function App() {
     );
     if (nextProjectId) {
       setSelectedProjectId(nextProjectId);
+    }
+  }
+
+  async function refreshWorkflowRuns(nextRunId?: string) {
+    if (!selectedProjectId) {
+      return;
+    }
+    setWorkflowRefreshing(true);
+    try {
+      const runData = await invokeAppRuntime<WorkflowRunSummary[]>("runs", {
+        project_id: selectedProjectId,
+        limit: 6,
+      });
+      setRuns(runData);
+      if (nextRunId) {
+        setSelectedRunId(nextRunId);
+      } else if (!runData.find((run) => run.run_id === selectedRunId)) {
+        setSelectedRunId(runData[0]?.run_id || "");
+      }
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Failed to refresh workflow runs.");
+    } finally {
+      setWorkflowRefreshing(false);
     }
   }
 
@@ -226,6 +272,11 @@ export function App() {
         ...current,
         [providerId]: updated.stored_env_vars,
       }));
+      setStatusMessage(
+        preferred
+          ? `${updated.label} is now the preferred desktop provider.`
+          : `${updated.label} values saved for desktop runtime use.`,
+      );
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Failed to save provider config.");
     }
@@ -246,15 +297,19 @@ export function App() {
       setRunResult(result);
       setRunPrompt("");
       setActiveView("workflow");
+      setStatusMessage(
+        result.success
+          ? `Run ${result.sprint_id} completed. Review artifacts and next steps.`
+          : `Run ${result.sprint_id} finished with issues. Open workflow details to inspect the outcome.`,
+      );
       await refreshProjectData(selectedProjectId);
-      const runData = await invokeAppRuntime<WorkflowRunSummary[]>("runs", {
-        project_id: selectedProjectId,
-        limit: 6,
-      });
-      setRuns(runData);
-      setSelectedRunId(result.sprint_id);
+      await refreshWorkflowRuns(result.sprint_id);
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Failed to start desktop run.");
+      setError(
+        formatRuntimeError(
+          submitError instanceof Error ? submitError.message : "Failed to start desktop run.",
+        ),
+      );
     } finally {
       setRunSubmitting(false);
     }
@@ -277,8 +332,13 @@ export function App() {
       setProjectPathDraft("");
       setActiveView("projects");
       await refreshProjectData(project.project_id);
+      setStatusMessage(`${project.name} is now registered and ready for desktop workflows.`);
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "Failed to register desktop project.");
+      setError(
+        formatRuntimeError(
+          createError instanceof Error ? createError.message : "Failed to register desktop project.",
+        ),
+      );
     } finally {
       setProjectSubmitting(false);
     }
@@ -340,6 +400,7 @@ export function App() {
             </section>
 
             {error ? <section className="alert">{error}</section> : null}
+            {statusMessage ? <section className="status-banner">{statusMessage}</section> : null}
 
             <section className="metrics">
               <MetricCard label="Projects" value={String(health?.workspace_count ?? projects.length)} />
@@ -420,6 +481,7 @@ export function App() {
                 ))}
               </select>
             </div>
+            {statusMessage ? <section className="status-banner">{statusMessage}</section> : null}
 
             <div className="project-register">
               <div className="panel-head">
@@ -497,6 +559,7 @@ export function App() {
             </div>
 
             <div className="provider-list">
+              {statusMessage ? <section className="status-banner">{statusMessage}</section> : null}
               {providers.map((provider) => (
                 <div key={provider.provider_id} className="provider-card">
                   <div className="provider-title-row">
@@ -565,6 +628,7 @@ export function App() {
               </div>
             </div>
             <div className="run-composer">
+              {statusMessage ? <section className="status-banner">{statusMessage}</section> : null}
               <label htmlFor="run-prompt">What should AOP build or validate?</label>
               <textarea
                 id="run-prompt"
@@ -599,6 +663,14 @@ export function App() {
                       ))}
                     </div>
                   ) : null}
+                  <div className="provider-actions">
+                    <button type="button" className="action-button" onClick={() => setActiveView("workflow")}>
+                      Open workflow details
+                    </button>
+                    <button type="button" className="action-button" onClick={() => setActiveView("providers")}>
+                      Review provider setup
+                    </button>
+                  </div>
                 </div>
               ) : null}
             </div>
@@ -612,7 +684,18 @@ export function App() {
                 <p className="panel-eyebrow">Workflow</p>
                 <h2>Recent runs and artifact details</h2>
               </div>
+              <div className="provider-actions compact-actions">
+                <button
+                  type="button"
+                  className="action-button"
+                  onClick={() => void refreshWorkflowRuns()}
+                  disabled={workflowRefreshing || !selectedProjectId}
+                >
+                  {workflowRefreshing ? "Refreshing..." : "Refresh runs"}
+                </button>
+              </div>
             </div>
+            {statusMessage ? <section className="status-banner">{statusMessage}</section> : null}
             {runs.length === 0 ? (
               <EmptyState title="No workflow runs yet" body="Once a project starts producing workflow artifacts, runs will show up here." />
             ) : (

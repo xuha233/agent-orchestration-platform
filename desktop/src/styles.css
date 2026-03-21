@@ -477,6 +477,10 @@ body {
   margin-top: 14px;
 }
 
+.compact-actions {
+  margin-top: 0;
+}
+
 .action-button {
   appearance: none;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -535,6 +539,16 @@ body {
   border: 1px solid rgba(251, 191, 36, 0.24);
   color: #fcd34d;
   font-size: 13px;
+  line-height: 1.5;
+}
+
+.status-banner {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.24);
+  color: #bbf7d0;
   line-height: 1.5;
 }
 
