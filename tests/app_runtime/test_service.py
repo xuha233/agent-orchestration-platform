@@ -57,6 +57,28 @@ def test_desktop_app_service_lists_projects_with_latest_run(tmp_path):
     assert projects[0].needs_follow_up is True
 
 
+def test_desktop_app_service_creates_project_workspace(tmp_path):
+    workspace_home = tmp_path / "aop-home"
+    project_path = tmp_path / "project-create"
+    project_path.mkdir()
+
+    service = DesktopAppService(
+        workspace_manager=WorkspaceManager(workspace_home),
+        settings_manager=SettingsManager(workspace_home),
+    )
+
+    project = service.create_project(
+        name="Desktop Created Project",
+        project_path=str(project_path),
+        primary_agent="codex",
+    )
+
+    assert project.name == "Desktop Created Project"
+    assert project.project_path == str(project_path)
+    assert project.primary_agent == "codex"
+    assert service.get_project(project.project_id) is not None
+
+
 def test_desktop_app_bridge_returns_run_detail_payload(tmp_path):
     project_path = tmp_path / "project-two"
     project_path.mkdir()
@@ -84,6 +106,31 @@ def test_desktop_app_bridge_returns_run_detail_payload(tmp_path):
     assert response["ok"] is True
     assert response["data"]["summary"]["run_id"] == "run-002"
     assert any(artifact["title"] == "SUMMARY" for artifact in response["data"]["artifacts"])
+
+
+def test_desktop_app_bridge_creates_project_payload(tmp_path):
+    workspace_home = tmp_path / "aop-home"
+    project_path = tmp_path / "project-bridge-create"
+    project_path.mkdir()
+
+    service = DesktopAppService(
+        workspace_manager=WorkspaceManager(workspace_home),
+        settings_manager=SettingsManager(workspace_home),
+    )
+    bridge = DesktopAppBridge(service)
+
+    response = bridge.dispatch(
+        "create_project",
+        {
+            "project_name": "Bridge Project",
+            "project_path": str(project_path),
+            "primary_agent": "codex",
+        },
+    )
+
+    assert response["ok"] is True
+    assert response["data"]["name"] == "Bridge Project"
+    assert response["data"]["project_path"] == str(project_path)
 
 
 def test_desktop_app_service_returns_minimal_settings(tmp_path):

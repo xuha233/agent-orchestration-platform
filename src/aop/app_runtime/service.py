@@ -104,6 +104,34 @@ class DesktopAppService:
             None,
         )
 
+    def create_project(
+        self,
+        name: str,
+        project_path: str,
+        primary_agent: str = "codex",
+    ) -> DesktopProjectSummary:
+        """Register an existing project path as a desktop workspace."""
+        clean_path = Path(project_path).expanduser()
+        if not clean_path.exists():
+            raise ValueError(f"project_path_missing:{clean_path}")
+        if not clean_path.is_dir():
+            raise ValueError(f"project_path_not_directory:{clean_path}")
+
+        clean_name = name.strip() or clean_path.name or "AOP Project"
+        workspace = self.workspace_manager.create_workspace(
+            name=clean_name,
+            project_path=str(clean_path),
+            primary_agent=primary_agent,
+        )
+        return self.get_project(workspace.id) or DesktopProjectSummary(
+            project_id=workspace.id,
+            name=workspace.name,
+            project_path=workspace.project_path,
+            primary_agent=workspace.primary_agent,
+            last_active=workspace.last_active,
+            session_id=workspace.session_id,
+        )
+
     def list_runs(self, project_id: str, limit: int = 12) -> List[WorkflowRunSummary]:
         """Return recent runs for a project."""
         workspace = self.workspace_manager.get_workspace(project_id)

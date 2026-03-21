@@ -28,6 +28,19 @@ class DesktopAppBridge:
                 "ok": True,
                 "data": [provider.to_dict() for provider in self.service.get_provider_status()],
             }
+        if action == "create_project":
+            project_name = str(data.get("project_name", "")).strip()
+            project_path = str(data.get("project_path", "")).strip()
+            primary_agent = str(data.get("primary_agent", "codex")).strip() or "codex"
+            try:
+                project = self.service.create_project(
+                    name=project_name,
+                    project_path=project_path,
+                    primary_agent=primary_agent,
+                )
+            except ValueError as error:
+                return {"ok": False, "error": str(error)}
+            return {"ok": True, "data": project.to_dict()}
         if action == "settings":
             return {"ok": True, "data": self.service.get_settings()}
         if action == "runs":

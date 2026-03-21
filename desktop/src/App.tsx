@@ -30,6 +30,10 @@ export function App() {
   const [runPrompt, setRunPrompt] = useState("");
   const [runSubmitting, setRunSubmitting] = useState(false);
   const [runResult, setRunResult] = useState<DesktopRunLaunchResult | null>(null);
+  const [projectNameDraft, setProjectNameDraft] = useState("");
+  const [projectPathDraft, setProjectPathDraft] = useState("");
+  const [projectAgentDraft, setProjectAgentDraft] = useState("codex");
+  const [projectSubmitting, setProjectSubmitting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -235,6 +239,29 @@ export function App() {
     }
   }
 
+  async function createProject() {
+    if (!projectPathDraft.trim()) {
+      setError("Please enter a project path to register.");
+      return;
+    }
+    setProjectSubmitting(true);
+    setError("");
+    try {
+      const project = await invokeAppRuntime<DesktopProjectSummary>("create_project", {
+        project_name: projectNameDraft,
+        project_path: projectPathDraft,
+        primary_agent: projectAgentDraft,
+      });
+      setProjectNameDraft("");
+      setProjectPathDraft("");
+      await refreshProjectData(project.project_id);
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "Failed to register desktop project.");
+    } finally {
+      setProjectSubmitting(false);
+    }
+  }
+
   return (
     <main className="shell">
       <section className="hero">
@@ -297,6 +324,53 @@ export function App() {
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="project-register">
+            <div className="panel-head">
+              <div>
+                <p className="panel-eyebrow">Register project</p>
+                <h2>Add an existing folder</h2>
+              </div>
+            </div>
+            <div className="project-register-grid">
+              <label className="provider-field">
+                <span>Name</span>
+                <input
+                  type="text"
+                  value={projectNameDraft}
+                  placeholder="Optional project label"
+                  onChange={(event) => setProjectNameDraft(event.target.value)}
+                />
+              </label>
+              <label className="provider-field provider-field-wide">
+                <span>Path</span>
+                <input
+                  type="text"
+                  value={projectPathDraft}
+                  placeholder="G:\\path\\to\\project"
+                  onChange={(event) => setProjectPathDraft(event.target.value)}
+                />
+              </label>
+              <label className="provider-field">
+                <span>Primary agent</span>
+                <select value={projectAgentDraft} onChange={(event) => setProjectAgentDraft(event.target.value)}>
+                  <option value="codex">Codex</option>
+                  <option value="claude_code">Claude Code</option>
+                  <option value="opencode">OpenCode</option>
+                </select>
+              </label>
+            </div>
+            <div className="provider-actions">
+              <button
+                type="button"
+                className="action-button action-button-accent"
+                onClick={() => void createProject()}
+                disabled={projectSubmitting}
+              >
+                {projectSubmitting ? "Registering..." : "Register project"}
+              </button>
+            </div>
           </div>
 
           {selectedProject ? (

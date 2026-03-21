@@ -14,6 +14,9 @@ type BridgePayload = {
   env_values?: Record<string, string>;
   preferred?: boolean;
   prompt?: string;
+  project_name?: string;
+  project_path?: string;
+  primary_agent?: string;
 };
 
 const mockBridgeData = {
@@ -27,6 +30,19 @@ const mockBridgeData = {
   projects: [],
   providers: [],
   runs: [],
+  create_project: {
+    project_id: "mock-project",
+    name: "Mock Project",
+    project_path: "C:/mock/project",
+    primary_agent: "codex",
+    last_active: "",
+    session_id: null,
+    latest_run_id: "",
+    latest_run_status: "",
+    latest_run_phase: "",
+    latest_run_completion: "",
+    needs_follow_up: false,
+  },
   update_provider: {
     provider_id: "mock",
     label: "Mock",
@@ -68,6 +84,9 @@ export async function invokeAppRuntime<T>(action: string, payload: BridgePayload
     envValues: payload.env_values,
     preferred: payload.preferred,
     prompt: payload.prompt,
+    projectName: payload.project_name,
+    projectPath: payload.project_path,
+    primaryAgent: payload.primary_agent,
   });
   const envelope = JSON.parse(raw) as BridgeEnvelope<T>;
   if (!envelope.ok || envelope.data === undefined) {
