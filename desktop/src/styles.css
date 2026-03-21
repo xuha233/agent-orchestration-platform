@@ -247,6 +247,25 @@ body {
   line-height: 1.55;
 }
 
+.live-run-banner,
+.workflow-live-strip {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(251, 191, 36, 0.22);
+  background:
+    linear-gradient(135deg, rgba(251, 191, 36, 0.14), rgba(14, 165, 233, 0.08)),
+    rgba(255, 255, 255, 0.03);
+}
+
+.live-run-banner h3,
+.workflow-live-strip h3 {
+  margin: 0 0 6px;
+  font-size: 20px;
+}
+
 .chip-row {
   display: flex;
   gap: 8px;

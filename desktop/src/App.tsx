@@ -46,6 +46,7 @@ export function App() {
   const [projectSubmitting, setProjectSubmitting] = useState(false);
   const [workflowRefreshing, setWorkflowRefreshing] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
+  const [jobPollCount, setJobPollCount] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,7 +103,14 @@ export function App() {
         if (cancelled) {
           return;
         }
+        setJobPollCount((current) => current + 1);
         setRunJob(nextJob);
+        await refreshProjectData(nextJob.project_id);
+        if (nextJob.sprint_id) {
+          await refreshWorkflowRuns(nextJob.sprint_id, nextJob.project_id);
+        } else if (nextJob.status === "running") {
+          await refreshWorkflowRuns(undefined, nextJob.project_id);
+        }
         if (nextJob.status === "completed" || nextJob.status === "failed") {
           const result: DesktopRunLaunchResult | null = nextJob.sprint_id
             ? {
@@ -119,8 +127,6 @@ export function App() {
               }
             : null;
           setRunResult(result);
-          await refreshProjectData(nextJob.project_id);
-          await refreshWorkflowRuns(nextJob.sprint_id || undefined);
           setStatusMessage(
             nextJob.status === "completed"
               ? `Run ${nextJob.sprint_id} completed. Review workflow artifacts for the full trace.`
@@ -128,6 +134,9 @@ export function App() {
                 ? formatRuntimeError(nextJob.error)
                 : "Desktop run stopped before completion. Review workflow details for follow-up.",
           );
+          if (nextJob.sprint_id && activeView === "run") {
+            setActiveView("workflow");
+          }
           return;
         }
       } catch (pollError) {
@@ -156,6 +165,7 @@ export function App() {
       setRuns([]);
       setSelectedRunId("");
       setRunDetail(null);
+      setSelectedArtifactTitle("");
       return;
     }
 
@@ -167,7 +177,9 @@ export function App() {
         });
         if (!cancelled) {
           setRuns(runData);
-          setSelectedRunId((current) => current || runData[0]?.run_id || "");
+          setSelectedRunId((current) =>
+            current && runData.some((run) => run.run_id === current) ? current : runData[0]?.run_id || "",
+          );
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -202,9 +214,11 @@ export function App() {
         setRunDetail(detail);
         setSelectedArtifactTitle(
           (current) =>
-            current ||
+            (current && detail.artifacts.some((artifact) => artifact.title === current)
+              ? current
+              :
             detail.artifacts.find((artifact) => artifact.exists)?.title ||
-            detail.artifacts[0]?.title ||
+            detail.artifacts[0]?.title) ||
             "",
         );
       } catch (loadError) {
@@ -237,6 +251,13 @@ export function App() {
     [projects],
   );
   const activeNav = navItems.find((item) => item.id === activeView);
+  const runInFlight = Boolean(runJob && (runJob.status === "queued" || runJob.status === "running"));
+  const activeRunSummary = useMemo(() => {
+    if (!runJob?.sprint_id) {
+      return null;
+    }
+    return runs.find((run) => run.run_id === runJob.sprint_id) ?? null;
+  }, [runJob?.sprint_id, runs]);
 
   const runBlockerMessage = useMemo(() => {
     if (!selectedProjectId) {
@@ -292,17 +313,21 @@ export function App() {
     }
   }
 
-  async function refreshWorkflowRuns(nextRunId?: string) {
-    if (!selectedProjectId) {
+  async function refreshWorkflowRuns(nextRunId?: string, projectIdOverride?: string) {
+    const projectId = projectIdOverride || selectedProjectId;
+    if (!projectId) {
       return;
     }
     setWorkflowRefreshing(true);
     try {
       const runData = await invokeAppRuntime<WorkflowRunSummary[]>("runs", {
-        project_id: selectedProjectId,
+        project_id: projectId,
         limit: 6,
       });
       setRuns(runData);
+      if (projectIdOverride) {
+        setSelectedProjectId(projectIdOverride);
+      }
       if (nextRunId) {
         setSelectedRunId(nextRunId);
       } else if (!runData.find((run) => run.run_id === selectedRunId)) {
@@ -359,6 +384,7 @@ export function App() {
         project_id: selectedProjectId,
         prompt: runPrompt,
       });
+      setJobPollCount(0);
       setRunJob(job);
       setRunResult(null);
       setRunPrompt("");
@@ -690,6 +716,42 @@ export function App() {
             </div>
             <div className="run-composer">
               {statusMessage ? <section className="status-banner">{statusMessage}</section> : null}
+              {runInFlight ? (
+                <div className="live-run-banner">
+                  <div>
+                    <p className="panel-eyebrow">Live run monitor</p>
+                    <h3>{runJob?.status === "queued" ? "Preparing desktop worker" : "Workflow running"}</h3>
+                    <p>
+                      {runJob?.status === "queued"
+                        ? "The background worker is being started. AOP will start refreshing workflow data as soon as the run appears."
+                        : "AOP is polling the local worker, refreshing project state, and tracking new workflow artifacts for you."}
+                    </p>
+                  </div>
+                  <div className="summary-row">
+                    <SummaryItem label="Polls" value={String(jobPollCount)} />
+                    <SummaryItem label="Job" value={runJob?.job_id.slice(0, 12) || "-"} />
+                    <SummaryItem label="State" value={runJob?.state || runJob?.status || "-"} />
+                    <SummaryItem label="Live run" value={runJob?.sprint_id || activeRunSummary?.run_id || "Waiting"} />
+                  </div>
+                  <div className="provider-actions">
+                    <button
+                      type="button"
+                      className="action-button"
+                      onClick={() => setActiveView("workflow")}
+                    >
+                      Watch workflow
+                    </button>
+                    <button
+                      type="button"
+                      className="action-button"
+                      onClick={() => void refreshWorkflowRuns(runJob?.sprint_id || undefined, selectedProjectId)}
+                      disabled={workflowRefreshing}
+                    >
+                      {workflowRefreshing ? "Refreshing..." : "Refresh now"}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               <label htmlFor="run-prompt">What should AOP build or validate?</label>
               <textarea
                 id="run-prompt"
@@ -806,6 +868,25 @@ export function App() {
               </div>
             </div>
             {statusMessage ? <section className="status-banner">{statusMessage}</section> : null}
+            {runInFlight ? (
+              <section className="workflow-live-strip">
+                <div>
+                  <p className="panel-eyebrow">Live sync</p>
+                  <h3>{runJob?.status === "queued" ? "Waiting for run to appear" : "Tracking active workflow"}</h3>
+                  <p>
+                    {runJob?.sprint_id
+                      ? `Focused on ${runJob.sprint_id}. Runs refresh automatically while the desktop worker is active.`
+                      : "The desktop worker is active. This view will refresh runs automatically as soon as workflow artifacts land."}
+                  </p>
+                </div>
+                <div className="summary-row">
+                  <SummaryItem label="Job" value={runJob?.job_id.slice(0, 10) || "-"} />
+                  <SummaryItem label="Status" value={runJob?.status || "-"} />
+                  <SummaryItem label="State" value={runJob?.state || "-"} />
+                  <SummaryItem label="Polls" value={String(jobPollCount)} />
+                </div>
+              </section>
+            ) : null}
             {runs.length === 0 ? (
               <EmptyState title="No workflow runs yet" body="Once a project starts producing workflow artifacts, runs will show up here." />
             ) : (
