@@ -273,6 +273,74 @@ def test_desktop_app_bridge_start_run_returns_payload(tmp_path, monkeypatch):
     assert response["data"]["state"] == "failed"
 
 
+def test_desktop_app_service_starts_async_run_job(tmp_path, monkeypatch):
+    workspace_home = tmp_path / "aop-home"
+    project_path = tmp_path / "project-run-async"
+    project_path.mkdir()
+    workspace_id = _create_workspace(workspace_home, "Run Async Pilot", project_path)
+
+    captured: dict[str, object] = {}
+
+    class FakePopen:
+        def __init__(self, command, **kwargs):
+            captured["command"] = command
+            captured["kwargs"] = kwargs
+
+    service = DesktopAppService(
+        workspace_manager=WorkspaceManager(workspace_home),
+        settings_manager=SettingsManager(workspace_home),
+    )
+    service.update_provider_config("codex", {"OPENAI_API_KEY": "desktop-token"}, preferred=True)
+    monkeypatch.setattr(service, "_spawn_run_worker", lambda job_id: FakePopen(["python", "--job-id", job_id]))
+
+    job = service.start_run_async(workspace_id, "Build async desktop launch flow")
+
+    assert job.project_id == workspace_id
+    assert job.status == "queued"
+    assert job.prompt == "Build async desktop launch flow"
+    assert captured["command"][-2:] == ["--job-id", job.job_id]
+    assert service.get_run_job(job.job_id) is not None
+
+
+def test_desktop_app_service_executes_run_job(tmp_path, monkeypatch):
+    workspace_home = tmp_path / "aop-home"
+    project_path = tmp_path / "project-run-job"
+    project_path.mkdir()
+    workspace_id = _create_workspace(workspace_home, "Run Job Pilot", project_path)
+
+    class FakeDriver:
+        def __init__(self, config):
+            self.config = config
+
+        def run_from_vague_description(self, prompt):
+            class Result:
+                sprint_id = "sprint-job-001"
+                success = True
+                state = SprintState.COMPLETED
+                summary = "Async desktop run completed."
+                next_steps = ["Inspect workflow artifacts"]
+
+            return Result()
+
+    monkeypatch.setattr("aop.app_runtime.service.AgentDriver", FakeDriver)
+
+    service = DesktopAppService(
+        workspace_manager=WorkspaceManager(workspace_home),
+        settings_manager=SettingsManager(workspace_home),
+    )
+    service.update_provider_config("codex", {"OPENAI_API_KEY": "desktop-token"}, preferred=True)
+    monkeypatch.setattr(service, "_spawn_run_worker", lambda job_id: None)
+
+    job = service.start_run_async(workspace_id, "Build async desktop validation flow")
+    completed = service.execute_run_job(job.job_id)
+
+    assert completed.job_id == job.job_id
+    assert completed.status == "completed"
+    assert completed.sprint_id == "sprint-job-001"
+    assert completed.state == "completed"
+    assert completed.next_steps == ["Inspect workflow artifacts"]
+
+
 def test_desktop_app_service_rejects_run_when_preferred_provider_missing_env(tmp_path, monkeypatch):
     workspace_home = tmp_path / "aop-home"
     project_path = tmp_path / "project-run-env"

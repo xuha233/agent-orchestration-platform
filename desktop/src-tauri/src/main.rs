@@ -3,7 +3,20 @@
 use std::process::Command;
 
 #[tauri::command]
-fn app_runtime(action: String, project_id: Option<String>, run_id: Option<String>, limit: Option<u32>) -> Result<String, String> {
+fn app_runtime(
+    action: String,
+    project_id: Option<String>,
+    run_id: Option<String>,
+    job_id: Option<String>,
+    limit: Option<u32>,
+    provider_id: Option<String>,
+    env_values: Option<serde_json::Value>,
+    preferred: Option<bool>,
+    prompt: Option<String>,
+    project_name: Option<String>,
+    project_path: Option<String>,
+    primary_agent: Option<String>,
+) -> Result<String, String> {
     let python = std::env::var("AOP_DESKTOP_PYTHON").unwrap_or_else(|_| "python".to_string());
     let mut command = Command::new(python);
     command.arg("-m").arg("aop.app_runtime").arg(action);
@@ -18,8 +31,46 @@ fn app_runtime(action: String, project_id: Option<String>, run_id: Option<String
             command.arg("--run-id").arg(value);
         }
     }
+    if let Some(value) = job_id {
+        if !value.trim().is_empty() {
+            command.arg("--job-id").arg(value);
+        }
+    }
     if let Some(value) = limit {
         command.arg("--limit").arg(value.to_string());
+    }
+    if let Some(value) = provider_id {
+        if !value.trim().is_empty() {
+            command.arg("--provider-id").arg(value);
+        }
+    }
+    if let Some(value) = env_values {
+        command.arg("--env-values-json").arg(value.to_string());
+    }
+    if let Some(value) = preferred {
+        if value {
+            command.arg("--preferred");
+        }
+    }
+    if let Some(value) = prompt {
+        if !value.trim().is_empty() {
+            command.arg("--prompt").arg(value);
+        }
+    }
+    if let Some(value) = project_name {
+        if !value.trim().is_empty() {
+            command.arg("--project-name").arg(value);
+        }
+    }
+    if let Some(value) = project_path {
+        if !value.trim().is_empty() {
+            command.arg("--project-path").arg(value);
+        }
+    }
+    if let Some(value) = primary_agent {
+        if !value.trim().is_empty() {
+            command.arg("--primary-agent").arg(value);
+        }
     }
 
     let output = command.output().map_err(|error| format!("failed to spawn runtime bridge: {error}"))?;

@@ -5,6 +5,7 @@ import type {
   DesktopAppHealth,
   DesktopProjectSummary,
   DesktopProviderStatus,
+  DesktopRunJob,
   DesktopRunLaunchResult,
   WorkflowArtifactDocument,
   WorkflowRunDetail,
@@ -37,6 +38,7 @@ export function App() {
   const [providerDrafts, setProviderDrafts] = useState<Record<string, Record<string, string>>>({});
   const [runPrompt, setRunPrompt] = useState("");
   const [runSubmitting, setRunSubmitting] = useState(false);
+  const [runJob, setRunJob] = useState<DesktopRunJob | null>(null);
   const [runResult, setRunResult] = useState<DesktopRunLaunchResult | null>(null);
   const [projectNameDraft, setProjectNameDraft] = useState("");
   const [projectPathDraft, setProjectPathDraft] = useState("");
@@ -84,6 +86,69 @@ export function App() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!runJob || (runJob.status !== "queued" && runJob.status !== "running")) {
+      return;
+    }
+    const activeJob: DesktopRunJob = runJob;
+
+    async function pollJob() {
+      try {
+        const nextJob = await invokeAppRuntime<DesktopRunJob>("run_job_status", {
+          job_id: activeJob.job_id,
+        });
+        if (cancelled) {
+          return;
+        }
+        setRunJob(nextJob);
+        if (nextJob.status === "completed" || nextJob.status === "failed") {
+          const result: DesktopRunLaunchResult | null = nextJob.sprint_id
+            ? {
+                project_id: nextJob.project_id,
+                sprint_id: nextJob.sprint_id,
+                success: nextJob.status === "completed",
+                state: nextJob.state || nextJob.status,
+                summary:
+                  nextJob.summary ||
+                  (nextJob.status === "completed"
+                    ? "Desktop run completed."
+                    : "Desktop run finished with issues."),
+                next_steps: nextJob.next_steps,
+              }
+            : null;
+          setRunResult(result);
+          await refreshProjectData(nextJob.project_id);
+          await refreshWorkflowRuns(nextJob.sprint_id || undefined);
+          setStatusMessage(
+            nextJob.status === "completed"
+              ? `Run ${nextJob.sprint_id} completed. Review workflow artifacts for the full trace.`
+              : nextJob.error
+                ? formatRuntimeError(nextJob.error)
+                : "Desktop run stopped before completion. Review workflow details for follow-up.",
+          );
+          return;
+        }
+      } catch (pollError) {
+        if (!cancelled) {
+          setError(
+            pollError instanceof Error ? pollError.message : "Failed to poll desktop run job.",
+          );
+        }
+      }
+      if (!cancelled) {
+        window.setTimeout(() => {
+          void pollJob();
+        }, 2000);
+      }
+    }
+
+    void pollJob();
+    return () => {
+      cancelled = true;
+    };
+  }, [runJob?.job_id, runJob?.status]);
 
   useEffect(() => {
     let cancelled = false;
@@ -290,20 +355,16 @@ export function App() {
     setRunSubmitting(true);
     setError("");
     try {
-      const result = await invokeAppRuntime<DesktopRunLaunchResult>("start_run", {
+      const job = await invokeAppRuntime<DesktopRunJob>("start_run_async", {
         project_id: selectedProjectId,
         prompt: runPrompt,
       });
-      setRunResult(result);
+      setRunJob(job);
+      setRunResult(null);
       setRunPrompt("");
-      setActiveView("workflow");
       setStatusMessage(
-        result.success
-          ? `Run ${result.sprint_id} completed. Review artifacts and next steps.`
-          : `Run ${result.sprint_id} finished with issues. Open workflow details to inspect the outcome.`,
+        "Desktop run queued. AOP will keep polling until workflow artifacts are ready.",
       );
-      await refreshProjectData(selectedProjectId);
-      await refreshWorkflowRuns(result.sprint_id);
     } catch (submitError) {
       setError(
         formatRuntimeError(
@@ -646,7 +707,56 @@ export function App() {
                 >
                   {runSubmitting ? "Running..." : "Start run"}
                 </button>
+                {runJob?.sprint_id ? (
+                  <button
+                    type="button"
+                    className="action-button"
+                    onClick={() => setActiveView("workflow")}
+                  >
+                    Open workflow
+                  </button>
+                ) : null}
               </div>
+              {runJob && !runResult ? (
+                <div className="run-result-card">
+                  <div className="run-top">
+                    <div>
+                      <h3>{runJob.job_id}</h3>
+                      <p>
+                        {runJob.status === "queued"
+                          ? "Queued and waiting for the desktop worker to start."
+                          : runJob.status === "running"
+                            ? "Running now. Workflow runs and artifacts will refresh automatically when it finishes."
+                            : runJob.summary || runJob.error || "Desktop run finished."}
+                      </p>
+                    </div>
+                    <span
+                      className={`pill ${
+                        runJob.status === "completed"
+                          ? "pill-good"
+                          : runJob.status === "failed"
+                            ? "pill-bad"
+                            : "pill-warn"
+                      }`}
+                    >
+                      {runJob.status}
+                    </span>
+                  </div>
+                  <div className="summary-row">
+                    <SummaryItem label="Project" value={selectedProject?.name || runJob.project_id} />
+                    <SummaryItem label="Sprint" value={runJob.sprint_id || "-"} />
+                    <SummaryItem label="State" value={runJob.state || "-"} />
+                    <SummaryItem label="Updated" value={runJob.updated_at.replace("T", " ").slice(0, 19)} />
+                  </div>
+                  {runJob.next_steps.length > 0 ? (
+                    <div className="provider-command-list">
+                      {runJob.next_steps.map((step) => (
+                        <code key={step}>{step}</code>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               {runResult ? (
                 <div className="run-result-card">
                   <div className="run-top">

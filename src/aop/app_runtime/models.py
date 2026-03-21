@@ -75,3 +75,23 @@ class DesktopRunLaunchResult:
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
+
+
+@dataclass
+class DesktopRunJob:
+    """Asynchronous desktop run job persisted for polling."""
+
+    job_id: str
+    project_id: str
+    prompt: str
+    status: str
+    created_at: str
+    updated_at: str
+    sprint_id: str = ""
+    summary: str = ""
+    state: str = ""
+    next_steps: List[str] = field(default_factory=list)
+    error: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)

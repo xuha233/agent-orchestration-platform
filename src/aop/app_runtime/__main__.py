@@ -6,6 +6,7 @@ import argparse
 import json
 
 from .bridge import DesktopAppBridge
+from .service import DesktopAppService
 
 
 def main() -> None:
@@ -14,14 +15,46 @@ def main() -> None:
     parser.add_argument("action", help="Bridge action, e.g. health/projects/providers")
     parser.add_argument("--project-id", default="", help="Project identifier")
     parser.add_argument("--run-id", default="", help="Workflow run identifier")
+    parser.add_argument("--job-id", default="", help="Desktop async run job identifier")
     parser.add_argument("--limit", type=int, default=12, help="Max number of runs")
+    parser.add_argument("--provider-id", default="", help="Provider identifier")
+    parser.add_argument("--preferred", action="store_true", help="Mark provider as preferred")
+    parser.add_argument("--prompt", default="", help="Prompt for run actions")
+    parser.add_argument("--project-name", default="", help="Project display name")
+    parser.add_argument("--project-path", default="", help="Project path")
+    parser.add_argument("--primary-agent", default="", help="Primary agent identifier")
+    parser.add_argument(
+        "--env-values-json",
+        default="{}",
+        help="JSON object of provider env-style values",
+    )
     args = parser.parse_args()
+
+    if args.action == "worker-run":
+        service = DesktopAppService()
+        service.execute_run_job(args.job_id)
+        return
+
+    try:
+        env_values = json.loads(args.env_values_json)
+    except json.JSONDecodeError:
+        env_values = {}
+    if not isinstance(env_values, dict):
+        env_values = {}
 
     bridge = DesktopAppBridge()
     payload = {
         "project_id": args.project_id,
         "run_id": args.run_id,
+        "job_id": args.job_id,
         "limit": args.limit,
+        "provider_id": args.provider_id,
+        "preferred": args.preferred,
+        "prompt": args.prompt,
+        "project_name": args.project_name,
+        "project_path": args.project_path,
+        "primary_agent": args.primary_agent,
+        "env_values": env_values,
     }
     print(json.dumps(bridge.dispatch(args.action, payload), ensure_ascii=False, indent=2))
 

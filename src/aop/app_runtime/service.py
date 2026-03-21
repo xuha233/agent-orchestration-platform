@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -16,10 +18,12 @@ from aop.primary.workspace import SettingsManager, WorkspaceManager
 from aop.workflow import WorkflowRunDetail, WorkflowRunReader, WorkflowRunSummary
 
 from .config_store import DesktopConfigStore
+from .jobs import DesktopRunJobStore
 from .models import (
     DesktopAppHealth,
     DesktopProjectSummary,
     DesktopProviderStatus,
+    DesktopRunJob,
     DesktopRunLaunchResult,
 )
 
@@ -49,10 +53,12 @@ class DesktopAppService:
         workspace_manager: WorkspaceManager | None = None,
         settings_manager: SettingsManager | None = None,
         config_store: DesktopConfigStore | None = None,
+        job_store: DesktopRunJobStore | None = None,
     ) -> None:
         self.workspace_manager = workspace_manager or WorkspaceManager()
         self.settings_manager = settings_manager or SettingsManager()
         self.config_store = config_store or DesktopConfigStore(self.workspace_manager.base_dir)
+        self.job_store = job_store or DesktopRunJobStore(self.workspace_manager.base_dir)
 
     def get_app_health(self) -> DesktopAppHealth:
         """Return a lightweight runtime summary for the desktop shell."""
@@ -217,6 +223,76 @@ class DesktopAppService:
 
     def start_run(self, project_id: str, prompt: str) -> DesktopRunLaunchResult:
         """Run one AOP workflow from the desktop shell."""
+        clean_prompt, project_path, preferred_provider = self._validate_run_request(project_id, prompt)
+        result = self._execute_run(project_path, clean_prompt, preferred_provider)
+        return DesktopRunLaunchResult(
+            project_id=project_id,
+            sprint_id=result.sprint_id,
+            success=result.success,
+            state=result.state.value if hasattr(result.state, "value") else str(result.state),
+            summary=result.summary,
+            next_steps=list(result.next_steps),
+        )
+
+    def start_run_async(self, project_id: str, prompt: str) -> DesktopRunJob:
+        """Queue one desktop run as a background job."""
+        clean_prompt, _, _ = self._validate_run_request(project_id, prompt)
+        job = self.job_store.create_job(project_id=project_id, prompt=clean_prompt)
+        self._spawn_run_worker(job.job_id)
+        return job
+
+    def get_run_job(self, job_id: str) -> Optional[DesktopRunJob]:
+        """Return one async desktop run job if present."""
+        return self.job_store.get_job(job_id)
+
+    def execute_run_job(self, job_id: str) -> DesktopRunJob:
+        """Execute one queued desktop run job and persist status transitions."""
+        job = self.job_store.get_job(job_id)
+        if job is None:
+            raise ValueError(f"job_not_found:{job_id}")
+
+        job = self.job_store.save_job(DesktopRunJob(**{**job.to_dict(), "status": "running", "error": ""}))
+        try:
+            clean_prompt, project_path, preferred_provider = self._validate_run_request(
+                job.project_id,
+                job.prompt,
+            )
+            result = self._execute_run(project_path, clean_prompt, preferred_provider)
+        except Exception as error:
+            return self.job_store.save_job(
+                DesktopRunJob(
+                    job_id=job.job_id,
+                    project_id=job.project_id,
+                    prompt=job.prompt,
+                    status="failed",
+                    created_at=job.created_at,
+                    updated_at=job.updated_at,
+                    error=str(error),
+                )
+            )
+
+        return self.job_store.save_job(
+            DesktopRunJob(
+                job_id=job.job_id,
+                project_id=job.project_id,
+                prompt=job.prompt,
+                status="completed" if result.success else "failed",
+                created_at=job.created_at,
+                updated_at=job.updated_at,
+                sprint_id=result.sprint_id,
+                summary=result.summary,
+                state=result.state.value if hasattr(result.state, "value") else str(result.state),
+                next_steps=list(result.next_steps),
+            )
+        )
+
+    def _load_latest_run(self, project_path: str) -> WorkflowRunSummary | None:
+        path = Path(project_path)
+        if not path.exists():
+            return None
+        return WorkflowRunReader(path).get_latest_run()
+
+    def _validate_run_request(self, project_id: str, prompt: str) -> tuple[str, Path, str]:
         workspace = self.workspace_manager.get_workspace(project_id)
         if workspace is None:
             raise ValueError(f"workspace_not_found:{project_id}")
@@ -245,6 +321,9 @@ class DesktopAppService:
             if not preferred_status.detected:
                 raise ValueError(f"preferred_provider_unavailable:{preferred_provider}")
 
+        return clean_prompt, project_path, preferred_provider
+
+    def _execute_run(self, project_path: Path, prompt: str, preferred_provider: str):
         providers = self._build_provider_priority(preferred_provider)
         orchestrator_type = self._resolve_orchestrator_type(preferred_provider)
 
@@ -255,21 +334,28 @@ class DesktopAppService:
                 storage_path=project_path / ".aop",
             )
         )
-        result = driver.run_from_vague_description(clean_prompt)
-        return DesktopRunLaunchResult(
-            project_id=project_id,
-            sprint_id=result.sprint_id,
-            success=result.success,
-            state=result.state.value if hasattr(result.state, "value") else str(result.state),
-            summary=result.summary,
-            next_steps=list(result.next_steps),
-        )
+        return driver.run_from_vague_description(prompt)
 
-    def _load_latest_run(self, project_path: str) -> WorkflowRunSummary | None:
-        path = Path(project_path)
-        if not path.exists():
-            return None
-        return WorkflowRunReader(path).get_latest_run()
+    def _spawn_run_worker(self, job_id: str) -> None:
+        python = os.environ.get("AOP_DESKTOP_PYTHON", sys.executable or "python")
+        command = [
+            python,
+            "-m",
+            "aop.app_runtime",
+            "worker-run",
+            "--job-id",
+            job_id,
+        ]
+        kwargs = {
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+            "stdin": subprocess.DEVNULL,
+            "cwd": str(Path.cwd()),
+            "close_fds": True,
+        }
+        if os.name == "nt":
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW  # type: ignore[index]
+        subprocess.Popen(command, **kwargs)
 
     def _build_provider_priority(self, preferred_provider: str) -> List[str]:
         ordered: List[str] = []

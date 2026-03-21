@@ -87,4 +87,20 @@ class DesktopAppBridge:
             except ValueError as error:
                 return {"ok": False, "error": str(error)}
             return {"ok": True, "data": result.to_dict()}
+        if action == "start_run_async":
+            project_id = str(data.get("project_id", "")).strip()
+            prompt = str(data.get("prompt", ""))
+            try:
+                job = self.service.start_run_async(project_id=project_id, prompt=prompt)
+            except ValueError as error:
+                return {"ok": False, "error": str(error)}
+            return {"ok": True, "data": job.to_dict()}
+        if action == "run_job_status":
+            job_id = str(data.get("job_id", "")).strip()
+            if not job_id:
+                return {"ok": False, "error": "job_id_required"}
+            job = self.service.get_run_job(job_id)
+            if job is None:
+                return {"ok": False, "error": "job_not_found"}
+            return {"ok": True, "data": job.to_dict()}
         return {"ok": False, "error": f"unknown_action:{action}"}

@@ -73,3 +73,17 @@ export type DesktopRunLaunchResult = {
   summary: string;
   next_steps: string[];
 };
+
+export type DesktopRunJob = {
+  job_id: string;
+  project_id: string;
+  prompt: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  sprint_id: string;
+  summary: string;
+  state: string;
+  next_steps: string[];
+  error: string;
+};

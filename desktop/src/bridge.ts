@@ -9,6 +9,7 @@ type BridgeEnvelope<T> = {
 type BridgePayload = {
   project_id?: string;
   run_id?: string;
+  job_id?: string;
   limit?: number;
   provider_id?: string;
   env_values?: Record<string, string>;
@@ -66,6 +67,32 @@ const mockBridgeData = {
     summary: "Mock desktop run completed.",
     next_steps: ["Inspect workflow artifacts"],
   },
+  start_run_async: {
+    job_id: "job-mock-001",
+    project_id: "mock-project",
+    prompt: "Mock prompt",
+    status: "queued",
+    created_at: "2026-03-22T00:00:00Z",
+    updated_at: "2026-03-22T00:00:00Z",
+    sprint_id: "",
+    summary: "",
+    state: "",
+    next_steps: [],
+    error: "",
+  },
+  run_job_status: {
+    job_id: "job-mock-001",
+    project_id: "mock-project",
+    prompt: "Mock prompt",
+    status: "completed",
+    created_at: "2026-03-22T00:00:00Z",
+    updated_at: "2026-03-22T00:00:10Z",
+    sprint_id: "mock-sprint",
+    summary: "Mock desktop run completed.",
+    state: "completed",
+    next_steps: ["Inspect workflow artifacts"],
+    error: "",
+  },
 };
 
 export async function invokeAppRuntime<T>(action: string, payload: BridgePayload = {}): Promise<T> {
@@ -79,6 +106,7 @@ export async function invokeAppRuntime<T>(action: string, payload: BridgePayload
     action,
     projectId: payload.project_id,
     runId: payload.run_id,
+    jobId: payload.job_id,
     limit: payload.limit,
     providerId: payload.provider_id,
     envValues: payload.env_values,
