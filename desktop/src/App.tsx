@@ -12,10 +12,18 @@ import type {
 } from "./types";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
+type ViewName = "home" | "projects" | "providers" | "run" | "workflow";
 
-const surfaces = ["Projects", "Workflow", "Providers", "Run"];
+const navItems: Array<{ id: ViewName; label: string; desc: string }> = [
+  { id: "home", label: "Home", desc: "Overview and next actions" },
+  { id: "projects", label: "Projects", desc: "Register and inspect workspaces" },
+  { id: "providers", label: "Providers", desc: "Setup and preferred routing" },
+  { id: "run", label: "Run", desc: "Launch a workflow from desktop" },
+  { id: "workflow", label: "Workflow", desc: "Inspect persisted run artifacts" },
+];
 
 export function App() {
+  const [activeView, setActiveView] = useState<ViewName>("home");
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const [error, setError] = useState("");
   const [health, setHealth] = useState<DesktopAppHealth | null>(null);
@@ -125,7 +133,13 @@ export function App() {
           return;
         }
         setRunDetail(detail);
-        setSelectedArtifactTitle((current) => current || detail.artifacts.find((artifact) => artifact.exists)?.title || detail.artifacts[0]?.title || "");
+        setSelectedArtifactTitle(
+          (current) =>
+            current ||
+            detail.artifacts.find((artifact) => artifact.exists)?.title ||
+            detail.artifacts[0]?.title ||
+            "",
+        );
       } catch (loadError) {
         if (!cancelled) {
           setError(loadError instanceof Error ? loadError.message : "Failed to load workflow run detail.");
@@ -151,6 +165,12 @@ export function App() {
     () => providers.find((provider) => provider.preferred) ?? null,
     [providers],
   );
+  const followUpProjects = useMemo(
+    () => projects.filter((project) => project.needs_follow_up),
+    [projects],
+  );
+  const activeNav = navItems.find((item) => item.id === activeView);
+
   const runBlockerMessage = useMemo(() => {
     if (!selectedProjectId) {
       return "Choose a project before starting a desktop run.";
@@ -225,6 +245,7 @@ export function App() {
       });
       setRunResult(result);
       setRunPrompt("");
+      setActiveView("workflow");
       await refreshProjectData(selectedProjectId);
       const runData = await invokeAppRuntime<WorkflowRunSummary[]>("runs", {
         project_id: selectedProjectId,
@@ -254,6 +275,7 @@ export function App() {
       });
       setProjectNameDraft("");
       setProjectPathDraft("");
+      setActiveView("projects");
       await refreshProjectData(project.project_id);
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "Failed to register desktop project.");
@@ -263,331 +285,414 @@ export function App() {
   }
 
   return (
-    <main className="shell">
-      <section className="hero">
-        <div className="hero-copy">
+    <div className="app-shell">
+      <aside className="app-sidebar">
+        <div className="sidebar-brand">
           <p className="eyebrow">AOP Desktop</p>
-          <h1>Workflow-first local app for idea to MVP execution.</h1>
-          <p className="lede">
-            Desktop MVP is now connected to the new Python runtime bridge. This page already reads
-            real AOP health, project, provider, and workflow run data.
-          </p>
+          <h1>Workflow-first local app</h1>
+          <p>{activeNav?.desc || "Desktop MVP shell"}</p>
         </div>
-        <div className="hero-status">
-          <div className="status-panel">
-            <span className={`pill ${loadState === "ready" ? "pill-good" : loadState === "error" ? "pill-bad" : "pill-warn"}`}>
-              {loadState}
-            </span>
-            <p className="status-label">Bridge status</p>
-            <h2>{health ? `v${health.version}` : "Waiting"}</h2>
-            <p className="status-subtle">{health ? `${health.platform} runtime detected` : "Starting local bridge..."}</p>
-          </div>
-        </div>
-      </section>
 
-      {error ? <section className="alert">{error}</section> : null}
-
-      <section className="metrics">
-        <MetricCard label="Projects" value={String(health?.workspace_count ?? projects.length)} />
-        <MetricCard label="Agents" value={String(health?.available_agents ?? 0)} />
-        <MetricCard label="Providers" value={String(health?.available_providers ?? 0)} />
-        <MetricCard label="Runs" value={String(runs.length)} />
-      </section>
-
-      <section className="grid">
-        <article className="panel panel-wide">
-          <div className="panel-head">
-            <div>
-              <p className="panel-eyebrow">Current scope</p>
-              <h2>Desktop MVP surfaces</h2>
-            </div>
-            <div className="chip-row">
-              {surfaces.map((surface) => (
-                <span key={surface} className="chip">
-                  {surface}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="project-toolbar">
-            <label htmlFor="project-select">Selected project</label>
-            <select
-              id="project-select"
-              value={selectedProjectId}
-              onChange={(event) => setSelectedProjectId(event.target.value)}
+        <nav className="sidebar-nav">
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`nav-button ${activeView === item.id ? "nav-button-active" : ""}`}
+              onClick={() => setActiveView(item.id)}
             >
-              {projects.length === 0 ? <option value="">No projects found</option> : null}
-              {projects.map((project) => (
-                <option key={project.project_id} value={project.project_id}>
-                  {project.name}
-                </option>
-              ))}
-            </select>
-          </div>
+              <strong>{item.label}</strong>
+              <span>{item.desc}</span>
+            </button>
+          ))}
+        </nav>
 
-          <div className="project-register">
+        <div className="sidebar-footer">
+          <span className={`pill ${loadState === "ready" ? "pill-good" : loadState === "error" ? "pill-bad" : "pill-warn"}`}>
+            {loadState}
+          </span>
+          <p>{health ? `v${health.version} on ${health.platform}` : "Waiting for runtime bridge"}</p>
+        </div>
+      </aside>
+
+      <main className="shell shell-main">
+        {activeView === "home" ? (
+          <>
+            <section className="hero">
+              <div className="hero-copy">
+                <p className="eyebrow">AOP Desktop</p>
+                <h1>Idea to MVP workflows, now shaped like a real local app.</h1>
+                <p className="lede">
+                  The desktop MVP already reads live project, provider, and workflow artifact data
+                  from the Python runtime bridge.
+                </p>
+              </div>
+              <div className="hero-status">
+                <div className="status-panel">
+                  <span className={`pill ${loadState === "ready" ? "pill-good" : loadState === "error" ? "pill-bad" : "pill-warn"}`}>
+                    {loadState}
+                  </span>
+                  <p className="status-label">Runtime bridge</p>
+                  <h2>{health ? `v${health.version}` : "Waiting"}</h2>
+                  <p className="status-subtle">{health ? `${health.platform} runtime detected` : "Starting local bridge..."}</p>
+                </div>
+              </div>
+            </section>
+
+            {error ? <section className="alert">{error}</section> : null}
+
+            <section className="metrics">
+              <MetricCard label="Projects" value={String(health?.workspace_count ?? projects.length)} />
+              <MetricCard label="Agents" value={String(health?.available_agents ?? 0)} />
+              <MetricCard label="Providers" value={String(health?.available_providers ?? 0)} />
+              <MetricCard label="Runs" value={String(runs.length)} />
+            </section>
+
+            <section className="grid">
+              <article className="panel panel-wide">
+                <div className="panel-head">
+                  <div>
+                    <p className="panel-eyebrow">Focus</p>
+                    <h2>What to do next</h2>
+                  </div>
+                </div>
+                <div className="summary-row">
+                  <SummaryItem label="Selected project" value={selectedProject?.name || "None"} />
+                  <SummaryItem label="Preferred provider" value={preferredProvider?.label || "Unset"} />
+                  <SummaryItem label="Follow-up projects" value={String(followUpProjects.length)} />
+                  <SummaryItem label="Latest run" value={selectedProject?.latest_run_id || "-"} />
+                </div>
+                <div className="provider-actions">
+                  <button type="button" className="action-button" onClick={() => setActiveView("projects")}>
+                    Open projects
+                  </button>
+                  <button type="button" className="action-button" onClick={() => setActiveView("providers")}>
+                    Configure providers
+                  </button>
+                  <button type="button" className="action-button action-button-accent" onClick={() => setActiveView("run")}>
+                    Start a run
+                  </button>
+                </div>
+              </article>
+
+              <article className="panel">
+                <div className="panel-head">
+                  <div>
+                    <p className="panel-eyebrow">Follow-up</p>
+                    <h2>Project queue</h2>
+                  </div>
+                </div>
+                {followUpProjects.length > 0 ? (
+                  <div className="provider-command-list">
+                    {followUpProjects.slice(0, 4).map((project) => (
+                      <code key={project.project_id}>{project.name} — {project.latest_run_phase || "no phase"}</code>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState title="Queue is clear" body="No projects currently need follow-up from the latest workflow run." />
+                )}
+              </article>
+            </section>
+          </>
+        ) : null}
+
+        {activeView === "projects" ? (
+          <section className="panel">
             <div className="panel-head">
               <div>
-                <p className="panel-eyebrow">Register project</p>
-                <h2>Add an existing folder</h2>
+                <p className="panel-eyebrow">Projects</p>
+                <h2>Register and inspect workspaces</h2>
               </div>
             </div>
-            <div className="project-register-grid">
-              <label className="provider-field">
-                <span>Name</span>
-                <input
-                  type="text"
-                  value={projectNameDraft}
-                  placeholder="Optional project label"
-                  onChange={(event) => setProjectNameDraft(event.target.value)}
-                />
-              </label>
-              <label className="provider-field provider-field-wide">
-                <span>Path</span>
-                <input
-                  type="text"
-                  value={projectPathDraft}
-                  placeholder="G:\\path\\to\\project"
-                  onChange={(event) => setProjectPathDraft(event.target.value)}
-                />
-              </label>
-              <label className="provider-field">
-                <span>Primary agent</span>
-                <select value={projectAgentDraft} onChange={(event) => setProjectAgentDraft(event.target.value)}>
-                  <option value="codex">Codex</option>
-                  <option value="claude_code">Claude Code</option>
-                  <option value="opencode">OpenCode</option>
-                </select>
-              </label>
-            </div>
-            <div className="provider-actions">
-              <button
-                type="button"
-                className="action-button action-button-accent"
-                onClick={() => void createProject()}
-                disabled={projectSubmitting}
+
+            <div className="project-toolbar">
+              <label htmlFor="project-select">Selected project</label>
+              <select
+                id="project-select"
+                value={selectedProjectId}
+                onChange={(event) => setSelectedProjectId(event.target.value)}
               >
-                {projectSubmitting ? "Registering..." : "Register project"}
-              </button>
+                {projects.length === 0 ? <option value="">No projects found</option> : null}
+                {projects.map((project) => (
+                  <option key={project.project_id} value={project.project_id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
             </div>
-          </div>
 
-          {selectedProject ? (
-            <div className="project-summary">
-              <div>
-                <p className="panel-eyebrow">Path</p>
-                <h3>{selectedProject.project_path}</h3>
-              </div>
-              <div className="summary-row">
-                <SummaryItem label="Primary agent" value={selectedProject.primary_agent} />
-                <SummaryItem label="Latest run" value={selectedProject.latest_run_id || "-"} />
-                <SummaryItem label="Phase" value={selectedProject.latest_run_phase || "-"} />
-                <SummaryItem label="Completion" value={selectedProject.latest_run_completion || "-"} />
-              </div>
-            </div>
-          ) : (
-            <EmptyState title="No project selected" body="Create or register a workspace to see desktop project summaries here." />
-          )}
-        </article>
-
-        <article className="panel">
-          <div className="panel-head">
-            <div>
-              <p className="panel-eyebrow">Providers</p>
-              <h2>Setup readiness</h2>
-            </div>
-          </div>
-          <div className="provider-list">
-            {providers.map((provider) => (
-              <div key={provider.provider_id} className="provider-card">
-                <div className="provider-title-row">
-                  <div>
-                    <h3>{provider.label}</h3>
-                    {provider.preferred ? <p className="provider-preferred">Preferred desktop provider</p> : null}
-                  </div>
-                  <span className={`pill ${provider.detected ? "pill-good" : "pill-bad"}`}>{provider.detected ? "Detected" : "Missing"}</span>
-                </div>
-                <p>{provider.auth_ok ? "Authentication ready" : provider.reason || "Needs setup"}</p>
-                {provider.missing_env_vars.length > 0 ? (
-                  <p className="provider-meta">Missing env: {provider.missing_env_vars.join(", ")}</p>
-                ) : null}
-                {provider.required_env_vars.length > 0 ? (
-                  <div className="provider-config-list">
-                    {provider.required_env_vars.map((envName) => (
-                      <label key={envName} className="provider-field">
-                        <span>{envName}</span>
-                        <input
-                          type="password"
-                          value={providerDrafts[provider.provider_id]?.[envName] ?? ""}
-                          placeholder={`Enter ${envName}`}
-                          onChange={(event) =>
-                            setProviderDrafts((current) => ({
-                              ...current,
-                              [provider.provider_id]: {
-                                ...(current[provider.provider_id] || {}),
-                                [envName]: event.target.value,
-                              },
-                            }))
-                          }
-                        />
-                      </label>
-                    ))}
-                  </div>
-                ) : null}
-                {provider.install_commands.length > 0 ? (
-                  <div className="provider-command-list">
-                    {provider.install_commands.slice(0, 2).map((command) => (
-                      <code key={command}>{command}</code>
-                    ))}
-                  </div>
-                ) : null}
-                <div className="provider-actions">
-                  <button type="button" className="action-button" onClick={() => void saveProviderConfig(provider.provider_id, false)}>
-                    Save values
-                  </button>
-                  <button type="button" className="action-button action-button-accent" onClick={() => void saveProviderConfig(provider.provider_id, true)}>
-                    Make preferred
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </article>
-      </section>
-
-      <section className="panel">
-        <div className="panel-head">
-          <div>
-            <p className="panel-eyebrow">Run</p>
-            <h2>Start a workflow from desktop</h2>
-          </div>
-        </div>
-        <div className="run-composer">
-          <label htmlFor="run-prompt">What should AOP build or validate?</label>
-          <textarea
-            id="run-prompt"
-            value={runPrompt}
-            onChange={(event) => setRunPrompt(event.target.value)}
-            placeholder="Describe the idea, feature, or prototype you want AOP to work on."
-          />
-          {runBlockerMessage ? <div className="inline-note">{runBlockerMessage}</div> : null}
-          <div className="provider-actions">
-            <button
-              type="button"
-              className="action-button action-button-accent"
-              onClick={() => void submitRun()}
-              disabled={runSubmitting || Boolean(runBlockerMessage)}
-            >
-              {runSubmitting ? "Running..." : "Start run"}
-            </button>
-          </div>
-          {runResult ? (
-            <div className="run-result-card">
-              <div className="run-top">
+            <div className="project-register">
+              <div className="panel-head">
                 <div>
-                  <h3>{runResult.sprint_id}</h3>
-                  <p>{runResult.summary}</p>
+                  <p className="panel-eyebrow">Register project</p>
+                  <h2>Add an existing folder</h2>
                 </div>
-                <span className={`pill ${runResult.success ? "pill-good" : "pill-warn"}`}>{runResult.state}</span>
               </div>
-              {runResult.next_steps.length > 0 ? (
-                <div className="provider-command-list">
-                  {runResult.next_steps.map((step) => (
-                    <code key={step}>{step}</code>
-                  ))}
+              <div className="project-register-grid">
+                <label className="provider-field">
+                  <span>Name</span>
+                  <input
+                    type="text"
+                    value={projectNameDraft}
+                    placeholder="Optional project label"
+                    onChange={(event) => setProjectNameDraft(event.target.value)}
+                  />
+                </label>
+                <label className="provider-field provider-field-wide">
+                  <span>Path</span>
+                  <input
+                    type="text"
+                    value={projectPathDraft}
+                    placeholder="G:\\path\\to\\project"
+                    onChange={(event) => setProjectPathDraft(event.target.value)}
+                  />
+                </label>
+                <label className="provider-field">
+                  <span>Primary agent</span>
+                  <select value={projectAgentDraft} onChange={(event) => setProjectAgentDraft(event.target.value)}>
+                    <option value="codex">Codex</option>
+                    <option value="claude_code">Claude Code</option>
+                    <option value="opencode">OpenCode</option>
+                  </select>
+                </label>
+              </div>
+              <div className="provider-actions">
+                <button
+                  type="button"
+                  className="action-button action-button-accent"
+                  onClick={() => void createProject()}
+                  disabled={projectSubmitting}
+                >
+                  {projectSubmitting ? "Registering..." : "Register project"}
+                </button>
+              </div>
+            </div>
+
+            {selectedProject ? (
+              <div className="project-summary">
+                <div>
+                  <p className="panel-eyebrow">Path</p>
+                  <h3>{selectedProject.project_path}</h3>
+                </div>
+                <div className="summary-row">
+                  <SummaryItem label="Primary agent" value={selectedProject.primary_agent} />
+                  <SummaryItem label="Latest run" value={selectedProject.latest_run_id || "-"} />
+                  <SummaryItem label="Phase" value={selectedProject.latest_run_phase || "-"} />
+                  <SummaryItem label="Completion" value={selectedProject.latest_run_completion || "-"} />
+                </div>
+              </div>
+            ) : (
+              <EmptyState title="No project selected" body="Create or register a workspace to see desktop project summaries here." />
+            )}
+          </section>
+        ) : null}
+
+        {activeView === "providers" ? (
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <p className="panel-eyebrow">Providers</p>
+                <h2>Setup readiness and desktop preferences</h2>
+              </div>
+            </div>
+
+            <div className="provider-list">
+              {providers.map((provider) => (
+                <div key={provider.provider_id} className="provider-card">
+                  <div className="provider-title-row">
+                    <div>
+                      <h3>{provider.label}</h3>
+                      {provider.preferred ? <p className="provider-preferred">Preferred desktop provider</p> : null}
+                    </div>
+                    <span className={`pill ${provider.detected ? "pill-good" : "pill-bad"}`}>
+                      {provider.detected ? "Detected" : "Missing"}
+                    </span>
+                  </div>
+                  <p>{provider.auth_ok ? "Authentication ready" : provider.reason || "Needs setup"}</p>
+                  {provider.missing_env_vars.length > 0 ? (
+                    <p className="provider-meta">Missing env: {provider.missing_env_vars.join(", ")}</p>
+                  ) : null}
+                  {provider.required_env_vars.length > 0 ? (
+                    <div className="provider-config-list">
+                      {provider.required_env_vars.map((envName) => (
+                        <label key={envName} className="provider-field">
+                          <span>{envName}</span>
+                          <input
+                            type="password"
+                            value={providerDrafts[provider.provider_id]?.[envName] ?? ""}
+                            placeholder={`Enter ${envName}`}
+                            onChange={(event) =>
+                              setProviderDrafts((current) => ({
+                                ...current,
+                                [provider.provider_id]: {
+                                  ...(current[provider.provider_id] || {}),
+                                  [envName]: event.target.value,
+                                },
+                              }))
+                            }
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  ) : null}
+                  {provider.install_commands.length > 0 ? (
+                    <div className="provider-command-list">
+                      {provider.install_commands.slice(0, 2).map((command) => (
+                        <code key={command}>{command}</code>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="provider-actions">
+                    <button type="button" className="action-button" onClick={() => void saveProviderConfig(provider.provider_id, false)}>
+                      Save values
+                    </button>
+                    <button type="button" className="action-button action-button-accent" onClick={() => void saveProviderConfig(provider.provider_id, true)}>
+                      Make preferred
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {activeView === "run" ? (
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <p className="panel-eyebrow">Run</p>
+                <h2>Start a workflow from desktop</h2>
+              </div>
+            </div>
+            <div className="run-composer">
+              <label htmlFor="run-prompt">What should AOP build or validate?</label>
+              <textarea
+                id="run-prompt"
+                value={runPrompt}
+                onChange={(event) => setRunPrompt(event.target.value)}
+                placeholder="Describe the idea, feature, or prototype you want AOP to work on."
+              />
+              {runBlockerMessage ? <div className="inline-note">{runBlockerMessage}</div> : null}
+              <div className="provider-actions">
+                <button
+                  type="button"
+                  className="action-button action-button-accent"
+                  onClick={() => void submitRun()}
+                  disabled={runSubmitting || Boolean(runBlockerMessage)}
+                >
+                  {runSubmitting ? "Running..." : "Start run"}
+                </button>
+              </div>
+              {runResult ? (
+                <div className="run-result-card">
+                  <div className="run-top">
+                    <div>
+                      <h3>{runResult.sprint_id}</h3>
+                      <p>{runResult.summary}</p>
+                    </div>
+                    <span className={`pill ${runResult.success ? "pill-good" : "pill-warn"}`}>{runResult.state}</span>
+                  </div>
+                  {runResult.next_steps.length > 0 ? (
+                    <div className="provider-command-list">
+                      {runResult.next_steps.map((step) => (
+                        <code key={step}>{step}</code>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>
-          ) : null}
-        </div>
-      </section>
+          </section>
+        ) : null}
 
-      <section className="panel">
-        <div className="panel-head">
-          <div>
-            <p className="panel-eyebrow">Workflow</p>
-            <h2>Recent runs</h2>
-          </div>
-        </div>
-        {runs.length === 0 ? (
-          <EmptyState title="No workflow runs yet" body="Once a project starts producing workflow artifacts, runs will show up here." />
-        ) : (
-          <div className="workflow-layout">
-            <div className="run-list">
-              {runs.map((run) => (
-                <button
-                  key={run.run_id}
-                  type="button"
-                  className={`run-card run-button ${selectedRunId === run.run_id ? "run-card-active" : ""}`}
-                  onClick={() => setSelectedRunId(run.run_id)}
-                >
-                  <div className="run-top">
-                    <div>
-                      <h3>{run.run_id}</h3>
-                      <p>{run.clarified_summary || run.original_input || "No summary available."}</p>
-                    </div>
-                    <span className={`pill ${run.status === "completed" ? "pill-good" : "pill-warn"}`}>{run.status}</span>
-                  </div>
-                  <div className="summary-row">
-                    <SummaryItem label="Phase" value={run.current_phase || "-"} />
-                    <SummaryItem label="Verify" value={run.verification_verdict || "-"} />
-                    <SummaryItem label="Completion" value={run.completion_status || "-"} />
-                    <SummaryItem label="Flags" value={run.has_gaps || run.has_guardrails ? "attention" : "stable"} />
-                  </div>
-                </button>
-              ))}
+        {activeView === "workflow" ? (
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <p className="panel-eyebrow">Workflow</p>
+                <h2>Recent runs and artifact details</h2>
+              </div>
             </div>
-
-            <div className="artifact-panel">
-              {runDetail ? (
-                <>
-                  <div className="panel-head">
-                    <div>
-                      <p className="panel-eyebrow">Artifact detail</p>
-                      <h2>{runDetail.summary.run_id}</h2>
-                    </div>
-                    <span className={`pill ${runDetail.summary.status === "completed" ? "pill-good" : "pill-warn"}`}>
-                      {runDetail.summary.status}
-                    </span>
-                  </div>
-
-                  <div className="summary-row">
-                    <SummaryItem label="Phase" value={runDetail.summary.current_phase || "-"} />
-                    <SummaryItem label="Verify" value={runDetail.summary.verification_verdict || "-"} />
-                    <SummaryItem label="Completion" value={runDetail.summary.completion_status || "-"} />
-                    <SummaryItem label="Artifacts" value={String(runDetail.artifacts.filter((artifact) => artifact.exists).length)} />
-                  </div>
-
-                  <div className="artifact-toolbar">
-                    <label htmlFor="artifact-select">Focused artifact</label>
-                    <select
-                      id="artifact-select"
-                      value={selectedArtifactTitle}
-                      onChange={(event) => setSelectedArtifactTitle(event.target.value)}
+            {runs.length === 0 ? (
+              <EmptyState title="No workflow runs yet" body="Once a project starts producing workflow artifacts, runs will show up here." />
+            ) : (
+              <div className="workflow-layout">
+                <div className="run-list">
+                  {runs.map((run) => (
+                    <button
+                      key={run.run_id}
+                      type="button"
+                      className={`run-card run-button ${selectedRunId === run.run_id ? "run-card-active" : ""}`}
+                      onClick={() => setSelectedRunId(run.run_id)}
                     >
-                      {runDetail.artifacts.map((artifact) => (
-                        <option key={artifact.title} value={artifact.title}>
-                          {artifact.title}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                      <div className="run-top">
+                        <div>
+                          <h3>{run.run_id}</h3>
+                          <p>{run.clarified_summary || run.original_input || "No summary available."}</p>
+                        </div>
+                        <span className={`pill ${run.status === "completed" ? "pill-good" : "pill-warn"}`}>{run.status}</span>
+                      </div>
+                      <div className="summary-row">
+                        <SummaryItem label="Phase" value={run.current_phase || "-"} />
+                        <SummaryItem label="Verify" value={run.verification_verdict || "-"} />
+                        <SummaryItem label="Completion" value={run.completion_status || "-"} />
+                        <SummaryItem label="Flags" value={run.has_gaps || run.has_guardrails ? "attention" : "stable"} />
+                      </div>
+                    </button>
+                  ))}
+                </div>
 
-                  {selectedArtifact ? (
-                    <ArtifactViewer artifact={selectedArtifact} />
+                <div className="artifact-panel">
+                  {runDetail ? (
+                    <>
+                      <div className="panel-head">
+                        <div>
+                          <p className="panel-eyebrow">Artifact detail</p>
+                          <h2>{runDetail.summary.run_id}</h2>
+                        </div>
+                        <span className={`pill ${runDetail.summary.status === "completed" ? "pill-good" : "pill-warn"}`}>
+                          {runDetail.summary.status}
+                        </span>
+                      </div>
+
+                      <div className="summary-row">
+                        <SummaryItem label="Phase" value={runDetail.summary.current_phase || "-"} />
+                        <SummaryItem label="Verify" value={runDetail.summary.verification_verdict || "-"} />
+                        <SummaryItem label="Completion" value={runDetail.summary.completion_status || "-"} />
+                        <SummaryItem label="Artifacts" value={String(runDetail.artifacts.filter((artifact) => artifact.exists).length)} />
+                      </div>
+
+                      <div className="artifact-toolbar">
+                        <label htmlFor="artifact-select">Focused artifact</label>
+                        <select
+                          id="artifact-select"
+                          value={selectedArtifactTitle}
+                          onChange={(event) => setSelectedArtifactTitle(event.target.value)}
+                        >
+                          {runDetail.artifacts.map((artifact) => (
+                            <option key={artifact.title} value={artifact.title}>
+                              {artifact.title}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {selectedArtifact ? (
+                        <ArtifactViewer artifact={selectedArtifact} />
+                      ) : (
+                        <EmptyState title="No artifact selected" body="Choose an artifact to inspect its contents." />
+                      )}
+                    </>
                   ) : (
-                    <EmptyState title="No artifact selected" body="Choose an artifact to inspect its contents." />
+                    <EmptyState title="No run detail loaded" body="Choose a workflow run to inspect persisted artifacts." />
                   )}
-                </>
-              ) : (
-                <EmptyState title="No run detail loaded" body="Choose a workflow run to inspect persisted artifacts." />
-              )}
-            </div>
-          </div>
-        )}
-      </section>
-    </main>
+                </div>
+              </div>
+            )}
+          </section>
+        ) : null}
+      </main>
+    </div>
   );
 }
 
