@@ -5,6 +5,7 @@ import type {
   DesktopAppHealth,
   DesktopProjectSummary,
   DesktopProviderStatus,
+  DesktopRunLaunchResult,
   WorkflowArtifactDocument,
   WorkflowRunDetail,
   WorkflowRunSummary,
@@ -26,6 +27,9 @@ export function App() {
   const [runDetail, setRunDetail] = useState<WorkflowRunDetail | null>(null);
   const [selectedArtifactTitle, setSelectedArtifactTitle] = useState("");
   const [providerDrafts, setProviderDrafts] = useState<Record<string, Record<string, string>>>({});
+  const [runPrompt, setRunPrompt] = useState("");
+  const [runSubmitting, setRunSubmitting] = useState(false);
+  const [runResult, setRunResult] = useState<DesktopRunLaunchResult | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -140,6 +144,23 @@ export function App() {
     [runDetail, selectedArtifactTitle],
   );
 
+  async function refreshProjectData(nextProjectId?: string) {
+    const [projectData, providerData] = await Promise.all([
+      invokeAppRuntime<DesktopProjectSummary[]>("projects"),
+      invokeAppRuntime<DesktopProviderStatus[]>("providers"),
+    ]);
+    setProjects(projectData);
+    setProviders(providerData);
+    setProviderDrafts(
+      Object.fromEntries(
+        providerData.map((provider) => [provider.provider_id, provider.stored_env_vars || {}]),
+      ),
+    );
+    if (nextProjectId) {
+      setSelectedProjectId(nextProjectId);
+    }
+  }
+
   async function saveProviderConfig(providerId: string, preferred: boolean) {
     try {
       const updated = await invokeAppRuntime<DesktopProviderStatus>("update_provider", {
@@ -164,6 +185,34 @@ export function App() {
       }));
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Failed to save provider config.");
+    }
+  }
+
+  async function submitRun() {
+    if (!selectedProjectId || !runPrompt.trim()) {
+      setError("Please choose a project and enter a run prompt.");
+      return;
+    }
+    setRunSubmitting(true);
+    setError("");
+    try {
+      const result = await invokeAppRuntime<DesktopRunLaunchResult>("start_run", {
+        project_id: selectedProjectId,
+        prompt: runPrompt,
+      });
+      setRunResult(result);
+      setRunPrompt("");
+      await refreshProjectData(selectedProjectId);
+      const runData = await invokeAppRuntime<WorkflowRunSummary[]>("runs", {
+        project_id: selectedProjectId,
+        limit: 6,
+      });
+      setRuns(runData);
+      setSelectedRunId(result.sprint_id);
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Failed to start desktop run.");
+    } finally {
+      setRunSubmitting(false);
     }
   }
 
@@ -312,6 +361,47 @@ export function App() {
             ))}
           </div>
         </article>
+      </section>
+
+      <section className="panel">
+        <div className="panel-head">
+          <div>
+            <p className="panel-eyebrow">Run</p>
+            <h2>Start a workflow from desktop</h2>
+          </div>
+        </div>
+        <div className="run-composer">
+          <label htmlFor="run-prompt">What should AOP build or validate?</label>
+          <textarea
+            id="run-prompt"
+            value={runPrompt}
+            onChange={(event) => setRunPrompt(event.target.value)}
+            placeholder="Describe the idea, feature, or prototype you want AOP to work on."
+          />
+          <div className="provider-actions">
+            <button type="button" className="action-button action-button-accent" onClick={() => void submitRun()} disabled={runSubmitting}>
+              {runSubmitting ? "Running..." : "Start run"}
+            </button>
+          </div>
+          {runResult ? (
+            <div className="run-result-card">
+              <div className="run-top">
+                <div>
+                  <h3>{runResult.sprint_id}</h3>
+                  <p>{runResult.summary}</p>
+                </div>
+                <span className={`pill ${runResult.success ? "pill-good" : "pill-warn"}`}>{runResult.state}</span>
+              </div>
+              {runResult.next_steps.length > 0 ? (
+                <div className="provider-command-list">
+                  {runResult.next_steps.map((step) => (
+                    <code key={step}>{step}</code>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </section>
 
       <section className="panel">

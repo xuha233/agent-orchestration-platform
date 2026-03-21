@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from aop import __version__
+from aop.agent.driver import AgentDriver
+from aop.agent.types import AgentDriverConfig
 from aop.core.adapter import get_adapter_registry
 from aop.core.compat import get_platform_detector
 from aop.primary import get_registry
@@ -14,7 +16,12 @@ from aop.primary.workspace import SettingsManager, WorkspaceManager
 from aop.workflow import WorkflowRunDetail, WorkflowRunReader, WorkflowRunSummary
 
 from .config_store import DesktopConfigStore
-from .models import DesktopAppHealth, DesktopProjectSummary, DesktopProviderStatus
+from .models import (
+    DesktopAppHealth,
+    DesktopProjectSummary,
+    DesktopProviderStatus,
+    DesktopRunLaunchResult,
+)
 
 
 PROVIDER_ENV_VARS: Dict[str, List[str]] = {
@@ -180,8 +187,61 @@ class DesktopAppService:
             None,
         )
 
+    def start_run(self, project_id: str, prompt: str) -> DesktopRunLaunchResult:
+        """Run one AOP workflow from the desktop shell."""
+        workspace = self.workspace_manager.get_workspace(project_id)
+        if workspace is None:
+            raise ValueError(f"workspace_not_found:{project_id}")
+
+        clean_prompt = prompt.strip()
+        if not clean_prompt:
+            raise ValueError("prompt_required")
+
+        project_path = Path(workspace.project_path)
+        if not project_path.exists():
+            raise ValueError(f"project_path_missing:{project_path}")
+
+        runtime_config = self.config_store.load()
+        preferred_provider = str(runtime_config.get("preferred_provider", "") or "").strip()
+        providers = self._build_provider_priority(preferred_provider)
+        orchestrator_type = self._resolve_orchestrator_type(preferred_provider)
+
+        driver = AgentDriver(
+            config=AgentDriverConfig(
+                orchestrator_type=orchestrator_type,
+                providers=providers,
+                storage_path=project_path / ".aop",
+            )
+        )
+        result = driver.run_from_vague_description(clean_prompt)
+        return DesktopRunLaunchResult(
+            project_id=project_id,
+            sprint_id=result.sprint_id,
+            success=result.success,
+            state=result.state.value if hasattr(result.state, "value") else str(result.state),
+            summary=result.summary,
+            next_steps=list(result.next_steps),
+        )
+
     def _load_latest_run(self, project_path: str) -> WorkflowRunSummary | None:
         path = Path(project_path)
         if not path.exists():
             return None
         return WorkflowRunReader(path).get_latest_run()
+
+    def _build_provider_priority(self, preferred_provider: str) -> List[str]:
+        ordered: List[str] = []
+        for provider_id in [preferred_provider, "claude", "codex", "opencode", "gemini", "qwen"]:
+            if provider_id and provider_id not in ordered:
+                ordered.append(provider_id)
+        return ordered or ["claude", "codex"]
+
+    def _resolve_orchestrator_type(self, preferred_provider: str) -> str:
+        mapping = {
+            "claude": "claude-code",
+            "opencode": "opencode",
+            "codex": "auto",
+            "gemini": "api",
+            "qwen": "api",
+        }
+        return mapping.get(preferred_provider, "auto")

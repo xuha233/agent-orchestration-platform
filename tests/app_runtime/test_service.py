@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from aop.app_runtime import DesktopAppBridge, DesktopAppService
+from aop.agent.types import SprintState
 from aop.workflow import CompletionDecision, VerificationReport, WorkflowArtifactManager, WorkflowPhase, WorkflowRun
 from aop.primary.workspace import SettingsManager, WorkspaceManager
 
@@ -144,3 +145,82 @@ def test_desktop_app_bridge_updates_provider_payload(tmp_path):
     assert response["data"]["provider_id"] == "codex"
     assert response["data"]["preferred"] is True
     assert response["data"]["stored_env_vars"]["OPENAI_API_KEY"] == "bridge-token"
+
+
+def test_desktop_app_service_starts_run_with_driver(tmp_path, monkeypatch):
+    workspace_home = tmp_path / "aop-home"
+    project_path = tmp_path / "project-run"
+    project_path.mkdir()
+    workspace_id = _create_workspace(workspace_home, "Run Pilot", project_path)
+
+    captured: dict[str, object] = {}
+
+    class FakeDriver:
+        def __init__(self, config):
+            captured["config"] = config
+
+        def run_from_vague_description(self, prompt):
+            captured["prompt"] = prompt
+            class Result:
+                sprint_id = "sprint-desktop-001"
+                success = True
+                state = SprintState.COMPLETED
+                summary = "Run completed from desktop."
+                next_steps = ["Inspect artifacts"]
+
+            return Result()
+
+    monkeypatch.setattr("aop.app_runtime.service.AgentDriver", FakeDriver)
+
+    service = DesktopAppService(
+        workspace_manager=WorkspaceManager(workspace_home),
+        settings_manager=SettingsManager(workspace_home),
+    )
+    service.update_provider_config("codex", {"OPENAI_API_KEY": "desktop-token"}, preferred=True)
+
+    result = service.start_run(workspace_id, "Build a desktop launch flow")
+
+    assert result.project_id == workspace_id
+    assert result.sprint_id == "sprint-desktop-001"
+    assert result.success is True
+    assert result.state == "completed"
+    assert captured["prompt"] == "Build a desktop launch flow"
+    assert captured["config"].storage_path == project_path / ".aop"
+
+
+def test_desktop_app_bridge_start_run_returns_payload(tmp_path, monkeypatch):
+    workspace_home = tmp_path / "aop-home"
+    project_path = tmp_path / "project-run-bridge"
+    project_path.mkdir()
+    workspace_id = _create_workspace(workspace_home, "Run Bridge Pilot", project_path)
+
+    class FakeDriver:
+        def __init__(self, config):
+            pass
+
+        def run_from_vague_description(self, prompt):
+            class Result:
+                sprint_id = "sprint-desktop-bridge"
+                success = False
+                state = SprintState.FAILED
+                summary = "Run failed from desktop."
+                next_steps = ["Check provider config"]
+
+            return Result()
+
+    monkeypatch.setattr("aop.app_runtime.service.AgentDriver", FakeDriver)
+
+    service = DesktopAppService(
+        workspace_manager=WorkspaceManager(workspace_home),
+        settings_manager=SettingsManager(workspace_home),
+    )
+    bridge = DesktopAppBridge(service)
+
+    response = bridge.dispatch(
+        "start_run",
+        {"project_id": workspace_id, "prompt": "Launch test flow"},
+    )
+
+    assert response["ok"] is True
+    assert response["data"]["sprint_id"] == "sprint-desktop-bridge"
+    assert response["data"]["state"] == "failed"

@@ -66,4 +66,12 @@ class DesktopAppBridge:
             if status is None:
                 return {"ok": False, "error": "provider_not_found"}
             return {"ok": True, "data": status.to_dict()}
+        if action == "start_run":
+            project_id = str(data.get("project_id", "")).strip()
+            prompt = str(data.get("prompt", ""))
+            try:
+                result = self.service.start_run(project_id=project_id, prompt=prompt)
+            except ValueError as error:
+                return {"ok": False, "error": str(error)}
+            return {"ok": True, "data": result.to_dict()}
         return {"ok": False, "error": f"unknown_action:{action}"}

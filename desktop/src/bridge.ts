@@ -13,6 +13,7 @@ type BridgePayload = {
   provider_id?: string;
   env_values?: Record<string, string>;
   preferred?: boolean;
+  prompt?: string;
 };
 
 const mockBridgeData = {
@@ -41,6 +42,14 @@ const mockBridgeData = {
     stored_env_vars: {},
     preferred: false,
   },
+  start_run: {
+    project_id: "mock-project",
+    sprint_id: "mock-sprint",
+    success: true,
+    state: "completed",
+    summary: "Mock desktop run completed.",
+    next_steps: ["Inspect workflow artifacts"],
+  },
 };
 
 export async function invokeAppRuntime<T>(action: string, payload: BridgePayload = {}): Promise<T> {
@@ -58,6 +67,7 @@ export async function invokeAppRuntime<T>(action: string, payload: BridgePayload
     providerId: payload.provider_id,
     envValues: payload.env_values,
     preferred: payload.preferred,
+    prompt: payload.prompt,
   });
   const envelope = JSON.parse(raw) as BridgeEnvelope<T>;
   if (!envelope.ok || envelope.data === undefined) {

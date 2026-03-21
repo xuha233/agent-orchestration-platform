@@ -2,7 +2,12 @@
 
 from .bridge import DesktopAppBridge
 from .config_store import DesktopConfigStore
-from .models import DesktopAppHealth, DesktopProjectSummary, DesktopProviderStatus
+from .models import (
+    DesktopAppHealth,
+    DesktopProjectSummary,
+    DesktopProviderStatus,
+    DesktopRunLaunchResult,
+)
 from .service import DesktopAppService
 
 __all__ = [
@@ -11,5 +16,6 @@ __all__ = [
     "DesktopAppHealth",
     "DesktopProjectSummary",
     "DesktopProviderStatus",
+    "DesktopRunLaunchResult",
     "DesktopAppService",
 ]

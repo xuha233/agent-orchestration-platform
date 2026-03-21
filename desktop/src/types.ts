@@ -64,3 +64,12 @@ export type WorkflowRunDetail = {
   summary: WorkflowRunSummary;
   artifacts: WorkflowArtifactDocument[];
 };
+
+export type DesktopRunLaunchResult = {
+  project_id: string;
+  sprint_id: string;
+  success: boolean;
+  state: string;
+  summary: string;
+  next_steps: string[];
+};
