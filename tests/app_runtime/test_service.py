@@ -224,3 +224,24 @@ def test_desktop_app_bridge_start_run_returns_payload(tmp_path, monkeypatch):
     assert response["ok"] is True
     assert response["data"]["sprint_id"] == "sprint-desktop-bridge"
     assert response["data"]["state"] == "failed"
+
+
+def test_desktop_app_service_rejects_run_when_preferred_provider_missing_env(tmp_path, monkeypatch):
+    workspace_home = tmp_path / "aop-home"
+    project_path = tmp_path / "project-run-env"
+    project_path.mkdir()
+    workspace_id = _create_workspace(workspace_home, "Run Env Pilot", project_path)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    service = DesktopAppService(
+        workspace_manager=WorkspaceManager(workspace_home),
+        settings_manager=SettingsManager(workspace_home),
+    )
+    service.update_provider_config("codex", {}, preferred=True)
+
+    try:
+        service.start_run(workspace_id, "Build desktop validation flow")
+    except ValueError as error:
+        assert str(error).startswith("preferred_provider_missing_env:codex")
+    else:
+        raise AssertionError("Expected start_run to reject missing preferred provider env values")

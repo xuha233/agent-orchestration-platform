@@ -143,6 +143,25 @@ export function App() {
     () => runDetail?.artifacts.find((artifact) => artifact.title === selectedArtifactTitle) ?? null,
     [runDetail, selectedArtifactTitle],
   );
+  const preferredProvider = useMemo(
+    () => providers.find((provider) => provider.preferred) ?? null,
+    [providers],
+  );
+  const runBlockerMessage = useMemo(() => {
+    if (!selectedProjectId) {
+      return "Choose a project before starting a desktop run.";
+    }
+    if (!preferredProvider) {
+      return "Pick a preferred provider first so the desktop runtime knows what to use.";
+    }
+    if (preferredProvider.missing_env_vars.length > 0) {
+      return `Preferred provider ${preferredProvider.label} is still missing ${preferredProvider.missing_env_vars.join(", ")}.`;
+    }
+    if (!preferredProvider.detected) {
+      return `Preferred provider ${preferredProvider.label} is not detected on this machine yet.`;
+    }
+    return "";
+  }, [preferredProvider, selectedProjectId]);
 
   async function refreshProjectData(nextProjectId?: string) {
     const [projectData, providerData] = await Promise.all([
@@ -378,8 +397,14 @@ export function App() {
             onChange={(event) => setRunPrompt(event.target.value)}
             placeholder="Describe the idea, feature, or prototype you want AOP to work on."
           />
+          {runBlockerMessage ? <div className="inline-note">{runBlockerMessage}</div> : null}
           <div className="provider-actions">
-            <button type="button" className="action-button action-button-accent" onClick={() => void submitRun()} disabled={runSubmitting}>
+            <button
+              type="button"
+              className="action-button action-button-accent"
+              onClick={() => void submitRun()}
+              disabled={runSubmitting || Boolean(runBlockerMessage)}
+            >
               {runSubmitting ? "Running..." : "Start run"}
             </button>
           </div>

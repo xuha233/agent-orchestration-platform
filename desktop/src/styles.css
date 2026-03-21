@@ -413,6 +413,16 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+.inline-note {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.24);
+  color: #fcd34d;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .alert {
   margin-top: 20px;
   color: #fecaca;

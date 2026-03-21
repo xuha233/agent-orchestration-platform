@@ -52,7 +52,7 @@ class DesktopAppService:
     ) -> None:
         self.workspace_manager = workspace_manager or WorkspaceManager()
         self.settings_manager = settings_manager or SettingsManager()
-        self.config_store = config_store or DesktopConfigStore()
+        self.config_store = config_store or DesktopConfigStore(self.workspace_manager.base_dir)
 
     def get_app_health(self) -> DesktopAppHealth:
         """Return a lightweight runtime summary for the desktop shell."""
@@ -203,6 +203,20 @@ class DesktopAppService:
 
         runtime_config = self.config_store.load()
         preferred_provider = str(runtime_config.get("preferred_provider", "") or "").strip()
+        if preferred_provider:
+            preferred_status = next(
+                (status for status in self.get_provider_status() if status.provider_id == preferred_provider),
+                None,
+            )
+            if preferred_status is None:
+                raise ValueError(f"preferred_provider_unknown:{preferred_provider}")
+            if preferred_status.required_env_vars and preferred_status.missing_env_vars:
+                raise ValueError(
+                    f"preferred_provider_missing_env:{preferred_provider}:{','.join(preferred_status.missing_env_vars)}"
+                )
+            if not preferred_status.detected:
+                raise ValueError(f"preferred_provider_unavailable:{preferred_provider}")
+
         providers = self._build_provider_priority(preferred_provider)
         orchestrator_type = self._resolve_orchestrator_type(preferred_provider)
 
