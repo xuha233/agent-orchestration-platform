@@ -305,6 +305,16 @@ export function WorkflowWorkspace(props: WorkflowWorkspaceProps) {
     () => sortedRuns.filter((run) => run.has_gaps || run.has_guardrails || run.status !== "completed").length,
     [sortedRuns],
   );
+  const previousRun = useMemo(() => {
+    if (!runDetail) {
+      return null;
+    }
+    const currentIndex = sortedRuns.findIndex((run) => run.run_id === runDetail.summary.run_id);
+    if (currentIndex < 0) {
+      return null;
+    }
+    return sortedRuns[currentIndex + 1] ?? null;
+  }, [runDetail, sortedRuns]);
   const workflowGuidance = useMemo(() => {
     if (runDetail?.summary.has_guardrails) {
       return {
@@ -413,6 +423,34 @@ export function WorkflowWorkspace(props: WorkflowWorkspaceProps) {
           ) : null}
         </div>
       </div>
+      {runDetail && previousRun ? (
+        <div className="workflow-guidance-card">
+          <div>
+            <p className="panel-eyebrow">Compare with previous run</p>
+            <h3>{runDetail.summary.run_id} vs {previousRun.run_id}</h3>
+            <p>
+              Compare whether this run improved the outcome, stalled in the same phase, or introduced new follow-up pressure.
+            </p>
+          </div>
+          <div className="summary-row">
+            <SummaryItem label="Status" value={`${previousRun.status} -> ${runDetail.summary.status}`} />
+            <SummaryItem label="Phase" value={`${previousRun.current_phase || "-"} -> ${runDetail.summary.current_phase || "-"}`} />
+            <SummaryItem label="Verify" value={`${previousRun.verification_verdict || "-"} -> ${runDetail.summary.verification_verdict || "-"}`} />
+            <SummaryItem label="Completion" value={`${previousRun.completion_status || "-"} -> ${runDetail.summary.completion_status || "-"}`} />
+          </div>
+          <div className="summary-row">
+            <SummaryItem
+              label="Flags"
+              value={`${previousRun.has_gaps || previousRun.has_guardrails ? "attention" : "stable"} -> ${
+                runDetail.summary.has_gaps || runDetail.summary.has_guardrails ? "attention" : "stable"
+              }`}
+            />
+            <SummaryItem label="Previous run" value={previousRun.run_id} />
+            <SummaryItem label="Current run" value={runDetail.summary.run_id} />
+            <SummaryItem label="Updated" value={runDetail.summary.updated_at.replace("T", " ").slice(0, 19)} />
+          </div>
+        </div>
+      ) : null}
       {runInFlight ? (
         <section className="workflow-live-strip">
           <div>
