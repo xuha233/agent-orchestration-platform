@@ -267,7 +267,8 @@ body {
 }
 
 .run-guidance-card,
-.artifact-snapshot-card {
+.artifact-snapshot-card,
+.workflow-guidance-card {
   display: grid;
   gap: 16px;
   margin-bottom: 18px;
@@ -278,7 +279,8 @@ body {
 }
 
 .run-guidance-card h3,
-.artifact-snapshot-card h3 {
+.artifact-snapshot-card h3,
+.workflow-guidance-card h3 {
   margin: 0 0 6px;
   font-size: 20px;
 }

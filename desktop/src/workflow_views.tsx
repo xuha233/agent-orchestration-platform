@@ -1,3 +1,5 @@
+import { useMemo, useState } from "react";
+
 import type {
   DesktopProjectSummary,
   DesktopRunJob,
@@ -276,9 +278,76 @@ export function WorkflowWorkspace(props: WorkflowWorkspaceProps) {
     selectedArtifactTitle,
     setSelectedArtifactTitle,
   } = props;
+  const [runFilter, setRunFilter] = useState<"all" | "follow_up" | "stable">("all");
 
   const selectedArtifact =
     runDetail?.artifacts.find((artifact) => artifact.title === selectedArtifactTitle) ?? null;
+  const sortedRuns = useMemo(() => {
+    return [...runs].sort((left, right) => {
+      const leftAttention = Number(left.has_gaps || left.has_guardrails || left.status !== "completed");
+      const rightAttention = Number(right.has_gaps || right.has_guardrails || right.status !== "completed");
+      if (leftAttention !== rightAttention) {
+        return rightAttention - leftAttention;
+      }
+      return (right.updated_at || "").localeCompare(left.updated_at || "");
+    });
+  }, [runs]);
+  const visibleRuns = useMemo(() => {
+    if (runFilter === "follow_up") {
+      return sortedRuns.filter((run) => run.has_gaps || run.has_guardrails || run.status !== "completed");
+    }
+    if (runFilter === "stable") {
+      return sortedRuns.filter((run) => !run.has_gaps && !run.has_guardrails && run.status === "completed");
+    }
+    return sortedRuns;
+  }, [runFilter, sortedRuns]);
+  const followUpCount = useMemo(
+    () => sortedRuns.filter((run) => run.has_gaps || run.has_guardrails || run.status !== "completed").length,
+    [sortedRuns],
+  );
+  const workflowGuidance = useMemo(() => {
+    if (runDetail?.summary.has_guardrails) {
+      return {
+        title: "Open guardrails or completion artifacts first",
+        body: "The selected run hit a stop condition. Review guardrails and completion before deciding whether to retry or repair.",
+      };
+    }
+    if (runDetail?.summary.has_gaps) {
+      return {
+        title: "Verification needs follow-up",
+        body: "The selected run still has gaps. Start with verification and gaps artifacts to understand what remains unresolved.",
+      };
+    }
+    if (runDetail?.summary.status && runDetail.summary.status !== "completed") {
+      return {
+        title: "This run is still in motion",
+        body: "Track execution and verification artifacts first. More complete artifacts should continue to land as the workflow progresses.",
+      };
+    }
+    return {
+      title: "Review summary, then drill into artifacts",
+      body: "This run looks stable. Use summary and completion to confirm the outcome, then inspect detailed artifacts only if something looks off.",
+    };
+  }, [runDetail?.summary.has_gaps, runDetail?.summary.has_guardrails, runDetail?.summary.status]);
+  const recommendedArtifactTitle = useMemo(() => {
+    if (!runDetail) {
+      return "";
+    }
+    const priorities = runDetail.summary.has_guardrails
+      ? ["GUARDRAILS", "COMPLETION", "VERIFICATION"]
+      : runDetail.summary.has_gaps
+        ? ["VERIFICATION", "GAPS", "COMPLETION"]
+        : runDetail.summary.status !== "completed"
+          ? ["EXECUTION", "RUN", "SUMMARY"]
+          : ["SUMMARY", "COMPLETION", "LEARNINGS"];
+    for (const keyword of priorities) {
+      const match = runDetail.artifacts.find((artifact) => artifact.title.toUpperCase().includes(keyword));
+      if (match) {
+        return match.title;
+      }
+    }
+    return runDetail.artifacts.find((artifact) => artifact.exists)?.title || runDetail.artifacts[0]?.title || "";
+  }, [runDetail]);
 
   return (
     <section className="panel">
@@ -299,6 +368,51 @@ export function WorkflowWorkspace(props: WorkflowWorkspaceProps) {
         </div>
       </div>
       {statusMessage ? <section className="status-banner">{statusMessage}</section> : null}
+      <div className="workflow-guidance-card">
+        <div>
+          <p className="panel-eyebrow">Recommended workflow review</p>
+          <h3>{workflowGuidance.title}</h3>
+          <p>{workflowGuidance.body}</p>
+        </div>
+        <div className="summary-row">
+          <SummaryItem label="Runs" value={String(runs.length)} />
+          <SummaryItem label="Follow-up" value={String(followUpCount)} />
+          <SummaryItem label="Filter" value={runFilter.replace("_", " ")} />
+          <SummaryItem label="Focus artifact" value={recommendedArtifactTitle || "-"} />
+        </div>
+        <div className="provider-actions">
+          <button
+            type="button"
+            className={`action-button ${runFilter === "all" ? "action-button-accent" : ""}`}
+            onClick={() => setRunFilter("all")}
+          >
+            All runs
+          </button>
+          <button
+            type="button"
+            className={`action-button ${runFilter === "follow_up" ? "action-button-accent" : ""}`}
+            onClick={() => setRunFilter("follow_up")}
+          >
+            Follow-up
+          </button>
+          <button
+            type="button"
+            className={`action-button ${runFilter === "stable" ? "action-button-accent" : ""}`}
+            onClick={() => setRunFilter("stable")}
+          >
+            Stable
+          </button>
+          {recommendedArtifactTitle ? (
+            <button
+              type="button"
+              className="action-button"
+              onClick={() => setSelectedArtifactTitle(recommendedArtifactTitle)}
+            >
+              Open suggested artifact
+            </button>
+          ) : null}
+        </div>
+      </div>
       {runInFlight ? (
         <section className="workflow-live-strip">
           <div>
@@ -318,15 +432,19 @@ export function WorkflowWorkspace(props: WorkflowWorkspaceProps) {
           </div>
         </section>
       ) : null}
-      {runs.length === 0 ? (
+      {visibleRuns.length === 0 ? (
         <EmptyState
-          title="No workflow runs yet"
-          body="Once a project starts producing workflow artifacts, runs will show up here."
+          title={runFilter === "all" ? "No workflow runs yet" : "No runs match this filter"}
+          body={
+            runFilter === "all"
+              ? "Once a project starts producing workflow artifacts, runs will show up here."
+              : "Try another filter or refresh runs after the next workflow update."
+          }
         />
       ) : (
         <div className="workflow-layout">
           <div className="run-list">
-            {runs.map((run) => (
+            {visibleRuns.map((run) => (
               <button
                 key={run.run_id}
                 type="button"
