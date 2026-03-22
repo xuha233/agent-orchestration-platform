@@ -610,7 +610,7 @@ type SetupWorkspaceProps = {
   installSetupDependency: (checkId: string) => Promise<DesktopSetupInstallResult | null>;
   installingSetupCheckId: string;
   lastSetupInstallResult: DesktopSetupInstallResult | null;
-  setActiveView: (view: "providers" | "run") => void;
+  setActiveView: (view: "providers" | "run" | "setup") => void;
 };
 
 export function SetupWorkspace(props: SetupWorkspaceProps) {
@@ -634,6 +634,9 @@ export function SetupWorkspace(props: SetupWorkspaceProps) {
         : "This machine looks ready for both desktop workflows and future packaging work.";
   const nextGuide =
     requiredIssues[0] ?? optionalIssues[0] ?? null;
+  const installRecovered =
+    lastSetupInstallResult?.success &&
+    !setupChecks.some((check) => check.check_id === lastSetupInstallResult.check_id && !check.detected);
 
   return (
     <section className="panel">
@@ -671,6 +674,30 @@ export function SetupWorkspace(props: SetupWorkspaceProps) {
                 Open install guide
               </button>
             ) : null}
+          </div>
+        ) : null}
+        {installRecovered ? (
+          <div className="setup-followup-strip">
+            <span className="pill pill-good">Installed</span>
+            <p>
+              {lastSetupInstallResult?.check_id} now looks available. If provider setup is complete, the next best step is to return to Run.
+            </p>
+            <div className="provider-actions compact-actions">
+              <button
+                type="button"
+                className="action-button"
+                onClick={() => setActiveView("providers")}
+              >
+                Review providers
+              </button>
+              <button
+                type="button"
+                className="action-button action-button-accent"
+                onClick={() => setActiveView("run")}
+              >
+                Continue to run
+              </button>
+            </div>
           </div>
         ) : null}
       </div>

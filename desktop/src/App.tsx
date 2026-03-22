@@ -329,8 +329,15 @@ export function App() {
       body: "Use this page to launch a workflow, then watch the active run and its artifacts from a single place.",
     };
   }, [activeRunSummary?.has_gaps, activeRunSummary?.has_guardrails, runJob?.status, runResult?.success]);
+  const requiredSetupBlockers = useMemo(
+    () => setupChecks.filter((check) => check.required && !check.detected),
+    [setupChecks],
+  );
 
   const runBlockerMessage = useMemo(() => {
+    if (requiredSetupBlockers.length > 0) {
+      return `Desktop setup is still missing ${requiredSetupBlockers[0].label}. Fix required setup blockers before starting a run.`;
+    }
     if (!selectedProjectId) {
       return "Choose a project before starting a desktop run.";
     }
@@ -344,7 +351,19 @@ export function App() {
       return `Preferred provider ${preferredProvider.label} is not detected on this machine yet.`;
     }
     return "";
-  }, [preferredProvider, selectedProjectId]);
+  }, [preferredProvider, requiredSetupBlockers, selectedProjectId]);
+  const runBlockerAction = useMemo(() => {
+    if (requiredSetupBlockers.length > 0) {
+      return { label: "Open setup", view: "setup" as const };
+    }
+    if (!selectedProjectId) {
+      return { label: "Choose project", view: "projects" as const };
+    }
+    if (!preferredProvider || preferredProvider.missing_env_vars.length > 0 || !preferredProvider.detected) {
+      return { label: "Open providers", view: "providers" as const };
+    }
+    return { label: "Open workflow", view: "workflow" as const };
+  }, [preferredProvider, requiredSetupBlockers, selectedProjectId]);
 
   function formatRuntimeError(message: string): string {
     if (message.startsWith("preferred_provider_missing_env:")) {
@@ -667,6 +686,7 @@ export function App() {
           <RunWorkspace
             statusMessage={statusMessage}
             runGuidance={runGuidance}
+            runBlockerAction={runBlockerAction}
             setActiveView={setActiveView}
             runInFlight={runInFlight}
             runJob={runJob}
@@ -682,6 +702,7 @@ export function App() {
             runPrompt={runPrompt}
             setRunPrompt={setRunPrompt}
             runBlockerMessage={runBlockerMessage}
+            requiredSetupBlockers={requiredSetupBlockers}
             submitRun={submitRun}
             runSubmitting={runSubmitting}
             runResult={runResult}

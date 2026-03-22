@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 
 import type {
+  DesktopSetupCheck,
   DesktopProjectSummary,
   DesktopRunJob,
   DesktopRunLaunchResult,
@@ -13,7 +14,8 @@ import { ArtifactViewer, EmptyState, SummaryItem } from "./ui";
 type RunWorkspaceProps = {
   statusMessage: string;
   runGuidance: { title: string; body: string };
-  setActiveView: (view: "providers" | "workflow") => void;
+  runBlockerAction: { label: string; view: "setup" | "projects" | "providers" | "workflow" };
+  setActiveView: (view: "setup" | "projects" | "providers" | "workflow") => void;
   runInFlight: boolean;
   runJob: DesktopRunJob | null;
   jobPollCount: number;
@@ -28,6 +30,7 @@ type RunWorkspaceProps = {
   runPrompt: string;
   setRunPrompt: (value: string) => void;
   runBlockerMessage: string;
+  requiredSetupBlockers: DesktopSetupCheck[];
   submitRun: () => Promise<void>;
   runSubmitting: boolean;
   runResult: DesktopRunLaunchResult | null;
@@ -38,6 +41,7 @@ export function RunWorkspace(props: RunWorkspaceProps) {
   const {
     statusMessage,
     runGuidance,
+    runBlockerAction,
     setActiveView,
     runInFlight,
     runJob,
@@ -53,6 +57,7 @@ export function RunWorkspace(props: RunWorkspaceProps) {
     runPrompt,
     setRunPrompt,
     runBlockerMessage,
+    requiredSetupBlockers,
     submitRun,
     runSubmitting,
     runResult,
@@ -160,6 +165,22 @@ export function RunWorkspace(props: RunWorkspaceProps) {
           placeholder="Describe the idea, feature, or prototype you want AOP to work on."
         />
         {runBlockerMessage ? <div className="inline-note">{runBlockerMessage}</div> : null}
+        {runBlockerMessage && requiredSetupBlockers.length > 0 ? (
+          <div className="run-guidance-card">
+            <div>
+              <p className="panel-eyebrow">Run is blocked by setup</p>
+              <h3>{requiredSetupBlockers[0].label} needs attention</h3>
+              <p>
+                Fix the required setup blockers first, then come back here to launch the next workflow.
+              </p>
+            </div>
+            <div className="provider-command-list">
+              {requiredSetupBlockers.slice(0, 2).map((check) => (
+                <code key={check.check_id}>{check.install_hint}</code>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <div className="provider-actions">
           <button
             type="button"
@@ -169,6 +190,15 @@ export function RunWorkspace(props: RunWorkspaceProps) {
           >
             {runSubmitting ? "Running..." : "Start run"}
           </button>
+          {runBlockerMessage ? (
+            <button
+              type="button"
+              className="action-button"
+              onClick={() => setActiveView(runBlockerAction.view)}
+            >
+              {runBlockerAction.label}
+            </button>
+          ) : null}
           {runJob?.sprint_id ? (
             <button type="button" className="action-button" onClick={() => setActiveView("workflow")}>
               Open workflow

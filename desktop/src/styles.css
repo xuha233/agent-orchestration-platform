@@ -482,6 +482,12 @@ body {
   flex-wrap: wrap;
 }
 
+.setup-followup-strip {
+  display: grid;
+  gap: 10px;
+  padding-top: 6px;
+}
+
 .install-result-good {
   border-color: rgba(34, 197, 94, 0.28);
   background: rgba(34, 197, 94, 0.08);
