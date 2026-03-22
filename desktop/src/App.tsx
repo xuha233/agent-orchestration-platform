@@ -247,6 +247,22 @@ export function App() {
     () => projects.filter((project) => project.needs_follow_up),
     [projects],
   );
+  const prioritizedProjects = useMemo(() => {
+    return [...projects].sort((left, right) => {
+      if (left.needs_follow_up !== right.needs_follow_up) {
+        return left.needs_follow_up ? -1 : 1;
+      }
+      if (left.latest_run_status !== right.latest_run_status) {
+        if (left.latest_run_status !== "completed") {
+          return -1;
+        }
+        if (right.latest_run_status !== "completed") {
+          return 1;
+        }
+      }
+      return (right.last_active || "").localeCompare(left.last_active || "");
+    });
+  }, [projects]);
   const activeNav = navItems.find((item) => item.id === activeView);
   const runInFlight = Boolean(runJob && (runJob.status === "queued" || runJob.status === "running"));
   const activeRunSummary = useMemo(() => {
@@ -474,6 +490,11 @@ export function App() {
     }
   }
 
+  function focusProject(projectId: string, nextView: "projects" | "run" | "workflow") {
+    setSelectedProjectId(projectId);
+    setActiveView(nextView);
+  }
+
   return (
     <div className="app-shell">
       <aside className="app-sidebar">
@@ -613,6 +634,35 @@ export function App() {
             </div>
             {statusMessage ? <section className="status-banner">{statusMessage}</section> : null}
 
+            {prioritizedProjects.length > 0 ? (
+              <div className="project-priority-strip">
+                {prioritizedProjects.slice(0, 3).map((project) => (
+                  <button
+                    key={project.project_id}
+                    type="button"
+                    className={`project-priority-card ${selectedProjectId === project.project_id ? "project-priority-card-active" : ""}`}
+                    onClick={() => setSelectedProjectId(project.project_id)}
+                  >
+                    <div className="run-top">
+                      <div>
+                        <h3>{project.name}</h3>
+                        <p>{project.needs_follow_up ? "Needs follow-up" : "Ready for the next run"}</p>
+                      </div>
+                      <span className={`pill ${project.needs_follow_up ? "pill-warn" : "pill-good"}`}>
+                        {project.latest_run_phase || "idle"}
+                      </span>
+                    </div>
+                    <div className="summary-row">
+                      <SummaryItem label="Run" value={project.latest_run_id || "-"} />
+                      <SummaryItem label="Status" value={project.latest_run_status || "-"} />
+                      <SummaryItem label="Completion" value={project.latest_run_completion || "-"} />
+                      <SummaryItem label="Agent" value={project.primary_agent} />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
             <div className="project-register">
               <div className="panel-head">
                 <div>
@@ -672,10 +722,73 @@ export function App() {
                   <SummaryItem label="Phase" value={selectedProject.latest_run_phase || "-"} />
                   <SummaryItem label="Completion" value={selectedProject.latest_run_completion || "-"} />
                 </div>
+                <div className="provider-actions">
+                  <button
+                    type="button"
+                    className="action-button"
+                    onClick={() => focusProject(selectedProject.project_id, "workflow")}
+                  >
+                    Open workflow
+                  </button>
+                  <button
+                    type="button"
+                    className="action-button action-button-accent"
+                    onClick={() => focusProject(selectedProject.project_id, "run")}
+                  >
+                    Start next run
+                  </button>
+                </div>
               </div>
             ) : (
               <EmptyState title="No project selected" body="Create or register a workspace to see desktop project summaries here." />
             )}
+
+            {prioritizedProjects.length > 0 ? (
+              <div className="project-list-grid">
+                {prioritizedProjects.map((project) => (
+                  <article key={project.project_id} className="project-list-card">
+                    <div className="run-top">
+                      <div>
+                        <p className="panel-eyebrow">Project</p>
+                        <h3>{project.name}</h3>
+                      </div>
+                      <span className={`pill ${project.needs_follow_up ? "pill-warn" : "pill-good"}`}>
+                        {project.needs_follow_up ? "Follow-up" : "Stable"}
+                      </span>
+                    </div>
+                    <div className="summary-row">
+                      <SummaryItem label="Run" value={project.latest_run_id || "-"} />
+                      <SummaryItem label="Phase" value={project.latest_run_phase || "-"} />
+                      <SummaryItem label="Status" value={project.latest_run_status || "-"} />
+                      <SummaryItem label="Agent" value={project.primary_agent} />
+                    </div>
+                    <div className="provider-actions">
+                      <button
+                        type="button"
+                        className="action-button"
+                        onClick={() => focusProject(project.project_id, "projects")}
+                      >
+                        Inspect
+                      </button>
+                      <button
+                        type="button"
+                        className="action-button"
+                        onClick={() => focusProject(project.project_id, "workflow")}
+                      >
+                        Workflow
+                      </button>
+                      <button
+                        type="button"
+                        className="action-button action-button-accent"
+                        onClick={() => focusProject(project.project_id, "run")}
+                      >
+                        Run
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : null}
           </section>
         ) : null}
 
