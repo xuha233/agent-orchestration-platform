@@ -11,6 +11,21 @@ import type {
 } from "./types";
 import { EmptyState, MetricCard, SummaryItem } from "./ui";
 
+const setupGuideUrls: Record<string, string> = {
+  python: "https://www.python.org/downloads/",
+  node: "https://nodejs.org/en/download",
+  npm: "https://docs.npmjs.com/downloading-and-installing-node-js-and-npm",
+  rustc: "https://www.rust-lang.org/tools/install",
+  cargo: "https://www.rust-lang.org/tools/install",
+};
+
+async function copyText(value: string) {
+  if (typeof navigator === "undefined" || !navigator.clipboard) {
+    return;
+  }
+  await navigator.clipboard.writeText(value);
+}
+
 type HomeWorkspaceProps = {
   loadState: "idle" | "loading" | "ready" | "error";
   health: DesktopAppHealth | null;
@@ -617,6 +632,8 @@ export function SetupWorkspace(props: SetupWorkspaceProps) {
       : optionalIssues.length > 0
         ? "Desktop runs can work now. Optional tooling only blocks native packaging and advanced workflows."
         : "This machine looks ready for both desktop workflows and future packaging work.";
+  const nextGuide =
+    requiredIssues[0] ?? optionalIssues[0] ?? null;
 
   return (
     <section className="panel">
@@ -636,6 +653,26 @@ export function SetupWorkspace(props: SetupWorkspaceProps) {
       <div className="install-result-card">
         <strong>Recommended next action</strong>
         <p>{recommendedAction}</p>
+        {nextGuide ? (
+          <div className="setup-inline-actions">
+            <button
+              type="button"
+              className="action-button"
+              onClick={() => void copyText(nextGuide.install_commands[0] || nextGuide.install_hint)}
+            >
+              Copy next command
+            </button>
+            {setupGuideUrls[nextGuide.check_id] ? (
+              <button
+                type="button"
+                className="action-button"
+                onClick={() => window.open(setupGuideUrls[nextGuide.check_id], "_blank", "noopener,noreferrer")}
+              >
+                Open install guide
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       <div className="provider-actions">
         <button type="button" className="action-button" onClick={() => void refreshSetup()}>
@@ -704,6 +741,22 @@ export function SetupWorkspace(props: SetupWorkspaceProps) {
                     >
                       {installingSetupCheckId === check.check_id ? "Installing..." : "Install dependency"}
                     </button>
+                    <button
+                      type="button"
+                      className="action-button"
+                      onClick={() => void copyText(check.install_commands[0])}
+                    >
+                      Copy command
+                    </button>
+                    {setupGuideUrls[check.check_id] ? (
+                      <button
+                        type="button"
+                        className="action-button"
+                        onClick={() => window.open(setupGuideUrls[check.check_id], "_blank", "noopener,noreferrer")}
+                      >
+                        Open guide
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
               </article>
@@ -767,6 +820,22 @@ export function SetupWorkspace(props: SetupWorkspaceProps) {
                     >
                       {installingSetupCheckId === check.check_id ? "Installing..." : "Install dependency"}
                     </button>
+                    <button
+                      type="button"
+                      className="action-button"
+                      onClick={() => void copyText(check.install_commands[0])}
+                    >
+                      Copy command
+                    </button>
+                    {setupGuideUrls[check.check_id] ? (
+                      <button
+                        type="button"
+                        className="action-button"
+                        onClick={() => window.open(setupGuideUrls[check.check_id], "_blank", "noopener,noreferrer")}
+                      >
+                        Open guide
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
               </article>

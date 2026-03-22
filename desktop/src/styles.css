@@ -476,6 +476,12 @@ body {
   margin: 0;
 }
 
+.setup-inline-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .install-result-good {
   border-color: rgba(34, 197, 94, 0.28);
   background: rgba(34, 197, 94, 0.08);
@@ -650,6 +656,7 @@ body {
   display: flex;
   gap: 10px;
   margin-top: 14px;
+  flex-wrap: wrap;
 }
 
 .compact-actions {
