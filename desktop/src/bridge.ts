@@ -30,6 +30,26 @@ const mockBridgeData = {
   },
   projects: [],
   providers: [],
+  setup_status: [
+    {
+      check_id: "python",
+      label: "Python",
+      detected: true,
+      required: true,
+      version: "Python 3.12.0",
+      reason: "",
+      install_hint: "Install Python 3.11+ and keep it on PATH for the desktop sidecar.",
+    },
+    {
+      check_id: "cargo",
+      label: "Cargo",
+      detected: false,
+      required: false,
+      version: "",
+      reason: "Cargo was not found on PATH.",
+      install_hint: "Install Cargo via rustup to build native desktop packages.",
+    },
+  ],
   runs: [],
   create_project: {
     project_id: "mock-project",

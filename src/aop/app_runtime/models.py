@@ -78,6 +78,22 @@ class DesktopInstallResult:
 
 
 @dataclass
+class DesktopSetupCheck:
+    """System dependency readiness shown in the desktop setup workspace."""
+
+    check_id: str
+    label: str
+    detected: bool
+    required: bool
+    version: str = ""
+    reason: str = ""
+    install_hint: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class DesktopRunLaunchResult:
     """Result returned after launching a run from the desktop shell."""
 

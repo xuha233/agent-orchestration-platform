@@ -149,6 +149,54 @@ def test_desktop_app_service_returns_minimal_settings(tmp_path):
     assert payload["enable_mem0_memory"] is True
 
 
+def test_desktop_app_service_reports_setup_status(tmp_path, monkeypatch):
+    workspace_home = tmp_path / "aop-home"
+
+    monkeypatch.setattr(
+        "aop.app_runtime.service.shutil.which",
+        lambda name: "C:/bin/tool.exe"
+        if Path(str(name)).name.lower().startswith(("python", "node", "npm"))
+        else None,
+    )
+
+    class Completed:
+        def __init__(self, output: str):
+            self.returncode = 0
+            self.stdout = output
+            self.stderr = ""
+
+    monkeypatch.setattr(
+        "aop.app_runtime.service.subprocess.run",
+        lambda command, **kwargs: Completed(f"{command[0]} 1.0.0"),
+    )
+
+    service = DesktopAppService(
+        workspace_manager=WorkspaceManager(workspace_home),
+        settings_manager=SettingsManager(workspace_home),
+    )
+
+    checks = service.get_setup_status()
+
+    assert any(check.check_id == "python" and check.detected for check in checks)
+    assert any(check.check_id == "cargo" and not check.detected for check in checks)
+
+
+def test_desktop_app_bridge_returns_setup_status_payload(tmp_path, monkeypatch):
+    workspace_home = tmp_path / "aop-home"
+
+    monkeypatch.setattr("aop.app_runtime.service.shutil.which", lambda name: None)
+    service = DesktopAppService(
+        workspace_manager=WorkspaceManager(workspace_home),
+        settings_manager=SettingsManager(workspace_home),
+    )
+    bridge = DesktopAppBridge(service)
+
+    response = bridge.dispatch("setup_status", {})
+
+    assert response["ok"] is True
+    assert any(check["check_id"] == "python" for check in response["data"])
+
+
 def test_desktop_app_service_updates_provider_config(tmp_path, monkeypatch):
     workspace_home = tmp_path / "aop-home"
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)

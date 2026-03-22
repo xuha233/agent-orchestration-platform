@@ -6,6 +6,7 @@ import type {
   DesktopInstallResult,
   DesktopProjectSummary,
   DesktopProviderStatus,
+  DesktopSetupCheck,
 } from "./types";
 import { EmptyState, MetricCard, SummaryItem } from "./ui";
 
@@ -580,6 +581,69 @@ export function ProvidersWorkspace(props: ProvidersWorkspaceProps) {
               </button>
             </div>
           </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+type SetupWorkspaceProps = {
+  statusMessage: string;
+  setupChecks: DesktopSetupCheck[];
+  setActiveView: (view: "providers" | "run") => void;
+};
+
+export function SetupWorkspace(props: SetupWorkspaceProps) {
+  const { statusMessage, setupChecks, setActiveView } = props;
+  const requiredIssues = setupChecks.filter((check) => check.required && !check.detected);
+  const optionalIssues = setupChecks.filter((check) => !check.required && !check.detected);
+
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <p className="panel-eyebrow">Setup</p>
+          <h2>Local desktop readiness</h2>
+        </div>
+      </div>
+      {statusMessage ? <section className="status-banner">{statusMessage}</section> : null}
+      <div className="provider-summary-strip">
+        <SummaryItem label="Checks" value={String(setupChecks.length)} />
+        <SummaryItem label="Required blockers" value={String(requiredIssues.length)} />
+        <SummaryItem label="Optional gaps" value={String(optionalIssues.length)} />
+        <SummaryItem label="Ready" value={requiredIssues.length === 0 ? "yes" : "not yet"} />
+      </div>
+      <div className="provider-actions">
+        <button type="button" className="action-button" onClick={() => setActiveView("providers")}>
+          Open provider setup
+        </button>
+        <button type="button" className="action-button action-button-accent" onClick={() => setActiveView("run")}>
+          Open run workspace
+        </button>
+      </div>
+      <div className="project-list-grid">
+        {setupChecks.map((check) => (
+          <article key={check.check_id} className="project-list-card">
+            <div className="run-top">
+              <div>
+                <p className="panel-eyebrow">Dependency</p>
+                <h3>{check.label}</h3>
+              </div>
+              <span className={`pill ${check.detected ? "pill-good" : check.required ? "pill-bad" : "pill-warn"}`}>
+                {check.detected ? "Ready" : check.required ? "Required" : "Optional"}
+              </span>
+            </div>
+            <div className="summary-row">
+              <SummaryItem label="Version" value={check.version || "-"} />
+              <SummaryItem label="Detected" value={check.detected ? "yes" : "no"} />
+              <SummaryItem label="Required" value={check.required ? "yes" : "no"} />
+              <SummaryItem label="Id" value={check.check_id} />
+            </div>
+            <p>{check.reason || check.install_hint}</p>
+            <div className="provider-command-list">
+              <code>{check.install_hint}</code>
+            </div>
+          </article>
         ))}
       </div>
     </section>

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -26,6 +27,7 @@ from .models import (
     DesktopProviderStatus,
     DesktopRunJob,
     DesktopRunLaunchResult,
+    DesktopSetupCheck,
 )
 
 
@@ -205,6 +207,47 @@ class DesktopAppService:
             "show_dev_console": settings.get("show_dev_console", False),
             "preferred_provider": runtime_config.get("preferred_provider", ""),
         }
+
+    def get_setup_status(self) -> List[DesktopSetupCheck]:
+        """Return system dependency readiness for the desktop setup workspace."""
+        checks = [
+            self._tool_check(
+                check_id="python",
+                label="Python",
+                command=[os.environ.get("AOP_DESKTOP_PYTHON", sys.executable or "python"), "--version"],
+                required=True,
+                install_hint="Install Python 3.11+ and keep it on PATH for the desktop sidecar.",
+            ),
+            self._tool_check(
+                check_id="node",
+                label="Node.js",
+                command=["node", "--version"],
+                required=True,
+                install_hint="Install Node.js LTS so the desktop frontend and CLI dependencies can run.",
+            ),
+            self._tool_check(
+                check_id="npm",
+                label="npm",
+                command=["npm", "--version"],
+                required=True,
+                install_hint="Install npm alongside Node.js so desktop packages and provider CLIs can be installed.",
+            ),
+            self._tool_check(
+                check_id="rustc",
+                label="Rust compiler",
+                command=["rustc", "--version"],
+                required=False,
+                install_hint="Install Rust via rustup to enable native Tauri builds.",
+            ),
+            self._tool_check(
+                check_id="cargo",
+                label="Cargo",
+                command=["cargo", "--version"],
+                required=False,
+                install_hint="Install Cargo via rustup to build native desktop packages.",
+            ),
+        ]
+        return checks
 
     def update_provider_config(
         self,
@@ -395,6 +438,54 @@ class DesktopAppService:
         if os.name == "nt":
             kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW  # type: ignore[index]
         subprocess.Popen(command, **kwargs)
+
+    def _tool_check(
+        self,
+        check_id: str,
+        label: str,
+        command: List[str],
+        required: bool,
+        install_hint: str,
+    ) -> DesktopSetupCheck:
+        executable = command[0]
+        if not shutil.which(executable):
+            return DesktopSetupCheck(
+                check_id=check_id,
+                label=label,
+                detected=False,
+                required=required,
+                reason=f"{label} was not found on PATH.",
+                install_hint=install_hint,
+            )
+
+        try:
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+        except OSError as error:
+            return DesktopSetupCheck(
+                check_id=check_id,
+                label=label,
+                detected=False,
+                required=required,
+                reason=str(error),
+                install_hint=install_hint,
+            )
+
+        version = (completed.stdout or completed.stderr).strip().splitlines()
+        return DesktopSetupCheck(
+            check_id=check_id,
+            label=label,
+            detected=completed.returncode == 0,
+            required=required,
+            version=version[0] if version else "",
+            reason="" if completed.returncode == 0 else f"{label} check exited with code {completed.returncode}.",
+            install_hint=install_hint,
+        )
 
     def _build_shell_command(self, command: str) -> List[str]:
         detector = get_platform_detector()

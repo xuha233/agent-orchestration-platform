@@ -8,17 +8,19 @@ import type {
   DesktopProviderStatus,
   DesktopRunJob,
   DesktopRunLaunchResult,
+  DesktopSetupCheck,
   WorkflowRunDetail,
   WorkflowRunSummary,
 } from "./types";
-import { HomeWorkspace, ProjectsWorkspace, ProvidersWorkspace } from "./shell_views";
+import { HomeWorkspace, ProjectsWorkspace, ProvidersWorkspace, SetupWorkspace } from "./shell_views";
 import { RunWorkspace, WorkflowWorkspace } from "./workflow_views";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
-type ViewName = "home" | "projects" | "providers" | "run" | "workflow";
+type ViewName = "home" | "setup" | "projects" | "providers" | "run" | "workflow";
 
 const navItems: Array<{ id: ViewName; label: string; desc: string }> = [
   { id: "home", label: "Home", desc: "Overview and next actions" },
+  { id: "setup", label: "Setup", desc: "Check local desktop readiness" },
   { id: "projects", label: "Projects", desc: "Register and inspect workspaces" },
   { id: "providers", label: "Providers", desc: "Setup and preferred routing" },
   { id: "run", label: "Run", desc: "Launch a workflow from desktop" },
@@ -32,6 +34,7 @@ export function App() {
   const [health, setHealth] = useState<DesktopAppHealth | null>(null);
   const [projects, setProjects] = useState<DesktopProjectSummary[]>([]);
   const [providers, setProviders] = useState<DesktopProviderStatus[]>([]);
+  const [setupChecks, setSetupChecks] = useState<DesktopSetupCheck[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [runs, setRuns] = useState<WorkflowRunSummary[]>([]);
   const [selectedRunId, setSelectedRunId] = useState("");
@@ -59,10 +62,11 @@ export function App() {
       setLoadState("loading");
       setError("");
       try {
-        const [healthData, projectData, providerData] = await Promise.all([
+        const [healthData, projectData, providerData, setupData] = await Promise.all([
           invokeAppRuntime<DesktopAppHealth>("health"),
           invokeAppRuntime<DesktopProjectSummary[]>("projects"),
           invokeAppRuntime<DesktopProviderStatus[]>("providers"),
+          invokeAppRuntime<DesktopSetupCheck[]>("setup_status"),
         ]);
         if (cancelled) {
           return;
@@ -70,6 +74,7 @@ export function App() {
         setHealth(healthData);
         setProjects(projectData);
         setProviders(providerData);
+        setSetupChecks(setupData);
         setProviderDrafts(
           Object.fromEntries(
             providerData.map((provider) => [provider.provider_id, provider.stored_env_vars || {}]),
@@ -359,12 +364,14 @@ export function App() {
   }
 
   async function refreshProjectData(nextProjectId?: string) {
-    const [projectData, providerData] = await Promise.all([
+    const [projectData, providerData, setupData] = await Promise.all([
       invokeAppRuntime<DesktopProjectSummary[]>("projects"),
       invokeAppRuntime<DesktopProviderStatus[]>("providers"),
+      invokeAppRuntime<DesktopSetupCheck[]>("setup_status"),
     ]);
     setProjects(projectData);
     setProviders(providerData);
+    setSetupChecks(setupData);
     setProviderDrafts(
       Object.fromEntries(
         providerData.map((provider) => [provider.provider_id, provider.stored_env_vars || {}]),
@@ -597,6 +604,14 @@ export function App() {
             installProviderDependency={installProviderDependency}
             installingProviderId={installingProviderId}
             lastInstallResult={lastInstallResult}
+          />
+        ) : null}
+
+        {activeView === "setup" ? (
+          <SetupWorkspace
+            statusMessage={statusMessage}
+            setupChecks={setupChecks}
+            setActiveView={setActiveView}
           />
         ) : null}
 

@@ -43,6 +43,11 @@ class DesktopAppBridge:
             return {"ok": True, "data": project.to_dict()}
         if action == "settings":
             return {"ok": True, "data": self.service.get_settings()}
+        if action == "setup_status":
+            return {
+                "ok": True,
+                "data": [check.to_dict() for check in self.service.get_setup_status()],
+            }
         if action == "runs":
             project_id = str(data.get("project_id", "")).strip()
             runs = self.service.list_runs(project_id=project_id, limit=int(data.get("limit", 12)))

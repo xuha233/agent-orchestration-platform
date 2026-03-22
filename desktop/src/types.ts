@@ -36,6 +36,25 @@ export type DesktopProviderStatus = {
   preferred: boolean;
 };
 
+export type DesktopInstallResult = {
+  provider_id: string;
+  command: string;
+  success: boolean;
+  summary: string;
+  output: string;
+  next_steps: string[];
+};
+
+export type DesktopSetupCheck = {
+  check_id: string;
+  label: string;
+  detected: boolean;
+  required: boolean;
+  version: string;
+  reason: string;
+  install_hint: string;
+};
+
 export type WorkflowRunSummary = {
   run_id: string;
   status: string;
