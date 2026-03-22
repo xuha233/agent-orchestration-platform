@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { Dispatch, SetStateAction } from "react";
 
 import type { DesktopAppHealth, DesktopProjectSummary, DesktopProviderStatus } from "./types";
@@ -13,6 +14,7 @@ type HomeWorkspaceProps = {
   selectedProject: DesktopProjectSummary | null;
   preferredProvider: DesktopProviderStatus | null;
   followUpProjects: DesktopProjectSummary[];
+  providers: DesktopProviderStatus[];
   setActiveView: (view: "projects" | "providers" | "run") => void;
 };
 
@@ -27,8 +29,38 @@ export function HomeWorkspace(props: HomeWorkspaceProps) {
     selectedProject,
     preferredProvider,
     followUpProjects,
+    providers,
     setActiveView,
   } = props;
+  const providerReady = Boolean(
+    preferredProvider?.detected && preferredProvider.missing_env_vars.length === 0,
+  );
+  const onboardingSteps = [
+    {
+      label: "Choose provider",
+      done: providerReady,
+      hint: providerReady
+        ? `${preferredProvider?.label} is ready`
+        : preferredProvider
+          ? `${preferredProvider.label} still needs setup`
+          : "Pick a preferred provider first",
+      action: "providers" as const,
+    },
+    {
+      label: "Register project",
+      done: projects.length > 0,
+      hint: projects.length > 0 ? `${projects.length} project(s) connected` : "Add your first project folder",
+      action: "projects" as const,
+    },
+    {
+      label: "Run workflow",
+      done: runsCount > 0,
+      hint: runsCount > 0 ? `${runsCount} workflow run(s) recorded` : "Start your first run from desktop",
+      action: "run" as const,
+    },
+  ];
+  const recommendedProvider =
+    providers.find((provider) => provider.detected && provider.missing_env_vars.length === 0) ?? null;
 
   return (
     <>
@@ -106,6 +138,58 @@ export function HomeWorkspace(props: HomeWorkspaceProps) {
           ) : (
             <EmptyState title="Queue is clear" body="No projects currently need follow-up from the latest workflow run." />
           )}
+        </article>
+      </section>
+
+      <section className="grid onboarding-grid">
+        <article className="panel panel-wide">
+          <div className="panel-head">
+            <div>
+              <p className="panel-eyebrow">Onboarding</p>
+              <h2>Get to first useful run</h2>
+            </div>
+          </div>
+          <div className="onboarding-list">
+            {onboardingSteps.map((step) => (
+              <button
+                key={step.label}
+                type="button"
+                className={`onboarding-step ${step.done ? "onboarding-step-done" : ""}`}
+                onClick={() => setActiveView(step.action)}
+              >
+                <span className={`pill ${step.done ? "pill-good" : "pill-warn"}`}>{step.done ? "Done" : "Next"}</span>
+                <strong>{step.label}</strong>
+                <p>{step.hint}</p>
+              </button>
+            ))}
+          </div>
+        </article>
+
+        <article className="panel">
+          <div className="panel-head">
+            <div>
+              <p className="panel-eyebrow">Recommendation</p>
+              <h2>Best next move</h2>
+            </div>
+          </div>
+          <div className="provider-command-list">
+            <code>
+              {providerReady
+                ? `Launch the next run for ${selectedProject?.name || "your selected project"}`
+                : recommendedProvider
+                  ? `Set ${recommendedProvider.label} as preferred and finish provider setup`
+                  : "Open Providers and finish the first available setup path"}
+            </code>
+          </div>
+          <div className="provider-actions">
+            <button
+              type="button"
+              className="action-button action-button-accent"
+              onClick={() => setActiveView(providerReady ? "run" : "providers")}
+            >
+              {providerReady ? "Open run workspace" : "Open provider setup"}
+            </button>
+          </div>
         </article>
       </section>
     </>
@@ -344,6 +428,32 @@ type ProvidersWorkspaceProps = {
 
 export function ProvidersWorkspace(props: ProvidersWorkspaceProps) {
   const { statusMessage, providers, providerDrafts, setProviderDrafts, saveProviderConfig } = props;
+  const sortedProviders = useMemo(() => {
+    return [...providers].sort((left, right) => {
+      if (left.preferred !== right.preferred) {
+        return left.preferred ? -1 : 1;
+      }
+      const leftReady = Number(left.detected && left.missing_env_vars.length === 0);
+      const rightReady = Number(right.detected && right.missing_env_vars.length === 0);
+      if (leftReady !== rightReady) {
+        return rightReady - leftReady;
+      }
+      if (left.detected !== right.detected) {
+        return left.detected ? -1 : 1;
+      }
+      return left.label.localeCompare(right.label);
+    });
+  }, [providers]);
+  const readyCount = sortedProviders.filter(
+    (provider) => provider.detected && provider.missing_env_vars.length === 0,
+  ).length;
+  const missingSetupCount = sortedProviders.filter(
+    (provider) => !provider.detected || provider.missing_env_vars.length > 0,
+  ).length;
+  const recommendedProvider =
+    sortedProviders.find((provider) => provider.detected && provider.missing_env_vars.length === 0) ??
+    sortedProviders[0] ??
+    null;
 
   return (
     <section className="panel">
@@ -356,7 +466,13 @@ export function ProvidersWorkspace(props: ProvidersWorkspaceProps) {
 
       <div className="provider-list">
         {statusMessage ? <section className="status-banner">{statusMessage}</section> : null}
-        {providers.map((provider) => (
+        <div className="provider-summary-strip">
+          <SummaryItem label="Providers" value={String(sortedProviders.length)} />
+          <SummaryItem label="Ready" value={String(readyCount)} />
+          <SummaryItem label="Need setup" value={String(missingSetupCount)} />
+          <SummaryItem label="Recommended" value={recommendedProvider?.label || "-"} />
+        </div>
+        {sortedProviders.map((provider) => (
           <div key={provider.provider_id} className="provider-card">
             <div className="provider-title-row">
               <div>
@@ -368,6 +484,22 @@ export function ProvidersWorkspace(props: ProvidersWorkspaceProps) {
               </span>
             </div>
             <p>{provider.auth_ok ? "Authentication ready" : provider.reason || "Needs setup"}</p>
+            <div className="summary-row">
+              <SummaryItem
+                label="Ready"
+                value={provider.detected && provider.missing_env_vars.length === 0 ? "yes" : "not yet"}
+              />
+              <SummaryItem
+                label="Configured"
+                value={
+                  provider.required_env_vars.length > 0
+                    ? `${provider.configured_env_vars.length}/${provider.required_env_vars.length}`
+                    : "n/a"
+                }
+              />
+              <SummaryItem label="Binary" value={provider.binary_path ? "found" : "missing"} />
+              <SummaryItem label="Preferred" value={provider.preferred ? "yes" : "no"} />
+            </div>
             {provider.missing_env_vars.length > 0 ? (
               <p className="provider-meta">Missing env: {provider.missing_env_vars.join(", ")}</p>
             ) : null}

@@ -538,6 +538,7 @@ export function App() {
             selectedProject={selectedProject}
             preferredProvider={preferredProvider}
             followUpProjects={followUpProjects}
+            providers={providers}
             setActiveView={setActiveView}
           />
         ) : null}
