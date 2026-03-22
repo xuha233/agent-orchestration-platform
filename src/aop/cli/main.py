@@ -1780,17 +1780,19 @@ def assess(problem_clarity: str, data_availability: str, tech_novelty: str, busi
 @click.option("--host", "-h", default="localhost", help="Host to bind")
 @click.option("--open-browser", "-o", is_flag=True, help="Open browser automatically")
 def dashboard(port: int, host: str, open_browser: bool):
-    """Start the AOP Dashboard web UI."""
+    """Start the legacy Streamlit dashboard for fallback/debug use."""
     try:
         from ..dashboard import run_dashboard
 
         
         console.print(Panel.fit(
-            f"[bold cyan]AOP Dashboard[/bold cyan]\n\n"
+            f"[bold yellow]Legacy AOP Dashboard[/bold yellow]\n\n"
+            f"[bold]Recommended:[/bold] Use AOP Desktop for the primary product experience.\n"
+            f"[dim]This Streamlit UI remains available for compatibility and debugging.[/dim]\n\n"
             f"Starting at: [link]http://{host}:{port}[/link]\n\n"
             f"[dim]Press Ctrl+C to stop[/dim]",
-            title="Dashboard",
-            border_style="blue",
+            title="Legacy Dashboard",
+            border_style="yellow",
         ))
         
         run_dashboard(port=port, host=host, open_browser=open_browser)

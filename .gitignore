@@ -51,3 +51,4 @@ desktop/node_modules/
 desktop/dist/
 desktop/.npmrc.codex
 desktop/src-tauri/target/
+releases/

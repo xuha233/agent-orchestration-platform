@@ -18,6 +18,10 @@ export type DesktopProjectSummary = {
   latest_run_phase: string;
   latest_run_completion: string;
   needs_follow_up: boolean;
+  attention_tags: string[];
+  priority_rank: number;
+  triage_summary: string;
+  triage_evidence: string[];
 };
 
 export type DesktopProviderStatus = {
@@ -65,6 +69,53 @@ export type DesktopSetupInstallResult = {
   next_steps: string[];
 };
 
+export type DesktopMemoryStatus = {
+  project_id: string;
+  project_path: string;
+  enabled: boolean;
+  global_enabled: boolean;
+  project_enabled: boolean;
+  backend: string;
+  mem0_available: boolean;
+  current_backend: string;
+  total_memories: number;
+  legacy_entry_count: number;
+  migration_ready: boolean;
+  migration_issues: string[];
+  memory_sources: Record<string, number>;
+  init_error: string;
+};
+
+export type DesktopMemoryRecord = {
+  memory_id: string;
+  content: string;
+  memory_type: string;
+  phase: string;
+  run_id: string;
+  timestamp: string;
+};
+
+export type DesktopMemoryMigrationResult = {
+  project_id: string;
+  dry_run: boolean;
+  success: boolean;
+  total_migrated: number;
+  source_counts: Record<string, number>;
+  errors: string[];
+};
+
+export type DesktopMemorySettings = {
+  project_id: string;
+  global_enabled: boolean;
+  project_enabled: boolean;
+  effective_enabled: boolean;
+  backend: string;
+  search_top_k: number;
+  search_threshold: number;
+  embedding_model: string;
+  embedding_dims: number;
+};
+
 export type WorkflowRunSummary = {
   run_id: string;
   status: string;
@@ -79,6 +130,10 @@ export type WorkflowRunSummary = {
   completion_status: string;
   has_gaps: boolean;
   has_guardrails: boolean;
+  attention_tags: string[];
+  priority_rank: number;
+  triage_summary: string;
+  triage_evidence: string[];
 };
 
 export type WorkflowArtifactDocument = {

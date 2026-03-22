@@ -174,7 +174,7 @@ Each project includes:
 
 | Command | Purpose |
 |---------|---------|
-| `aop dashboard` | Launch web UI |
+| `aop dashboard` | Launch legacy Streamlit UI for fallback/debug use |
 | `aop doctor` | Check environment |
 | `aop project assess` | Analyze existing project |
 

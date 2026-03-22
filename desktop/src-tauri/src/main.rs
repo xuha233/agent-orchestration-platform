@@ -9,6 +9,12 @@ fn app_runtime(
     run_id: Option<String>,
     job_id: Option<String>,
     limit: Option<u32>,
+    dry_run: Option<bool>,
+    global_enabled: Option<bool>,
+    project_enabled: Option<bool>,
+    backend: Option<String>,
+    search_top_k: Option<u32>,
+    search_threshold: Option<f64>,
     provider_id: Option<String>,
     env_values: Option<serde_json::Value>,
     preferred: Option<bool>,
@@ -38,6 +44,32 @@ fn app_runtime(
     }
     if let Some(value) = limit {
         command.arg("--limit").arg(value.to_string());
+    }
+    if let Some(value) = dry_run {
+        if value {
+            command.arg("--dry-run");
+        }
+    }
+    if let Some(value) = global_enabled {
+        if value {
+            command.arg("--global-enabled");
+        }
+    }
+    if let Some(value) = project_enabled {
+        if value {
+            command.arg("--project-enabled");
+        }
+    }
+    if let Some(value) = backend {
+        if !value.trim().is_empty() {
+            command.arg("--backend").arg(value);
+        }
+    }
+    if let Some(value) = search_top_k {
+        command.arg("--search-top-k").arg(value.to_string());
+    }
+    if let Some(value) = search_threshold {
+        command.arg("--search-threshold").arg(value.to_string());
     }
     if let Some(value) = provider_id {
         if !value.trim().is_empty() {

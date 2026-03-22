@@ -1,8 +1,9 @@
 """
-AOP Dashboard - 对话式界面
+Legacy AOP Dashboard - 对话式兼容/调试界面
 
 Run with: streamlit run app.py
 Or: aop dashboard
+Recommended primary UI: AOP Desktop
 """
 
 import time
@@ -95,6 +96,10 @@ st.set_page_config(
     page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded",
+)
+
+st.info(
+    "AOP Desktop is now the primary product UI. This Streamlit dashboard remains available as a compatibility/debug surface."
 )
 
 # Custom CSS - 现代化 SaaS 仪表板（玻璃态 + 橙黄主题）

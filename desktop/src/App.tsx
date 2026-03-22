@@ -4,6 +4,10 @@ import { invokeAppRuntime } from "./bridge";
 import type {
   DesktopAppHealth,
   DesktopInstallResult,
+  DesktopMemoryMigrationResult,
+  DesktopMemoryRecord,
+  DesktopMemorySettings,
+  DesktopMemoryStatus,
   DesktopProjectSummary,
   DesktopProviderStatus,
   DesktopRunJob,
@@ -13,17 +17,18 @@ import type {
   WorkflowRunDetail,
   WorkflowRunSummary,
 } from "./types";
-import { HomeWorkspace, ProjectsWorkspace, ProvidersWorkspace, SetupWorkspace } from "./shell_views";
+import { HomeWorkspace, MemoryWorkspace, ProjectsWorkspace, ProvidersWorkspace, SetupWorkspace } from "./shell_views";
 import { RunWorkspace, WorkflowWorkspace } from "./workflow_views";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
-type ViewName = "home" | "setup" | "projects" | "providers" | "run" | "workflow";
+type ViewName = "home" | "setup" | "projects" | "providers" | "memory" | "run" | "workflow";
 
 const navItems: Array<{ id: ViewName; label: string; desc: string }> = [
   { id: "home", label: "Home", desc: "Overview and next actions" },
   { id: "setup", label: "Setup", desc: "Check local desktop readiness" },
   { id: "projects", label: "Projects", desc: "Register and inspect workspaces" },
   { id: "providers", label: "Providers", desc: "Setup and preferred routing" },
+  { id: "memory", label: "Memory", desc: "Inspect project memory and recorder output" },
   { id: "run", label: "Run", desc: "Launch a workflow from desktop" },
   { id: "workflow", label: "Workflow", desc: "Inspect persisted run artifacts" },
 ];
@@ -36,6 +41,13 @@ export function App() {
   const [projects, setProjects] = useState<DesktopProjectSummary[]>([]);
   const [providers, setProviders] = useState<DesktopProviderStatus[]>([]);
   const [setupChecks, setSetupChecks] = useState<DesktopSetupCheck[]>([]);
+  const [memoryStatus, setMemoryStatus] = useState<DesktopMemoryStatus | null>(null);
+  const [memorySettings, setMemorySettings] = useState<DesktopMemorySettings | null>(null);
+  const [memoryRecords, setMemoryRecords] = useState<DesktopMemoryRecord[]>([]);
+  const [memoryRefreshing, setMemoryRefreshing] = useState(false);
+  const [memoryMigrating, setMemoryMigrating] = useState(false);
+  const [lastMemoryMigrationResult, setLastMemoryMigrationResult] =
+    useState<DesktopMemoryMigrationResult | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [runs, setRuns] = useState<WorkflowRunSummary[]>([]);
   const [selectedRunId, setSelectedRunId] = useState("");
@@ -179,6 +191,9 @@ export function App() {
       setSelectedRunId("");
       setRunDetail(null);
       setSelectedArtifactTitle("");
+      setMemoryStatus(null);
+      setMemorySettings(null);
+      setMemoryRecords([]);
       return;
     }
 
@@ -193,6 +208,24 @@ export function App() {
           setSelectedRunId((current) =>
             current && runData.some((run) => run.run_id === current) ? current : runData[0]?.run_id || "",
           );
+          const [nextMemoryStatus, nextMemorySettings, nextMemoryRecords] = await Promise.all([
+            invokeAppRuntime<DesktopMemoryStatus>("memory_status", {
+              project_id: selectedProjectId,
+            }),
+            invokeAppRuntime<DesktopMemorySettings>("memory_settings", {
+              project_id: selectedProjectId,
+            }),
+            invokeAppRuntime<DesktopMemoryRecord[]>("memory_records", {
+              project_id: selectedProjectId,
+              limit: 12,
+            }),
+          ]);
+          if (!cancelled) {
+            setMemoryStatus(nextMemoryStatus);
+            setMemorySettings(nextMemorySettings);
+            setMemoryRecords(nextMemoryRecords);
+            setLastMemoryMigrationResult(null);
+          }
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -261,16 +294,8 @@ export function App() {
   );
   const prioritizedProjects = useMemo(() => {
     return [...projects].sort((left, right) => {
-      if (left.needs_follow_up !== right.needs_follow_up) {
-        return left.needs_follow_up ? -1 : 1;
-      }
-      if (left.latest_run_status !== right.latest_run_status) {
-        if (left.latest_run_status !== "completed") {
-          return -1;
-        }
-        if (right.latest_run_status !== "completed") {
-          return 1;
-        }
+      if (left.priority_rank !== right.priority_rank) {
+        return right.priority_rank - left.priority_rank;
       }
       return (right.last_active || "").localeCompare(left.last_active || "");
     });
@@ -402,6 +427,94 @@ export function App() {
     );
     if (nextProjectId) {
       setSelectedProjectId(nextProjectId);
+    }
+  }
+
+  async function refreshMemoryData(projectIdOverride?: string) {
+    const projectId = projectIdOverride || selectedProjectId;
+    if (!projectId) {
+      return;
+    }
+    setMemoryRefreshing(true);
+    try {
+      const [nextMemoryStatus, nextMemorySettings, nextMemoryRecords] = await Promise.all([
+        invokeAppRuntime<DesktopMemoryStatus>("memory_status", {
+          project_id: projectId,
+        }),
+        invokeAppRuntime<DesktopMemorySettings>("memory_settings", {
+          project_id: projectId,
+        }),
+        invokeAppRuntime<DesktopMemoryRecord[]>("memory_records", {
+          project_id: projectId,
+          limit: 12,
+        }),
+      ]);
+      setMemoryStatus(nextMemoryStatus);
+      setMemorySettings(nextMemorySettings);
+      setMemoryRecords(nextMemoryRecords);
+      setStatusMessage("Memory status refreshed.");
+    } catch (refreshError) {
+      setError(refreshError instanceof Error ? refreshError.message : "Failed to refresh project memory.");
+    } finally {
+      setMemoryRefreshing(false);
+    }
+  }
+
+  async function migrateMemory(dryRun = false) {
+    if (!selectedProjectId) {
+      return null;
+    }
+    setMemoryMigrating(true);
+    setError("");
+    try {
+      const result = await invokeAppRuntime<DesktopMemoryMigrationResult>("memory_migrate", {
+        project_id: selectedProjectId,
+        dry_run: dryRun,
+      });
+      setLastMemoryMigrationResult(result);
+      await refreshMemoryData(selectedProjectId);
+      setStatusMessage(
+        dryRun
+          ? `Memory migration preview found ${result.total_migrated} legacy entries.`
+          : result.success
+            ? `Imported ${result.total_migrated} legacy memory entries into the active backend.`
+            : "Memory migration finished with issues. Review the result card for details.",
+      );
+      return result;
+    } catch (migrateError) {
+      setError(migrateError instanceof Error ? migrateError.message : "Failed to migrate memory.");
+      return null;
+    } finally {
+      setMemoryMigrating(false);
+    }
+  }
+
+  async function saveMemorySettings(nextSettings: {
+    global_enabled: boolean;
+    project_enabled: boolean;
+    backend: string;
+    search_top_k: number;
+    search_threshold: number;
+  }) {
+    if (!selectedProjectId) {
+      return null;
+    }
+    try {
+      const updated = await invokeAppRuntime<DesktopMemorySettings>("memory_update_settings", {
+        project_id: selectedProjectId,
+        global_enabled: nextSettings.global_enabled,
+        project_enabled: nextSettings.project_enabled,
+        backend: nextSettings.backend,
+        search_top_k: nextSettings.search_top_k,
+        search_threshold: nextSettings.search_threshold,
+      });
+      setMemorySettings(updated);
+      await refreshMemoryData(selectedProjectId);
+      setStatusMessage("Memory settings saved.");
+      return updated;
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Failed to save memory settings.");
+      return null;
     }
   }
 
@@ -633,6 +746,8 @@ export function App() {
             preferredProvider={preferredProvider}
             followUpProjects={followUpProjects}
             providers={providers}
+            requiredSetupBlockers={requiredSetupBlockers}
+            focusProject={focusProject}
             setActiveView={setActiveView}
           />
         ) : null}
@@ -667,6 +782,23 @@ export function App() {
             installProviderDependency={installProviderDependency}
             installingProviderId={installingProviderId}
             lastInstallResult={lastInstallResult}
+          />
+        ) : null}
+
+        {activeView === "memory" ? (
+          <MemoryWorkspace
+            statusMessage={statusMessage}
+            selectedProject={selectedProject}
+            memoryStatus={memoryStatus}
+            memorySettings={memorySettings}
+            memoryRecords={memoryRecords}
+            refreshMemory={refreshMemoryData}
+            memoryRefreshing={memoryRefreshing}
+            migrateMemory={migrateMemory}
+            memoryMigrating={memoryMigrating}
+            lastMemoryMigrationResult={lastMemoryMigrationResult}
+            saveMemorySettings={saveMemorySettings}
+            setActiveView={setActiveView}
           />
         ) : null}
 

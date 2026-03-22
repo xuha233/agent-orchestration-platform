@@ -11,6 +11,12 @@ type BridgePayload = {
   run_id?: string;
   job_id?: string;
   check_id?: string;
+  dry_run?: boolean;
+  global_enabled?: boolean;
+  project_enabled?: boolean;
+  backend?: string;
+  search_top_k?: number;
+  search_threshold?: number;
   limit?: number;
   provider_id?: string;
   env_values?: Record<string, string>;
@@ -66,6 +72,66 @@ const mockBridgeData = {
     latest_run_phase: "",
     latest_run_completion: "",
     needs_follow_up: false,
+    attention_tags: [],
+    priority_rank: 0,
+    triage_summary: "",
+    triage_evidence: [],
+  },
+  memory_status: {
+    project_id: "mock-project",
+    project_path: "C:/mock/project",
+    enabled: true,
+    global_enabled: true,
+    project_enabled: true,
+    backend: "file",
+    mem0_available: false,
+    current_backend: "file",
+    total_memories: 2,
+    legacy_entry_count: 1,
+    migration_ready: false,
+    migration_issues: ["mem0 unavailable in mock bridge"],
+    memory_sources: { hypotheses: 0, learnings: 0, project_memory: 1 },
+    init_error: "",
+  },
+  memory_records: [
+    {
+      memory_id: "mem-001",
+      content: "Workflow completion for mock run",
+      memory_type: "workflow_completion",
+      phase: "complete",
+      run_id: "mock-sprint",
+      timestamp: "2026-03-22T00:00:00Z",
+    },
+  ],
+  memory_migrate: {
+    project_id: "mock-project",
+    dry_run: true,
+    success: true,
+    total_migrated: 1,
+    source_counts: { hypotheses: 0, learnings: 0, project_memory: 1 },
+    errors: [],
+  },
+  memory_settings: {
+    project_id: "mock-project",
+    global_enabled: true,
+    project_enabled: true,
+    effective_enabled: true,
+    backend: "file",
+    search_top_k: 5,
+    search_threshold: 0.7,
+    embedding_model: "text-embedding-3-small",
+    embedding_dims: 1536,
+  },
+  memory_update_settings: {
+    project_id: "mock-project",
+    global_enabled: true,
+    project_enabled: true,
+    effective_enabled: true,
+    backend: "mem0_local",
+    search_top_k: 8,
+    search_threshold: 0.6,
+    embedding_model: "text-embedding-3-small",
+    embedding_dims: 1536,
   },
   update_provider: {
     provider_id: "mock",
@@ -147,6 +213,12 @@ export async function invokeAppRuntime<T>(action: string, payload: BridgePayload
     runId: payload.run_id,
     jobId: payload.job_id,
     checkId: payload.check_id,
+    dryRun: payload.dry_run,
+    globalEnabled: payload.global_enabled,
+    projectEnabled: payload.project_enabled,
+    backend: payload.backend,
+    searchTopK: payload.search_top_k,
+    searchThreshold: payload.search_threshold,
     limit: payload.limit,
     providerId: payload.provider_id,
     envValues: payload.env_values,

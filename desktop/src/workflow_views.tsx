@@ -11,6 +11,13 @@ import type {
 } from "./types";
 import { ArtifactViewer, EmptyState, SummaryItem } from "./ui";
 
+function formatTags(tags: string[]) {
+  if (tags.length === 0) {
+    return "unlabeled";
+  }
+  return tags.join(" / ").split("_").join(" ");
+}
+
 type RunWorkspaceProps = {
   statusMessage: string;
   runGuidance: { title: string; body: string };
@@ -308,31 +315,36 @@ export function WorkflowWorkspace(props: WorkflowWorkspaceProps) {
     selectedArtifactTitle,
     setSelectedArtifactTitle,
   } = props;
-  const [runFilter, setRunFilter] = useState<"all" | "follow_up" | "stable">("all");
+  const [runFilter, setRunFilter] = useState<"all" | "follow_up" | "flaky" | "stable">("all");
 
   const selectedArtifact =
     runDetail?.artifacts.find((artifact) => artifact.title === selectedArtifactTitle) ?? null;
   const sortedRuns = useMemo(() => {
     return [...runs].sort((left, right) => {
-      const leftAttention = Number(left.has_gaps || left.has_guardrails || left.status !== "completed");
-      const rightAttention = Number(right.has_gaps || right.has_guardrails || right.status !== "completed");
-      if (leftAttention !== rightAttention) {
-        return rightAttention - leftAttention;
+      if (left.priority_rank !== right.priority_rank) {
+        return right.priority_rank - left.priority_rank;
       }
       return (right.updated_at || "").localeCompare(left.updated_at || "");
     });
   }, [runs]);
   const visibleRuns = useMemo(() => {
     if (runFilter === "follow_up") {
-      return sortedRuns.filter((run) => run.has_gaps || run.has_guardrails || run.status !== "completed");
+      return sortedRuns.filter((run) => run.attention_tags.includes("needs_follow_up"));
     }
     if (runFilter === "stable") {
-      return sortedRuns.filter((run) => !run.has_gaps && !run.has_guardrails && run.status === "completed");
+      return sortedRuns.filter((run) => run.attention_tags.includes("stable"));
+    }
+    if (runFilter === "flaky") {
+      return sortedRuns.filter((run) => run.attention_tags.includes("flaky"));
     }
     return sortedRuns;
   }, [runFilter, sortedRuns]);
   const followUpCount = useMemo(
-    () => sortedRuns.filter((run) => run.has_gaps || run.has_guardrails || run.status !== "completed").length,
+    () => sortedRuns.filter((run) => run.attention_tags.includes("needs_follow_up")).length,
+    [sortedRuns],
+  );
+  const flakyCount = useMemo(
+    () => sortedRuns.filter((run) => run.attention_tags.includes("flaky")).length,
     [sortedRuns],
   );
   const previousRun = useMemo(() => {
@@ -417,6 +429,7 @@ export function WorkflowWorkspace(props: WorkflowWorkspaceProps) {
         <div className="summary-row">
           <SummaryItem label="Runs" value={String(runs.length)} />
           <SummaryItem label="Follow-up" value={String(followUpCount)} />
+          <SummaryItem label="Flaky" value={String(flakyCount)} />
           <SummaryItem label="Filter" value={runFilter.replace("_", " ")} />
           <SummaryItem label="Focus artifact" value={recommendedArtifactTitle || "-"} />
         </div>
@@ -434,6 +447,13 @@ export function WorkflowWorkspace(props: WorkflowWorkspaceProps) {
             onClick={() => setRunFilter("follow_up")}
           >
             Follow-up
+          </button>
+          <button
+            type="button"
+            className={`action-button ${runFilter === "flaky" ? "action-button-accent" : ""}`}
+            onClick={() => setRunFilter("flaky")}
+          >
+            Flaky
           </button>
           <button
             type="button"
@@ -471,14 +491,20 @@ export function WorkflowWorkspace(props: WorkflowWorkspaceProps) {
           <div className="summary-row">
             <SummaryItem
               label="Flags"
-              value={`${previousRun.has_gaps || previousRun.has_guardrails ? "attention" : "stable"} -> ${
-                runDetail.summary.has_gaps || runDetail.summary.has_guardrails ? "attention" : "stable"
-              }`}
+              value={`${formatTags(previousRun.attention_tags)} -> ${formatTags(runDetail.summary.attention_tags)}`}
             />
             <SummaryItem label="Previous run" value={previousRun.run_id} />
             <SummaryItem label="Current run" value={runDetail.summary.run_id} />
             <SummaryItem label="Updated" value={runDetail.summary.updated_at.replace("T", " ").slice(0, 19)} />
           </div>
+          {runDetail.summary.triage_summary ? <p>{runDetail.summary.triage_summary}</p> : null}
+          {runDetail.summary.triage_evidence.length > 0 ? (
+            <div className="provider-command-list">
+              {runDetail.summary.triage_evidence.slice(0, 3).map((item) => (
+                <code key={item}>{item}</code>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
       {runInFlight ? (
@@ -524,17 +550,24 @@ export function WorkflowWorkspace(props: WorkflowWorkspaceProps) {
                     <h3>{run.run_id}</h3>
                     <p>{run.clarified_summary || run.original_input || "No summary available."}</p>
                   </div>
-                  <span className={`pill ${run.status === "completed" ? "pill-good" : "pill-warn"}`}>{run.status}</span>
+                  <span className={`pill ${run.attention_tags.includes("needs_follow_up") ? "pill-warn" : "pill-good"}`}>
+                    {run.attention_tags[0] || run.status}
+                  </span>
                 </div>
                 <div className="summary-row">
                   <SummaryItem label="Phase" value={run.current_phase || "-"} />
                   <SummaryItem label="Verify" value={run.verification_verdict || "-"} />
                   <SummaryItem label="Completion" value={run.completion_status || "-"} />
-                  <SummaryItem
-                    label="Flags"
-                    value={run.has_gaps || run.has_guardrails ? "attention" : "stable"}
-                  />
+                  <SummaryItem label="Labels" value={formatTags(run.attention_tags)} />
                 </div>
+                {run.triage_summary ? <p>{run.triage_summary}</p> : null}
+                {run.triage_evidence.length > 0 ? (
+                  <div className="provider-command-list">
+                    {run.triage_evidence.slice(0, 2).map((item) => (
+                      <code key={item}>{item}</code>
+                    ))}
+                  </div>
+                ) : null}
               </button>
             ))}
           </div>
@@ -556,11 +589,20 @@ export function WorkflowWorkspace(props: WorkflowWorkspaceProps) {
                   <SummaryItem label="Phase" value={runDetail.summary.current_phase || "-"} />
                   <SummaryItem label="Verify" value={runDetail.summary.verification_verdict || "-"} />
                   <SummaryItem label="Completion" value={runDetail.summary.completion_status || "-"} />
+                  <SummaryItem label="Labels" value={formatTags(runDetail.summary.attention_tags)} />
                   <SummaryItem
                     label="Artifacts"
                     value={String(runDetail.artifacts.filter((artifact) => artifact.exists).length)}
                   />
                 </div>
+                {runDetail.summary.triage_summary ? <p>{runDetail.summary.triage_summary}</p> : null}
+                {runDetail.summary.triage_evidence.length > 0 ? (
+                  <div className="provider-command-list">
+                    {runDetail.summary.triage_evidence.map((item) => (
+                      <code key={item}>{item}</code>
+                    ))}
+                  </div>
+                ) : null}
 
                 <div className="artifact-toolbar">
                   <label htmlFor="artifact-select">Focused artifact</label>

@@ -1,4 +1,4 @@
-"""AOP Dashboard - Web UI for Agent Orchestration Platform."""
+"""Legacy Streamlit dashboard kept for compatibility and debugging."""
 
 import os
 import sys
@@ -21,7 +21,7 @@ def _is_port_in_use(port: int) -> bool:
 
 
 def run_dashboard(port: int = 8501, host: str = "localhost", foreground: bool = False, open_browser: bool = True):
-    """Run the Streamlit dashboard.
+    """Run the legacy Streamlit dashboard.
     
     Args:
         port: Port to run on
@@ -34,7 +34,7 @@ def run_dashboard(port: int = 8501, host: str = "localhost", foreground: bool = 
     
     # Check if already running
     if _is_port_in_use(port):
-        print(f"Dashboard is already running at http://{host}:{port}")
+        print(f"Legacy dashboard is already running at http://{host}:{port}")
         if open_browser:
             webbrowser.open(f"http://{host}:{port}")
         return
@@ -54,7 +54,9 @@ def run_dashboard(port: int = 8501, host: str = "localhost", foreground: bool = 
                 "--server.headless", "true",
                 "--browser.gatherUsageStats", "false"
             ]
-            print(f"Starting Dashboard at http://{host}:{port}...")
+            print("Starting legacy Streamlit dashboard (fallback/debug mode)...")
+            print(f"Dashboard URL: http://{host}:{port}")
+            print("Recommended primary UI: AOP Desktop")
             print("Press Ctrl+C to stop")
             print("-" * 50)
             subprocess.run(cmd)
@@ -72,25 +74,27 @@ def run_dashboard(port: int = 8501, host: str = "localhost", foreground: bool = 
             subprocess.run(full_cmd, shell=True)
             
             # Wait for the server to start
-            print(f"Starting Dashboard at http://{host}:{port}...")
+            print("Starting legacy Streamlit dashboard (fallback/debug mode)...")
+            print(f"Dashboard URL: http://{host}:{port}")
+            print("Recommended primary UI: AOP Desktop")
             
             for i in range(10):
                 time.sleep(1)
                 if _is_port_in_use(port):
-                    print(f"Dashboard started at http://{host}:{port}")
+                    print(f"Legacy dashboard started at http://{host}:{port}")
                     print("A new window has opened. Close it to stop the server.")
                     if open_browser:
                         webbrowser.open(f"http://{host}:{port}")
                     return
             
-            print("Failed to start Dashboard after 10 seconds.")
+            print("Failed to start legacy dashboard after 10 seconds.")
             print("Please check if streamlit is installed: pip install streamlit")
             
         else:
             # On Unix-like systems, use nohup
             cmd = f'nohup "{sys.executable}" -m streamlit run "{app_path}" --server.port {port} --server.headless true --browser.gatherUsageStats false &'
             subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            print(f"Dashboard started at http://{host}:{port}")
+            print(f"Legacy dashboard started at http://{host}:{port}")
             if open_browser:
                 webbrowser.open(f"http://{host}:{port}")
         

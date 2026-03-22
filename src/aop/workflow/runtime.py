@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List
 
+from ..memory.workflow_recorder import WorkflowMemoryRecorder
 from .artifacts import WorkflowArtifactManager
 from .checks import CompletionGate, GuardrailReport, WorkflowLoopDetector, WorkflowPlanChecker
 from .types import (
@@ -30,6 +31,7 @@ class WorkflowRuntime:
         storage_path: Path,
         report_progress: Callable[[str, str], None] | None = None,
         execute_workflow_tasks: Callable[[List[WorkflowTask]], List[Dict[str, Any]]] | None = None,
+        memory_recorder: WorkflowMemoryRecorder | None = None,
     ):
         self.storage_path = Path(storage_path)
         self.report_progress = report_progress
@@ -39,6 +41,7 @@ class WorkflowRuntime:
         self.plan_checker = WorkflowPlanChecker()
         self.completion_gate = CompletionGate()
         self.loop_detector = WorkflowLoopDetector()
+        self.memory_recorder = memory_recorder or WorkflowMemoryRecorder(self.storage_path)
 
         self.workflow_run: WorkflowRun | None = None
         self.latest_verification_report: VerificationReport | None = None
@@ -99,11 +102,11 @@ class WorkflowRuntime:
             return
         self.update_phase(context, WorkflowPhase.PLAN)
         plan = self.build_workflow_plan(context)
+        plan_check = self.plan_checker.check(plan)
         self.workflow_artifacts.write_plan(context.sprint_id, plan)
-        self.workflow_artifacts.write_plan_check(
-            context.sprint_id,
-            self.plan_checker.check(plan),
-        )
+        self.workflow_artifacts.write_plan_check(context.sprint_id, plan_check)
+        if self.workflow_run is not None:
+            self.memory_recorder.record_plan(self.workflow_run, plan, plan_check)
 
     def write_verification(self, context: SprintContext) -> None:
         """Build and persist verification artifacts."""
@@ -119,6 +122,12 @@ class WorkflowRuntime:
         else:
             self.latest_gap_closure_plan = None
             self.workflow_artifacts.clear_gap_closure(context.sprint_id)
+        if self.workflow_run is not None:
+            self.memory_recorder.record_verification(
+                self.workflow_run,
+                report,
+                self.latest_gap_closure_plan,
+            )
 
     def write_learnings(self, context: SprintContext) -> None:
         """Persist learnings for the current run."""
@@ -130,6 +139,8 @@ class WorkflowRuntime:
             for learning in context.learnings
         ]
         self.workflow_artifacts.write_learnings(context.sprint_id, learnings)
+        if self.workflow_run is not None:
+            self.memory_recorder.record_learnings(self.workflow_run, learnings)
 
     def write_execution(
         self,
@@ -169,6 +180,12 @@ class WorkflowRuntime:
                 self.latest_guardrail_report,
             )
         self.workflow_artifacts.write_summary(context.sprint_id, summary)
+        if self.workflow_run is not None:
+            self.memory_recorder.record_completion(
+                self.workflow_run,
+                decision,
+                self.latest_guardrail_report,
+            )
 
     def run_gap_closure_cycle(
         self,
@@ -239,7 +256,7 @@ class WorkflowRuntime:
                 )
             )
 
-        return WorkflowPlan(
+        plan = WorkflowPlan(
             summary=getattr(requirement, "summary", ""),
             goals=list(getattr(requirement, "core_features", []) or [])
             or [getattr(requirement, "summary", "")],
@@ -248,6 +265,18 @@ class WorkflowRuntime:
             out_of_scope=[],
             risks=list(getattr(requirement, "risks", []) or []),
         )
+        if self.workflow_run is not None:
+            memory_hints = self.memory_recorder.recall_planning_context(
+                self.workflow_run,
+                plan,
+            )
+            if memory_hints:
+                plan.summary += f" Recalled {len(memory_hints)} related workflow memory hint(s)."
+                plan.risks.extend([f"Historical context: {hint}" for hint in memory_hints])
+                plan.verification_steps.extend(
+                    [f"Check prior memory while planning: {hint}" for hint in memory_hints]
+                )
+        return plan
 
     def build_verification_report(self, context: SprintContext) -> VerificationReport:
         """Build verification report from execution and validation state."""
@@ -298,7 +327,7 @@ class WorkflowRuntime:
         summary = "Verification passed with no recorded gaps." if not gaps else (
             f"Verification found {len(gaps)} gap(s) that still need attention."
         )
-        return VerificationReport(
+        report = VerificationReport(
             summary=summary,
             verdict=verdict,
             truths=truths,
@@ -306,6 +335,22 @@ class WorkflowRuntime:
             evidence=evidence,
             checks=checks,
         )
+        if self.workflow_run is not None:
+            memory_hints = self.memory_recorder.recall_verification_context(
+                self.workflow_run,
+                report,
+            )
+            if memory_hints:
+                report.summary += f" Recalled {len(memory_hints)} related workflow memory hint(s)."
+                report.evidence.extend([f"memory_hint: {hint}" for hint in memory_hints])
+                report.checks.append(
+                    VerificationCheck(
+                        name="memory:related_context",
+                        status="info",
+                        details=" | ".join(memory_hints),
+                    )
+                )
+        return report
 
     def build_gap_closure_plan(self, report: VerificationReport) -> GapClosurePlan:
         """Build bounded repair plan from verification gaps."""
@@ -338,7 +383,7 @@ class WorkflowRuntime:
                 )
             )
 
-        return GapClosurePlan(
+        plan = GapClosurePlan(
             summary=f"Generated {len(gap_items)} repair task(s) from verification gaps.",
             gaps=gap_items,
             repair_tasks=repair_tasks,
@@ -351,6 +396,14 @@ class WorkflowRuntime:
                 "Re-run verification after targeted repair tasks complete.",
             ],
         )
+        if self.workflow_run is not None:
+            memory_hints = self.memory_recorder.recall_follow_up_context(self.workflow_run, report)
+            if memory_hints:
+                plan.summary += f" Recalled {len(memory_hints)} related workflow memory hint(s)."
+                plan.next_verification_steps.extend(
+                    [f"Consider previous memory: {hint}" for hint in memory_hints]
+                )
+        return plan
 
     def _report(self, stage: str, message: str) -> None:
         if self.report_progress is not None:

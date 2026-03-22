@@ -14,6 +14,7 @@ from aop.agent.driver import AgentDriver
 from aop.agent.types import AgentDriverConfig
 from aop.core.adapter import get_adapter_registry
 from aop.core.compat import get_platform_detector
+from aop.memory import MemoryBackend, MemoryConfig, MemoryMigrator, MemoryService, resolve_memory_config
 from aop.primary import get_registry
 from aop.primary.workspace import SettingsManager, WorkspaceManager
 from aop.workflow import WorkflowRunDetail, WorkflowRunReader, WorkflowRunSummary
@@ -23,6 +24,10 @@ from .jobs import DesktopRunJobStore
 from .models import (
     DesktopAppHealth,
     DesktopInstallResult,
+    DesktopMemoryRecord,
+    DesktopMemoryMigrationResult,
+    DesktopMemorySettings,
+    DesktopMemoryStatus,
     DesktopProjectSummary,
     DesktopProviderStatus,
     DesktopRunJob,
@@ -119,6 +124,10 @@ class DesktopAppService:
                             or latest_run.has_guardrails
                         )
                     ),
+                    attention_tags=list(latest_run.attention_tags) if latest_run else [],
+                    priority_rank=latest_run.priority_rank if latest_run else 0,
+                    triage_summary=latest_run.triage_summary if latest_run else "",
+                    triage_evidence=list(latest_run.triage_evidence) if latest_run else [],
                 )
             )
         return projects
@@ -224,6 +233,172 @@ class DesktopAppService:
             "show_dev_console": settings.get("show_dev_console", False),
             "preferred_provider": runtime_config.get("preferred_provider", ""),
         }
+
+    def get_memory_status(self, project_id: str) -> DesktopMemoryStatus | None:
+        """Return memory status for one desktop project."""
+        workspace = self.workspace_manager.get_workspace(project_id)
+        if workspace is None:
+            return None
+
+        project_path = Path(workspace.project_path)
+        global_enabled = self.settings_manager.get_enable_mem0_memory()
+        config_path = project_path / ".aop" / "memory_config.yaml"
+        raw_config = MemoryConfig.from_yaml(config_path)
+        project_enabled = raw_config.enabled if config_path.exists() else True
+        config = self._load_memory_config(project_path)
+        service = MemoryService(config, workspace_path=project_path)
+        status = service.get_status()
+        total_memories = len(service.list_all(limit=200))
+        migrator = MemoryMigrator(service, workspace_path=project_path)
+        migration = migrator.analyze()
+        source_counts = {
+            "hypotheses": int(migration.get("stats", {}).get("hypotheses", 0) or 0),
+            "learnings": int(migration.get("stats", {}).get("learnings", 0) or 0),
+            "project_memory": int(migration.get("stats", {}).get("memories", 0) or 0),
+        }
+
+        return DesktopMemoryStatus(
+            project_id=project_id,
+            project_path=workspace.project_path,
+            enabled=bool(config.enabled),
+            global_enabled=global_enabled,
+            project_enabled=project_enabled,
+            backend=str(config.backend.value),
+            mem0_available=bool(status.get("mem0_available", False)),
+            current_backend=str(status.get("backend", "file")),
+            total_memories=total_memories,
+            legacy_entry_count=int(migration.get("stats", {}).get("total_entries", 0) or 0),
+            migration_ready=bool(migration.get("ready", False)),
+            migration_issues=[str(issue) for issue in migration.get("issues", [])],
+            memory_sources=source_counts,
+            init_error=str(status.get("init_error", "") or ""),
+        )
+
+    def get_memory_settings(self, project_id: str) -> DesktopMemorySettings | None:
+        """Return editable memory settings using the unified merge policy."""
+        workspace = self.workspace_manager.get_workspace(project_id)
+        if workspace is None:
+            return None
+
+        project_path = Path(workspace.project_path)
+        config_path = project_path / ".aop" / "memory_config.yaml"
+        raw_config = MemoryConfig.from_yaml(config_path)
+        if raw_config.project_id == "default":
+            raw_config.project_id = project_path.name or "default"
+        global_enabled = self.settings_manager.get_enable_mem0_memory()
+        project_enabled = raw_config.enabled if config_path.exists() else True
+        effective = self._load_memory_config(project_path)
+
+        return DesktopMemorySettings(
+            project_id=project_id,
+            global_enabled=global_enabled,
+            project_enabled=project_enabled,
+            effective_enabled=effective.enabled,
+            backend=raw_config.backend.value,
+            search_top_k=raw_config.search_top_k,
+            search_threshold=raw_config.search_threshold,
+            embedding_model=raw_config.embedding_model,
+            embedding_dims=raw_config.embedding_dims,
+        )
+
+    def update_memory_settings(
+        self,
+        project_id: str,
+        *,
+        global_enabled: bool,
+        project_enabled: bool,
+        backend: str | None = None,
+        search_top_k: int | None = None,
+        search_threshold: float | None = None,
+    ) -> DesktopMemorySettings:
+        """Persist unified memory settings for one project and global toggle."""
+        workspace = self.workspace_manager.get_workspace(project_id)
+        if workspace is None:
+            raise ValueError(f"workspace_not_found:{project_id}")
+
+        project_path = Path(workspace.project_path)
+        config_path = project_path / ".aop" / "memory_config.yaml"
+        config = MemoryConfig.from_yaml(config_path)
+        if config.project_id == "default":
+            config.project_id = project_path.name or "default"
+
+        if backend:
+            try:
+                config.backend = MemoryBackend(backend)
+            except ValueError as error:
+                raise ValueError(f"memory_backend_invalid:{backend}") from error
+        if search_top_k is not None:
+            config.search_top_k = int(search_top_k)
+        if search_threshold is not None:
+            config.search_threshold = float(search_threshold)
+        config.enabled = bool(project_enabled)
+        config.to_yaml(config_path)
+        self.settings_manager.set_enable_mem0_memory(bool(global_enabled))
+        settings = self.get_memory_settings(project_id)
+        if settings is None:
+            raise ValueError(f"workspace_not_found:{project_id}")
+        return settings
+
+    def list_memory_records(self, project_id: str, limit: int = 12) -> List[DesktopMemoryRecord]:
+        """Return recent memory records for one desktop project."""
+        workspace = self.workspace_manager.get_workspace(project_id)
+        if workspace is None:
+            return []
+
+        project_path = Path(workspace.project_path)
+        config = self._load_memory_config(project_path)
+        service = MemoryService(config, workspace_path=project_path)
+        memories = service.list_all(limit=max(limit, 1))
+
+        def sort_key(memory: Dict[str, object]) -> str:
+            metadata = memory.get("metadata", {})
+            if isinstance(metadata, dict):
+                return str(metadata.get("timestamp", ""))
+            return ""
+
+        records: List[DesktopMemoryRecord] = []
+        for memory in sorted(memories, key=sort_key, reverse=True)[:limit]:
+            metadata = memory.get("metadata", {})
+            if not isinstance(metadata, dict):
+                metadata = {}
+            records.append(
+                DesktopMemoryRecord(
+                    memory_id=str(memory.get("id", "")),
+                    content=str(memory.get("content", "")),
+                    memory_type=str(metadata.get("type", "general")),
+                    phase=str(metadata.get("phase", "")),
+                    run_id=str(metadata.get("run_id", "")),
+                    timestamp=str(metadata.get("timestamp", "")),
+                )
+            )
+        return records
+
+    def migrate_memory(self, project_id: str, dry_run: bool = False) -> DesktopMemoryMigrationResult:
+        """Migrate legacy project memory sources into the active memory backend."""
+        workspace = self.workspace_manager.get_workspace(project_id)
+        if workspace is None:
+            raise ValueError(f"workspace_not_found:{project_id}")
+
+        project_path = Path(workspace.project_path)
+        config = self._load_memory_config(project_path)
+        service = MemoryService(config, workspace_path=project_path)
+        migrator = MemoryMigrator(service, workspace_path=project_path)
+        result = migrator.migrate_all(dry_run=dry_run)
+
+        source_counts = {
+            "hypotheses": int((result.get("hypotheses") or {}).get("count", 0)),
+            "learnings": int((result.get("learnings") or {}).get("count", 0)),
+            "project_memory": int((result.get("project_memory") or {}).get("count", 0)),
+        }
+
+        return DesktopMemoryMigrationResult(
+            project_id=project_id,
+            dry_run=bool(result.get("dry_run", False)),
+            success=bool(result.get("success", False)),
+            total_migrated=int(result.get("total", 0) or 0),
+            source_counts=source_counts,
+            errors=[str(error) for error in result.get("errors", [])],
+        )
 
     def get_setup_status(self) -> List[DesktopSetupCheck]:
         """Return system dependency readiness for the desktop setup workspace."""
@@ -576,3 +751,9 @@ class DesktopAppService:
             "qwen": "api",
         }
         return mapping.get(preferred_provider, "auto")
+
+    def _load_memory_config(self, project_path: Path) -> MemoryConfig:
+        return resolve_memory_config(
+            project_path,
+            global_enabled=self.settings_manager.get_enable_mem0_memory(),
+        )

@@ -338,7 +338,7 @@ def _load_mem0_memory(workspace_path: Optional[Path] = None) -> str:
     
     try:
         # 延迟导入，避免 mem0 未安装时出错
-        from aop.memory import MemoryService, MemoryConfig
+        from aop.memory import MemoryService, resolve_memory_config
         from aop.primary.workspace import SettingsManager
         
         sm = SettingsManager()
@@ -348,11 +348,10 @@ def _load_mem0_memory(workspace_path: Optional[Path] = None) -> str:
             return ""
         
         # 加载配置
-        config_path = workspace_path / ".aop" / "memory_config.yaml"
-        if config_path.exists():
-            config = MemoryConfig.from_yaml(config_path)
-        else:
-            config = MemoryConfig()
+        config = resolve_memory_config(
+            workspace_path,
+            global_enabled=sm.get_enable_mem0_memory(),
+        )
         
         # 创建服务
         service = MemoryService(config, workspace_path=workspace_path)

@@ -18,7 +18,13 @@
 """
 
 from .loader import load_combined_memory, build_agent_system_prompt, get_global_aop_dir
-from .config import MemoryBackend, MemoryConfig, create_default_config, DEFAULT_CONFIG_TEMPLATE
+from .config import (
+    MemoryBackend,
+    MemoryConfig,
+    create_default_config,
+    DEFAULT_CONFIG_TEMPLATE,
+    resolve_memory_config,
+)
 from .service import MemoryService
 from .migration import MemoryMigrator
 
@@ -35,4 +41,5 @@ __all__ = [
     'MemoryMigrator',
     'create_default_config',
     'DEFAULT_CONFIG_TEMPLATE',
+    'resolve_memory_config',
 ]

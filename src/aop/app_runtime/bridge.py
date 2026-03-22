@@ -43,6 +43,59 @@ class DesktopAppBridge:
             return {"ok": True, "data": project.to_dict()}
         if action == "settings":
             return {"ok": True, "data": self.service.get_settings()}
+        if action == "memory_status":
+            project_id = str(data.get("project_id", "")).strip()
+            status = self.service.get_memory_status(project_id=project_id)
+            if status is None:
+                return {"ok": False, "error": "project_not_found"}
+            return {"ok": True, "data": status.to_dict()}
+        if action == "memory_settings":
+            project_id = str(data.get("project_id", "")).strip()
+            settings = self.service.get_memory_settings(project_id=project_id)
+            if settings is None:
+                return {"ok": False, "error": "project_not_found"}
+            return {"ok": True, "data": settings.to_dict()}
+        if action == "memory_update_settings":
+            project_id = str(data.get("project_id", "")).strip()
+            if not project_id:
+                return {"ok": False, "error": "project_id_required"}
+            try:
+                settings = self.service.update_memory_settings(
+                    project_id=project_id,
+                    global_enabled=bool(data.get("global_enabled", False)),
+                    project_enabled=bool(data.get("project_enabled", False)),
+                    backend=str(data.get("backend", "") or "").strip() or None,
+                    search_top_k=(
+                        int(data["search_top_k"]) if data.get("search_top_k") is not None else None
+                    ),
+                    search_threshold=(
+                        float(data["search_threshold"])
+                        if data.get("search_threshold") is not None
+                        else None
+                    ),
+                )
+            except ValueError as error:
+                return {"ok": False, "error": str(error)}
+            return {"ok": True, "data": settings.to_dict()}
+        if action == "memory_records":
+            project_id = str(data.get("project_id", "")).strip()
+            records = self.service.list_memory_records(
+                project_id=project_id,
+                limit=int(data.get("limit", 12)),
+            )
+            return {"ok": True, "data": [record.to_dict() for record in records]}
+        if action == "memory_migrate":
+            project_id = str(data.get("project_id", "")).strip()
+            if not project_id:
+                return {"ok": False, "error": "project_id_required"}
+            try:
+                result = self.service.migrate_memory(
+                    project_id=project_id,
+                    dry_run=bool(data.get("dry_run", False)),
+                )
+            except ValueError as error:
+                return {"ok": False, "error": str(error)}
+            return {"ok": True, "data": result.to_dict()}
         if action == "setup_status":
             return {
                 "ok": True,

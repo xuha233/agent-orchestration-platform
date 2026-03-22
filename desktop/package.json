@@ -7,7 +7,9 @@
     "dev": "npm exec -- vite",
     "build": "npm exec -- tsc && npm exec -- vite build",
     "preview": "npm exec -- vite preview",
-    "tauri": "npm exec -- tauri"
+    "tauri": "npm exec -- tauri",
+    "build:windows": "powershell -ExecutionPolicy Bypass -File ./scripts/build-windows-release.ps1",
+    "verify:windows": "powershell -ExecutionPolicy Bypass -File ./scripts/verify-windows-release.ps1"
   },
   "dependencies": {
     "react": "^18.3.1",

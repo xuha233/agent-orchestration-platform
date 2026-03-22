@@ -2,6 +2,7 @@
 
 from aop.workflow import (
     CompletionDecision,
+    GuardrailReport,
     PlanCheckReport,
     PlanCheckIssue,
     VerificationReport,
@@ -109,3 +110,74 @@ def test_workflow_run_reader_loads_run_detail_with_artifacts(tmp_path):
     assert artifact_titles["COMPLETION"].metadata["reason_details"] == []
     assert artifact_titles["PLAN CHECK"].metadata["critical_issues"] == 1
     assert artifact_titles["PLAN CHECK"].metadata["important_issues"] == 1
+
+
+def test_workflow_run_reader_assigns_triage_labels(tmp_path):
+    manager = WorkflowArtifactManager(tmp_path)
+
+    for index in range(3):
+        run = WorkflowRun(
+            run_id=f"run-clean-{index}",
+            original_input="Harden desktop flow",
+            current_phase=WorkflowPhase.COMPLETE,
+            status="completed",
+        )
+        manager.initialize_run(run)
+        manager.write_verification(
+            run.run_id,
+            VerificationReport(summary="Looks good.", verdict="pass"),
+        )
+        manager.write_completion(
+            run.run_id,
+            CompletionDecision(
+                passed=True,
+                status="completed",
+                summary="Completed cleanly.",
+                reasons=[],
+            ),
+        )
+
+    flaky = WorkflowRun(
+        run_id="run-flaky",
+        original_input="Retry flaky path",
+        current_phase=WorkflowPhase.VERIFY,
+        status="needs_follow_up",
+    )
+    manager.initialize_run(flaky)
+    manager.write_verification(
+        flaky.run_id,
+        VerificationReport(summary="Guardrail and gaps found.", verdict="partial"),
+    )
+    manager.write_completion(
+        flaky.run_id,
+        CompletionDecision(
+            passed=False,
+            status="needs_follow_up",
+            summary="Needs follow-up.",
+            reasons=["Verification verdict is partial, not pass."],
+        ),
+    )
+    manager.write_guardrails(
+        flaky.run_id,
+        GuardrailReport(
+            should_stop=True,
+            summary="Repeated verification failure.",
+            categories=["repeated_failures"],
+            reasons=["Repeated verification failure"],
+        ),
+    )
+
+    reader = WorkflowRunReader(tmp_path)
+    runs = reader.list_runs()
+
+    assert runs[0].run_id == "run-flaky"
+    assert runs[0].attention_tags == ["needs_follow_up", "flaky"]
+    assert runs[0].priority_rank == 100
+    assert "guardrails" in runs[0].triage_summary.lower()
+    assert any("guardrail" in item for item in runs[0].triage_evidence)
+    assert any("verification verdict" in item for item in runs[0].triage_evidence)
+
+    stable_run = next(run for run in runs if run.run_id == "run-clean-2")
+    assert stable_run.attention_tags == ["stable"]
+    assert stable_run.priority_rank == 20
+    assert "stable" in stable_run.triage_summary.lower()

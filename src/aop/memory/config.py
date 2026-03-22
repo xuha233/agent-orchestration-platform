@@ -163,3 +163,27 @@ def create_default_config(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write(DEFAULT_CONFIG_TEMPLATE)
+
+
+def resolve_memory_config(
+    workspace_path: Path,
+    *,
+    global_enabled: bool,
+) -> MemoryConfig:
+    """Return the effective project memory config using one shared merge policy.
+
+    Policy:
+    - global toggle must be enabled, otherwise memory is off
+    - if a project config exists, its `enabled` flag controls project-level opt-in
+    - if no project config exists, enabling the global toggle enables memory with defaults
+    """
+    config_path = workspace_path / ".aop" / "memory_config.yaml"
+    config_exists = config_path.exists()
+    config = MemoryConfig.from_yaml(config_path)
+
+    if config.project_id == "default":
+        config.project_id = workspace_path.name or "default"
+
+    project_enabled = config.enabled if config_exists else True
+    config.enabled = bool(global_enabled and project_enabled)
+    return config

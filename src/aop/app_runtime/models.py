@@ -35,6 +35,10 @@ class DesktopProjectSummary:
     latest_run_phase: str = ""
     latest_run_completion: str = ""
     needs_follow_up: bool = False
+    attention_tags: List[str] = field(default_factory=list)
+    priority_rank: int = 0
+    triage_summary: str = ""
+    triage_evidence: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -139,6 +143,77 @@ class DesktopRunJob:
     state: str = ""
     next_steps: List[str] = field(default_factory=list)
     error: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class DesktopMemoryStatus:
+    """Memory status exposed to the desktop shell."""
+
+    project_id: str
+    project_path: str
+    enabled: bool
+    global_enabled: bool
+    project_enabled: bool
+    backend: str
+    mem0_available: bool
+    current_backend: str
+    total_memories: int
+    legacy_entry_count: int = 0
+    migration_ready: bool = False
+    migration_issues: List[str] = field(default_factory=list)
+    memory_sources: Dict[str, int] = field(default_factory=dict)
+    init_error: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class DesktopMemoryRecord:
+    """Recent memory record exposed to the desktop shell."""
+
+    memory_id: str
+    content: str
+    memory_type: str
+    phase: str
+    run_id: str
+    timestamp: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class DesktopMemoryMigrationResult:
+    """Result returned after migrating legacy project memory into mem0."""
+
+    project_id: str
+    dry_run: bool
+    success: bool
+    total_migrated: int
+    source_counts: Dict[str, int] = field(default_factory=dict)
+    errors: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class DesktopMemorySettings:
+    """Editable memory settings exposed to the desktop shell."""
+
+    project_id: str
+    global_enabled: bool
+    project_enabled: bool
+    effective_enabled: bool
+    backend: str
+    search_top_k: int
+    search_threshold: float
+    embedding_model: str
+    embedding_dims: int
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

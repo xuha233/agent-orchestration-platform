@@ -175,7 +175,7 @@ H-003: 直接消息功能增加信任和转化率
 
 | 命令 | 用途 |
 |-----|------|
-| `aop dashboard` | 启动 Web 界面 |
+| `aop dashboard` | 启动旧版 Streamlit 界面（兼容/调试用途） |
 | `aop doctor` | 检查环境 |
 | `aop project assess` | 分析现有项目 |
 

@@ -40,6 +40,10 @@ class WorkflowRunSummary:
     completion_status: str = ""
     has_gaps: bool = False
     has_guardrails: bool = False
+    attention_tags: List[str] = field(default_factory=list)
+    priority_rank: int = 0
+    triage_summary: str = ""
+    triage_evidence: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -76,17 +80,17 @@ class WorkflowRunReader:
 
         runs: List[WorkflowRunSummary] = []
         run_dirs = [path for path in self.runs_dir.iterdir() if path.is_dir()]
-        run_dirs.sort(key=self._sort_key, reverse=True)
+        run_dirs.sort(key=lambda path: (self._sort_key(path), path.name), reverse=True)
 
         for run_dir in run_dirs[:limit]:
             summary = self.load_run(run_dir.name)
             if summary is not None:
                 runs.append(summary)
-        return runs
+        return self._annotate_runs(runs)
 
     def get_latest_run(self) -> Optional[WorkflowRunSummary]:
         """Return the latest workflow run if present."""
-        runs = self.list_runs(limit=1)
+        runs = self.list_runs()
         return runs[0] if runs else None
 
     def load_run(self, run_id: str) -> Optional[WorkflowRunSummary]:
@@ -98,6 +102,9 @@ class WorkflowRunReader:
 
         verification_payload = self._read_json(run_dir / "verification.json") or {}
         completion_payload = self._read_json(run_dir / "completion.json") or {}
+        plan_check_payload = self._read_json(run_dir / "plan_check.json") or {}
+        guardrail_payload = self._read_json(run_dir / "guardrails.json") or {}
+        gap_payload = self._read_json(run_dir / "gap_closure.json") or {}
 
         return WorkflowRunSummary(
             run_id=run_payload.get("run_id", run_id),
@@ -113,11 +120,20 @@ class WorkflowRunReader:
             completion_status=completion_payload.get("status", ""),
             has_gaps=(run_dir / "GAPS.md").exists(),
             has_guardrails=(run_dir / "GUARDRAILS.md").exists(),
+            triage_evidence=self._triage_evidence(
+                verification_payload=verification_payload,
+                completion_payload=completion_payload,
+                plan_check_payload=plan_check_payload,
+                guardrail_payload=guardrail_payload,
+                gap_payload=gap_payload,
+            ),
         )
 
     def load_run_detail(self, run_id: str) -> Optional[WorkflowRunDetail]:
         """Load a run summary together with its artifact documents."""
-        summary = self.load_run(run_id)
+        summary = next((run for run in self.list_runs() if run.run_id == run_id), None)
+        if summary is None:
+            summary = self.load_run(run_id)
         if summary is None:
             return None
         return WorkflowRunDetail(
@@ -221,6 +237,142 @@ class WorkflowRunReader:
                 "summary": completion_payload.get("summary", ""),
             },
         }
+
+    def _annotate_runs(self, runs: List[WorkflowRunSummary]) -> List[WorkflowRunSummary]:
+        """Apply desktop triage labels to workflow summaries."""
+        clean_streak = 0
+        annotated: List[WorkflowRunSummary] = []
+        prior_unresolved = False
+
+        for run in reversed(runs):
+            tags, triage_summary = self._classify_run(run, clean_streak, prior_unresolved)
+            if "needs_follow_up" in tags or "flaky" in tags:
+                clean_streak = 0
+            elif "stable" in tags or "fresh" in tags:
+                clean_streak += 1
+            else:
+                clean_streak = 0
+
+            run.attention_tags = tags
+            run.priority_rank = self._priority_for_tags(tags)
+            run.triage_summary = triage_summary
+            annotated.append(run)
+            prior_unresolved = "needs_follow_up" in tags
+
+        annotated.reverse()
+        return annotated
+
+    def _classify_run(
+        self,
+        run: WorkflowRunSummary,
+        prior_clean_streak: int,
+        prior_unresolved: bool,
+    ) -> tuple[List[str], str]:
+        """Classify one run into triage tags."""
+        completion = (run.completion_status or "").lower()
+        verdict = (run.verification_verdict or "").lower()
+        status = (run.status or "").lower()
+
+        unresolved = (
+            run.has_gaps
+            or run.has_guardrails
+            or status not in {"completed", "success"}
+            or completion in {"needs_follow_up", "partial", "failed"}
+            or verdict in {"partial", "fail", "failed"}
+        )
+        clean = (
+            status == "completed"
+            and completion == "completed"
+            and not run.has_gaps
+            and not run.has_guardrails
+            and verdict in {"", "pass", "passed"}
+        )
+
+        if unresolved:
+            tags = ["needs_follow_up"]
+            reasons: List[str] = []
+            if run.has_guardrails:
+                reasons.append("guardrails were triggered")
+            if run.has_gaps:
+                reasons.append("verification still has gaps")
+            if verdict in {"partial", "fail", "failed"}:
+                reasons.append("verification did not pass")
+            if status not in {"completed", "success"}:
+                reasons.append("run did not complete cleanly")
+            if run.has_guardrails or verdict in {"partial", "fail", "failed"} or prior_clean_streak > 0 or prior_unresolved:
+                tags.append("flaky")
+            if "flaky" in tags and prior_unresolved:
+                return tags, "Repeated unresolved runs suggest this workflow path is flaky."
+            if reasons:
+                return tags, f"Needs follow-up because {'; '.join(reasons[:2])}."
+            return tags, "Needs follow-up because the run still has unresolved workflow pressure."
+
+        if clean:
+            if prior_clean_streak >= 2:
+                return ["stable"], "Three clean runs in a row suggest this workflow is stable."
+            return ["fresh"], "This run is clean, but it still needs more repetition before it becomes stable."
+
+        return ["flaky"], "Run state changed in a non-clean way and should be watched for instability."
+
+    def _priority_for_tags(self, tags: List[str]) -> int:
+        if "needs_follow_up" in tags:
+            return 100
+        if "flaky" in tags:
+            return 80
+        if "fresh" in tags:
+            return 50
+        if "stable" in tags:
+            return 20
+        return 0
+
+    def _triage_evidence(
+        self,
+        *,
+        verification_payload: Dict[str, Any],
+        completion_payload: Dict[str, Any],
+        plan_check_payload: Dict[str, Any],
+        guardrail_payload: Dict[str, Any],
+        gap_payload: Dict[str, Any],
+    ) -> List[str]:
+        evidence: List[str] = []
+
+        verdict = str(verification_payload.get("verdict", "") or "")
+        if verdict:
+            evidence.append(f"verification verdict: {verdict}")
+
+        for gap in list(verification_payload.get("gaps", []) or [])[:2]:
+            if gap:
+                evidence.append(f"gap: {gap}")
+
+        completion_status = str(completion_payload.get("status", "") or "")
+        if completion_status:
+            evidence.append(f"completion: {completion_status}")
+
+        for reason in list(completion_payload.get("reasons", []) or [])[:2]:
+            if reason:
+                evidence.append(f"completion reason: {reason}")
+
+        for reason in list(guardrail_payload.get("reasons", []) or [])[:2]:
+            if reason:
+                evidence.append(f"guardrail: {reason}")
+
+        for category in list(guardrail_payload.get("categories", []) or [])[:2]:
+            if category:
+                evidence.append(f"guardrail category: {category}")
+
+        issues = list(plan_check_payload.get("issues", []) or [])
+        for issue in issues[:2]:
+            message = issue.get("message", "") if isinstance(issue, dict) else ""
+            severity = issue.get("severity", "") if isinstance(issue, dict) else ""
+            if message:
+                prefix = f"plan {severity}" if severity else "plan"
+                evidence.append(f"{prefix}: {message}")
+
+        for step in list(gap_payload.get("next_verification_steps", []) or [])[:2]:
+            if step:
+                evidence.append(f"next step: {step}")
+
+        return evidence[:6]
 
     def _sort_key(self, run_dir: Path) -> datetime:
         payload = self._read_json(run_dir / "run.json") or {}

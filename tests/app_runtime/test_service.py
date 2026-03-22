@@ -6,6 +6,7 @@ from pathlib import Path
 
 from aop.app_runtime import DesktopAppBridge, DesktopAppService
 from aop.agent.types import SprintState
+from aop.memory import MemoryConfig
 from aop.workflow import CompletionDecision, VerificationReport, WorkflowArtifactManager, WorkflowPhase, WorkflowRun
 from aop.primary.workspace import SettingsManager, WorkspaceManager
 
@@ -55,6 +56,50 @@ def test_desktop_app_service_lists_projects_with_latest_run(tmp_path):
     assert projects[0].latest_run_id == "run-001"
     assert projects[0].latest_run_phase == "verify"
     assert projects[0].needs_follow_up is True
+    assert "needs_follow_up" in projects[0].attention_tags
+    assert projects[0].priority_rank == 100
+    assert projects[0].triage_summary
+    assert projects[0].triage_evidence
+
+
+def test_desktop_app_service_uses_stable_label_after_clean_streak(tmp_path):
+    project_path = tmp_path / "project-stable"
+    project_path.mkdir()
+
+    artifact_manager = WorkflowArtifactManager(project_path)
+    for index in range(3):
+        run = WorkflowRun(
+            run_id=f"run-10{index}",
+            original_input="Harden desktop flow",
+            current_phase=WorkflowPhase.COMPLETE,
+            status="completed",
+        )
+        artifact_manager.initialize_run(run)
+        artifact_manager.write_verification(
+            run.run_id,
+            VerificationReport(summary="Verification passed.", verdict="pass"),
+        )
+        artifact_manager.write_completion(
+            run.run_id,
+            CompletionDecision(
+                passed=True,
+                status="completed",
+                summary="Workflow completed cleanly.",
+                reasons=[],
+            ),
+        )
+
+    _create_workspace(tmp_path / "aop-home", "Stable Pilot", project_path)
+    service = DesktopAppService(
+        workspace_manager=WorkspaceManager(tmp_path / "aop-home"),
+        settings_manager=SettingsManager(tmp_path / "aop-home"),
+    )
+
+    project = service.list_projects()[0]
+
+    assert project.attention_tags == ["stable"]
+    assert project.priority_rank == 20
+    assert "stable" in project.triage_summary.lower()
 
 
 def test_desktop_app_service_creates_project_workspace(tmp_path):
@@ -147,6 +192,206 @@ def test_desktop_app_service_returns_minimal_settings(tmp_path):
 
     assert payload["primary_agent"] == "codex"
     assert payload["enable_mem0_memory"] is True
+
+
+def test_desktop_app_service_returns_memory_status_and_records(tmp_path):
+    workspace_home = tmp_path / "aop-home"
+    project_path = tmp_path / "memory-project"
+    project_path.mkdir()
+    (project_path / ".aop").mkdir()
+
+    config = MemoryConfig(enabled=True)
+    config.to_yaml(project_path / ".aop" / "memory_config.yaml")
+
+    settings = SettingsManager(workspace_home)
+    settings.set_enable_mem0_memory(True)
+
+    workspace_id = _create_workspace(workspace_home, "Memory Pilot", project_path)
+    service = DesktopAppService(
+        workspace_manager=WorkspaceManager(workspace_home),
+        settings_manager=settings,
+    )
+
+    from aop.memory.workflow_recorder import WorkflowMemoryRecorder
+
+    recorder = WorkflowMemoryRecorder(project_path, settings_manager=settings)
+    run = WorkflowRun(run_id="run-mem", original_input="Ship memory", current_phase=WorkflowPhase.COMPLETE)
+    recorder.record_completion(
+        run,
+        CompletionDecision(
+            passed=True,
+            status="completed",
+            summary="Memory completion written.",
+            reasons=[],
+        ),
+    )
+
+    status = service.get_memory_status(workspace_id)
+    records = service.list_memory_records(workspace_id, limit=5)
+
+    assert status is not None
+    assert status.project_id == workspace_id
+    assert status.enabled is True
+    assert status.global_enabled is True
+    assert status.project_enabled is True
+    assert status.total_memories >= 1
+    assert status.legacy_entry_count == 0
+    assert records
+    assert records[0].memory_type == "workflow_completion"
+
+
+def test_desktop_app_bridge_returns_memory_payloads(tmp_path):
+    workspace_home = tmp_path / "aop-home"
+    project_path = tmp_path / "memory-bridge-project"
+    project_path.mkdir()
+    (project_path / ".aop").mkdir()
+
+    config = MemoryConfig(enabled=True)
+    config.to_yaml(project_path / ".aop" / "memory_config.yaml")
+
+    settings = SettingsManager(workspace_home)
+    settings.set_enable_mem0_memory(True)
+
+    workspace_id = _create_workspace(workspace_home, "Memory Bridge Pilot", project_path)
+    service = DesktopAppService(
+        workspace_manager=WorkspaceManager(workspace_home),
+        settings_manager=settings,
+    )
+    bridge = DesktopAppBridge(service)
+
+    memory_status = bridge.dispatch("memory_status", {"project_id": workspace_id})
+    memory_records = bridge.dispatch("memory_records", {"project_id": workspace_id, "limit": 5})
+
+    assert memory_status["ok"] is True
+    assert memory_status["data"]["project_id"] == workspace_id
+    assert memory_records["ok"] is True
+    assert isinstance(memory_records["data"], list)
+
+
+def test_desktop_app_service_returns_and_updates_memory_settings(tmp_path):
+    workspace_home = tmp_path / "aop-home"
+    project_path = tmp_path / "memory-settings-project"
+    project_path.mkdir()
+    aop_dir = project_path / ".aop"
+    aop_dir.mkdir()
+
+    config = MemoryConfig(enabled=False)
+    config.to_yaml(aop_dir / "memory_config.yaml")
+
+    settings = SettingsManager(workspace_home)
+    settings.set_enable_mem0_memory(False)
+    workspace_id = _create_workspace(workspace_home, "Memory Settings Pilot", project_path)
+    service = DesktopAppService(
+        workspace_manager=WorkspaceManager(workspace_home),
+        settings_manager=settings,
+    )
+
+    before = service.get_memory_settings(workspace_id)
+    assert before is not None
+    assert before.global_enabled is False
+    assert before.project_enabled is False
+    assert before.effective_enabled is False
+
+    after = service.update_memory_settings(
+        workspace_id,
+        global_enabled=True,
+        project_enabled=True,
+        backend="mem0_local",
+        search_top_k=8,
+        search_threshold=0.55,
+    )
+
+    assert after.global_enabled is True
+    assert after.project_enabled is True
+    assert after.effective_enabled is True
+    assert after.backend == "mem0_local"
+    assert after.search_top_k == 8
+    assert after.search_threshold == 0.55
+
+
+def test_desktop_app_bridge_updates_memory_settings_payload(tmp_path):
+    workspace_home = tmp_path / "aop-home"
+    project_path = tmp_path / "memory-settings-bridge-project"
+    project_path.mkdir()
+    (project_path / ".aop").mkdir()
+
+    workspace_id = _create_workspace(workspace_home, "Memory Settings Bridge Pilot", project_path)
+    service = DesktopAppService(
+        workspace_manager=WorkspaceManager(workspace_home),
+        settings_manager=SettingsManager(workspace_home),
+    )
+    bridge = DesktopAppBridge(service)
+
+    response = bridge.dispatch(
+        "memory_update_settings",
+        {
+            "project_id": workspace_id,
+            "global_enabled": True,
+            "project_enabled": True,
+            "backend": "mem0_local",
+            "search_top_k": 7,
+            "search_threshold": 0.6,
+        },
+    )
+
+    assert response["ok"] is True
+    assert response["data"]["effective_enabled"] is True
+    assert response["data"]["backend"] == "mem0_local"
+    assert response["data"]["search_top_k"] == 7
+
+
+def test_desktop_app_service_reports_memory_migration_readiness(tmp_path):
+    workspace_home = tmp_path / "aop-home"
+    project_path = tmp_path / "memory-migration-project"
+    project_path.mkdir()
+    aop_dir = project_path / ".aop"
+    aop_dir.mkdir()
+    (aop_dir / "PROJECT_MEMORY.md").write_text("# Context\n\nRemember this project.\n", encoding="utf-8")
+
+    config = MemoryConfig(enabled=True)
+    config.to_yaml(aop_dir / "memory_config.yaml")
+
+    settings = SettingsManager(workspace_home)
+    settings.set_enable_mem0_memory(True)
+    workspace_id = _create_workspace(workspace_home, "Memory Migration Pilot", project_path)
+    service = DesktopAppService(
+        workspace_manager=WorkspaceManager(workspace_home),
+        settings_manager=settings,
+    )
+
+    status = service.get_memory_status(workspace_id)
+
+    assert status is not None
+    assert status.legacy_entry_count >= 1
+    assert "project_memory" in status.memory_sources
+
+
+def test_desktop_app_bridge_migrates_memory_payload(tmp_path):
+    workspace_home = tmp_path / "aop-home"
+    project_path = tmp_path / "memory-migrate-bridge-project"
+    project_path.mkdir()
+    aop_dir = project_path / ".aop"
+    aop_dir.mkdir()
+    (aop_dir / "PROJECT_MEMORY.md").write_text("# Context\n\nBridge import.\n", encoding="utf-8")
+
+    config = MemoryConfig(enabled=True)
+    config.to_yaml(aop_dir / "memory_config.yaml")
+
+    settings = SettingsManager(workspace_home)
+    settings.set_enable_mem0_memory(True)
+    workspace_id = _create_workspace(workspace_home, "Memory Migrate Bridge Pilot", project_path)
+    service = DesktopAppService(
+        workspace_manager=WorkspaceManager(workspace_home),
+        settings_manager=settings,
+    )
+    bridge = DesktopAppBridge(service)
+
+    response = bridge.dispatch("memory_migrate", {"project_id": workspace_id, "dry_run": True})
+
+    assert response["ok"] is True
+    assert response["data"]["project_id"] == workspace_id
+    assert response["data"]["dry_run"] is True
+    assert response["data"]["total_migrated"] >= 1
 
 
 def test_desktop_app_service_reports_setup_status(tmp_path, monkeypatch):

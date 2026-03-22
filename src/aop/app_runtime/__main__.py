@@ -19,6 +19,12 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=12, help="Max number of runs")
     parser.add_argument("--provider-id", default="", help="Provider identifier")
     parser.add_argument("--preferred", action="store_true", help="Mark provider as preferred")
+    parser.add_argument("--dry-run", action="store_true", help="Preview mutation actions without writing")
+    parser.add_argument("--global-enabled", action="store_true", help="Enable global memory toggle")
+    parser.add_argument("--project-enabled", action="store_true", help="Enable project memory config")
+    parser.add_argument("--backend", default="", help="Memory backend identifier")
+    parser.add_argument("--search-top-k", type=int, default=None, help="Memory search top_k")
+    parser.add_argument("--search-threshold", type=float, default=None, help="Memory search threshold")
     parser.add_argument("--prompt", default="", help="Prompt for run actions")
     parser.add_argument("--project-name", default="", help="Project display name")
     parser.add_argument("--project-path", default="", help="Project path")
@@ -50,6 +56,12 @@ def main() -> None:
         "limit": args.limit,
         "provider_id": args.provider_id,
         "preferred": args.preferred,
+        "dry_run": args.dry_run,
+        "global_enabled": args.global_enabled,
+        "project_enabled": args.project_enabled,
+        "backend": args.backend,
+        "search_top_k": args.search_top_k,
+        "search_threshold": args.search_threshold,
         "prompt": args.prompt,
         "project_name": args.project_name,
         "project_path": args.project_path,

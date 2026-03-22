@@ -1,9 +1,13 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 
 import type {
   DesktopAppHealth,
   DesktopInstallResult,
+  DesktopMemoryMigrationResult,
+  DesktopMemoryRecord,
+  DesktopMemorySettings,
+  DesktopMemoryStatus,
   DesktopProjectSummary,
   DesktopProviderStatus,
   DesktopSetupCheck,
@@ -26,6 +30,13 @@ async function copyText(value: string) {
   await navigator.clipboard.writeText(value);
 }
 
+function formatTags(tags: string[]) {
+  if (tags.length === 0) {
+    return "unlabeled";
+  }
+  return tags.join(" / ").split("_").join(" ");
+}
+
 type HomeWorkspaceProps = {
   loadState: "idle" | "loading" | "ready" | "error";
   health: DesktopAppHealth | null;
@@ -37,7 +48,9 @@ type HomeWorkspaceProps = {
   preferredProvider: DesktopProviderStatus | null;
   followUpProjects: DesktopProjectSummary[];
   providers: DesktopProviderStatus[];
-  setActiveView: (view: "projects" | "providers" | "run") => void;
+  requiredSetupBlockers: DesktopSetupCheck[];
+  focusProject: (projectId: string, nextView: "projects" | "run" | "workflow") => void;
+  setActiveView: (view: "setup" | "projects" | "providers" | "run") => void;
 };
 
 export function HomeWorkspace(props: HomeWorkspaceProps) {
@@ -52,6 +65,8 @@ export function HomeWorkspace(props: HomeWorkspaceProps) {
     preferredProvider,
     followUpProjects,
     providers,
+    requiredSetupBlockers,
+    focusProject,
     setActiveView,
   } = props;
   const providerReady = Boolean(
@@ -83,6 +98,41 @@ export function HomeWorkspace(props: HomeWorkspaceProps) {
   ];
   const recommendedProvider =
     providers.find((provider) => provider.detected && provider.missing_env_vars.length === 0) ?? null;
+  const firstRunState =
+    requiredSetupBlockers.length > 0
+      ? {
+          title: "Finish required desktop setup first",
+          body: `AOP still needs ${requiredSetupBlockers[0].label} before the Windows app can reliably launch workflows.`,
+          actionLabel: "Open setup",
+          actionView: "setup" as const,
+        }
+      : !providerReady
+        ? {
+            title: "Connect one provider path",
+            body: "Finish provider setup so the desktop app has a reliable agent route before your first run.",
+            actionLabel: "Open providers",
+            actionView: "providers" as const,
+          }
+        : projects.length === 0
+          ? {
+              title: "Register your first project",
+              body: "Add the local folder you want AOP to work on so the desktop can load workflow history and memory.",
+              actionLabel: "Open projects",
+              actionView: "projects" as const,
+            }
+          : runsCount === 0
+            ? {
+                title: "Launch the first desktop workflow",
+                body: "Your setup path is ready. Start a first run, then review the workflow artifacts and follow-up queue.",
+                actionLabel: "Open run workspace",
+                actionView: "run" as const,
+              }
+            : {
+                title: "Return to the active workflow loop",
+                body: "The first-run path is complete. Use Home to triage follow-up and jump back into workflow review or another run.",
+                actionLabel: "Open run workspace",
+                actionView: "run" as const,
+              };
 
   return (
     <>
@@ -115,6 +165,62 @@ export function HomeWorkspace(props: HomeWorkspaceProps) {
         <MetricCard label="Agents" value={String(health?.available_agents ?? 0)} />
         <MetricCard label="Providers" value={String(health?.available_providers ?? 0)} />
         <MetricCard label="Runs" value={String(runsCount)} />
+      </section>
+
+      <section className="grid onboarding-grid">
+        <article className="panel panel-wide">
+          <div className="panel-head">
+            <div>
+              <p className="panel-eyebrow">First launch</p>
+              <h2>Windows desktop setup path</h2>
+            </div>
+          </div>
+          <div className="summary-row">
+            <SummaryItem label="Required blockers" value={String(requiredSetupBlockers.length)} />
+            <SummaryItem label="Provider ready" value={providerReady ? "Yes" : "No"} />
+            <SummaryItem label="Projects connected" value={String(projects.length)} />
+            <SummaryItem label="Workflow history" value={runsCount > 0 ? "Present" : "Empty"} />
+          </div>
+          <div className="provider-command-list">
+            <code>{firstRunState.title}</code>
+            <code>{firstRunState.body}</code>
+            {requiredSetupBlockers.slice(0, 3).map((check) => (
+              <code key={check.check_id}>
+                Blocked by {check.label}: {check.reason || check.install_hint || "needs setup"}
+              </code>
+            ))}
+          </div>
+          <div className="provider-actions">
+            <button
+              type="button"
+              className="action-button action-button-accent"
+              onClick={() => setActiveView(firstRunState.actionView)}
+            >
+              {firstRunState.actionLabel}
+            </button>
+            <button type="button" className="action-button" onClick={() => setActiveView("providers")}>
+              Provider setup
+            </button>
+            <button type="button" className="action-button" onClick={() => setActiveView("projects")}>
+              Project setup
+            </button>
+          </div>
+        </article>
+
+        <article className="panel">
+          <div className="panel-head">
+            <div>
+              <p className="panel-eyebrow">After install</p>
+              <h2>Fastest route</h2>
+            </div>
+          </div>
+          <div className="provider-command-list">
+            <code>1. Fix required Setup blockers</code>
+            <code>2. Finish one Provider route</code>
+            <code>3. Register a Project folder</code>
+            <code>4. Launch Run and review Workflow</code>
+          </div>
+        </article>
       </section>
 
       <section className="grid">
@@ -161,6 +267,71 @@ export function HomeWorkspace(props: HomeWorkspaceProps) {
             <EmptyState title="Queue is clear" body="No projects currently need follow-up from the latest workflow run." />
           )}
         </article>
+      </section>
+
+      <section className="panel panel-wide">
+        <div className="panel-head">
+          <div>
+            <p className="panel-eyebrow">Follow-up workbench</p>
+            <h2>What needs attention right now</h2>
+          </div>
+        </div>
+        {followUpProjects.length > 0 ? (
+          <div className="project-list-grid">
+            {followUpProjects.slice(0, 4).map((project) => {
+              const nextAction =
+                project.attention_tags.includes("flaky") || project.attention_tags.includes("needs_follow_up")
+                  ? "Open workflow"
+                  : "Inspect project";
+              return (
+                <article key={project.project_id} className="project-list-card">
+                  <div className="run-top">
+                    <div>
+                      <p className="panel-eyebrow">Follow-up</p>
+                      <h3>{project.name}</h3>
+                    </div>
+                    <span className="pill pill-warn">{project.attention_tags[0] || "follow_up"}</span>
+                  </div>
+                  <div className="summary-row">
+                    <SummaryItem label="Run" value={project.latest_run_id || "-"} />
+                    <SummaryItem label="Phase" value={project.latest_run_phase || "-"} />
+                    <SummaryItem label="Labels" value={formatTags(project.attention_tags)} />
+                    <SummaryItem label="Priority" value={String(project.priority_rank)} />
+                  </div>
+                  {project.triage_summary ? <p>{project.triage_summary}</p> : null}
+                  {project.triage_evidence.length > 0 ? (
+                    <div className="provider-command-list">
+                      {project.triage_evidence.slice(0, 2).map((item) => (
+                        <code key={item}>{item}</code>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="provider-actions">
+                    <button
+                      type="button"
+                      className="action-button"
+                      onClick={() => focusProject(project.project_id, "projects")}
+                    >
+                      Inspect
+                    </button>
+                    <button
+                      type="button"
+                      className="action-button action-button-accent"
+                      onClick={() => focusProject(project.project_id, "workflow")}
+                    >
+                      {nextAction}
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <EmptyState
+            title="No follow-up pressure"
+            body="Current projects look stable enough to start a fresh run instead of triaging existing issues."
+          />
+        )}
       </section>
 
       <section className="grid onboarding-grid">
@@ -293,18 +464,25 @@ export function ProjectsWorkspace(props: ProjectsWorkspaceProps) {
               <div className="run-top">
                 <div>
                   <h3>{project.name}</h3>
-                  <p>{project.needs_follow_up ? "Needs follow-up" : "Ready for the next run"}</p>
+                  <p>{project.triage_summary || (project.needs_follow_up ? "Needs follow-up" : "Ready for the next run")}</p>
                 </div>
                 <span className={`pill ${project.needs_follow_up ? "pill-warn" : "pill-good"}`}>
-                  {project.latest_run_phase || "idle"}
+                  {project.attention_tags[0] || project.latest_run_phase || "idle"}
                 </span>
               </div>
               <div className="summary-row">
                 <SummaryItem label="Run" value={project.latest_run_id || "-"} />
                 <SummaryItem label="Status" value={project.latest_run_status || "-"} />
                 <SummaryItem label="Completion" value={project.latest_run_completion || "-"} />
-                <SummaryItem label="Agent" value={project.primary_agent} />
+                <SummaryItem label="Labels" value={formatTags(project.attention_tags)} />
               </div>
+              {project.triage_evidence.length > 0 ? (
+                <div className="provider-command-list">
+                  {project.triage_evidence.slice(0, 2).map((item) => (
+                    <code key={item}>{item}</code>
+                  ))}
+                </div>
+              ) : null}
             </button>
           ))}
         </div>
@@ -367,8 +545,16 @@ export function ProjectsWorkspace(props: ProjectsWorkspaceProps) {
             <SummaryItem label="Primary agent" value={selectedProject.primary_agent} />
             <SummaryItem label="Latest run" value={selectedProject.latest_run_id || "-"} />
             <SummaryItem label="Phase" value={selectedProject.latest_run_phase || "-"} />
-            <SummaryItem label="Completion" value={selectedProject.latest_run_completion || "-"} />
+            <SummaryItem label="Labels" value={formatTags(selectedProject.attention_tags)} />
           </div>
+          {selectedProject.triage_summary ? <p>{selectedProject.triage_summary}</p> : null}
+          {selectedProject.triage_evidence.length > 0 ? (
+            <div className="provider-command-list">
+              {selectedProject.triage_evidence.slice(0, 3).map((item) => (
+                <code key={item}>{item}</code>
+              ))}
+            </div>
+          ) : null}
           <div className="provider-actions">
             <button
               type="button"
@@ -400,15 +586,23 @@ export function ProjectsWorkspace(props: ProjectsWorkspaceProps) {
                   <h3>{project.name}</h3>
                 </div>
                 <span className={`pill ${project.needs_follow_up ? "pill-warn" : "pill-good"}`}>
-                  {project.needs_follow_up ? "Follow-up" : "Stable"}
+                  {project.attention_tags[0] || (project.needs_follow_up ? "needs_follow_up" : "stable")}
                 </span>
               </div>
               <div className="summary-row">
                 <SummaryItem label="Run" value={project.latest_run_id || "-"} />
                 <SummaryItem label="Phase" value={project.latest_run_phase || "-"} />
                 <SummaryItem label="Status" value={project.latest_run_status || "-"} />
-                <SummaryItem label="Agent" value={project.primary_agent} />
+                <SummaryItem label="Labels" value={formatTags(project.attention_tags)} />
               </div>
+              {project.triage_summary ? <p>{project.triage_summary}</p> : null}
+              {project.triage_evidence.length > 0 ? (
+                <div className="provider-command-list">
+                  {project.triage_evidence.slice(0, 2).map((item) => (
+                    <code key={item}>{item}</code>
+                  ))}
+                </div>
+              ) : null}
               <div className="provider-actions">
                 <button
                   type="button"
@@ -436,6 +630,447 @@ export function ProjectsWorkspace(props: ProjectsWorkspaceProps) {
           ))}
         </div>
       ) : null}
+    </section>
+  );
+}
+
+type MemoryWorkspaceProps = {
+  statusMessage: string;
+  selectedProject: DesktopProjectSummary | null;
+  memoryStatus: DesktopMemoryStatus | null;
+  memorySettings: DesktopMemorySettings | null;
+  memoryRecords: DesktopMemoryRecord[];
+  refreshMemory: () => Promise<void>;
+  memoryRefreshing: boolean;
+  migrateMemory: (dryRun?: boolean) => Promise<DesktopMemoryMigrationResult | null>;
+  memoryMigrating: boolean;
+  lastMemoryMigrationResult: DesktopMemoryMigrationResult | null;
+  saveMemorySettings: (settings: {
+    global_enabled: boolean;
+    project_enabled: boolean;
+    backend: string;
+    search_top_k: number;
+    search_threshold: number;
+  }) => Promise<DesktopMemorySettings | null>;
+  setActiveView: (view: "projects" | "providers" | "run") => void;
+};
+
+export function MemoryWorkspace(props: MemoryWorkspaceProps) {
+  const {
+    statusMessage,
+    selectedProject,
+    memoryStatus,
+    memorySettings,
+    memoryRecords,
+    refreshMemory,
+    memoryRefreshing,
+    migrateMemory,
+    memoryMigrating,
+    lastMemoryMigrationResult,
+    saveMemorySettings,
+    setActiveView,
+  } = props;
+  const [memoryFilter, setMemoryFilter] = useState<"all" | "verification" | "decision" | "learning">("all");
+  const memoryTypeSummary = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const record of memoryRecords) {
+      counts.set(record.memory_type, (counts.get(record.memory_type) || 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 4);
+  }, [memoryRecords]);
+  const visibleMemoryRecords = useMemo(() => {
+    if (memoryFilter === "verification") {
+      return memoryRecords.filter((record) =>
+        ["workflow_verification", "workflow_gap_closure"].includes(record.memory_type),
+      );
+    }
+    if (memoryFilter === "decision") {
+      return memoryRecords.filter((record) =>
+        ["workflow_plan", "workflow_completion", "workflow_guardrail"].includes(record.memory_type),
+      );
+    }
+    if (memoryFilter === "learning") {
+      return memoryRecords.filter((record) => record.memory_type === "workflow_learning");
+    }
+    return memoryRecords;
+  }, [memoryFilter, memoryRecords]);
+  const recommendedAction = useMemo(() => {
+    if (memoryStatus?.migration_ready) {
+      return {
+        title: "Import legacy project memory",
+        body: "AOP found older hypotheses, learnings, or project notes that can be pulled into the active memory backend.",
+        cta: "Import legacy memory",
+        action: () => void migrateMemory(false),
+      };
+    }
+    if (!memoryStatus?.enabled) {
+      return {
+        title: "Enable memory in the current workspace",
+        body: "Memory is not active yet, so workflow verification and follow-up cannot benefit from prior context.",
+        cta: "Open providers",
+        action: () => setActiveView("providers"),
+      };
+    }
+    if (memoryRecords.length === 0) {
+      return {
+        title: "Create the first workflow memory",
+        body: "Run a workflow with memory enabled and AOP will start recording plan, verification, completion, and learning context here.",
+        cta: "Start another run",
+        action: () => setActiveView("run"),
+      };
+    }
+    return {
+      title: "Review recent workflow memory",
+      body: "The recorder is active. Use this page to spot repeated verification gaps and see which artifact types are building up over time.",
+      cta: "Refresh memory",
+      action: () => void refreshMemory(),
+    };
+  }, [memoryRecords.length, memoryStatus?.enabled, memoryStatus?.migration_ready, migrateMemory, refreshMemory, setActiveView]);
+  const postMigrationGuidance = useMemo(() => {
+    if (!lastMemoryMigrationResult || lastMemoryMigrationResult.dry_run) {
+      return null;
+    }
+    if (!lastMemoryMigrationResult.success) {
+      return "Migration surfaced some issues. Review the result card, then refresh memory before you rely on the imported context.";
+    }
+    if ((lastMemoryMigrationResult.source_counts.project_memory || 0) > 0) {
+      return "Legacy project notes are now in the active memory backend. The next best step is to run another workflow and inspect verification memory for reused context.";
+    }
+    return "Migration completed. Refresh memory and inspect the latest records to confirm the imported entries landed cleanly.";
+  }, [lastMemoryMigrationResult]);
+
+  if (!selectedProject) {
+    return (
+      <section className="panel">
+        <EmptyState
+          title="No project selected"
+          body="Choose a project first so AOP can show memory status and recent workflow memories."
+        />
+      </section>
+    );
+  }
+
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <p className="panel-eyebrow">Memory</p>
+          <h2>Workflow memory for {selectedProject.name}</h2>
+        </div>
+      </div>
+      {statusMessage ? <section className="status-banner">{statusMessage}</section> : null}
+
+      <div className="summary-row">
+        <SummaryItem label="Enabled" value={memoryStatus?.enabled ? "yes" : "no"} />
+        <SummaryItem label="Global" value={memoryStatus?.global_enabled ? "on" : "off"} />
+        <SummaryItem label="Project" value={memoryStatus?.project_enabled ? "on" : "off"} />
+        <SummaryItem label="Backend" value={memoryStatus?.current_backend || "-"} />
+        <SummaryItem label="mem0" value={memoryStatus?.mem0_available ? "available" : "fallback"} />
+        <SummaryItem label="Records" value={String(memoryStatus?.total_memories || 0)} />
+        <SummaryItem label="Legacy entries" value={String(memoryStatus?.legacy_entry_count || 0)} />
+      </div>
+
+      {memoryStatus?.init_error ? (
+        <section className="inline-note">{memoryStatus.init_error}</section>
+      ) : null}
+      {memoryStatus && memoryStatus.migration_issues.length > 0 ? (
+        <section className="inline-note">
+          {memoryStatus.migration_issues.join(" | ")}
+        </section>
+      ) : null}
+
+      <div className="install-result-card">
+        <strong>{recommendedAction.title}</strong>
+        <p>{recommendedAction.body}</p>
+        <div className="provider-actions compact-actions">
+          <button
+            type="button"
+            className="action-button action-button-accent"
+            onClick={recommendedAction.action}
+          >
+            {recommendedAction.cta}
+          </button>
+        </div>
+      </div>
+
+      <div className="provider-summary-strip">
+        <SummaryItem
+          label="Hypotheses"
+          value={String(memoryStatus?.memory_sources?.hypotheses || 0)}
+        />
+        <SummaryItem
+          label="Learnings"
+          value={String(memoryStatus?.memory_sources?.learnings || 0)}
+        />
+        <SummaryItem
+          label="Project memory"
+          value={String(memoryStatus?.memory_sources?.project_memory || 0)}
+        />
+        <SummaryItem
+          label="Migration"
+          value={memoryStatus?.migration_ready ? "ready" : "not needed"}
+        />
+      </div>
+
+      {memorySettings ? (
+        <div className="project-register">
+          <div className="panel-head">
+            <div>
+              <p className="panel-eyebrow">Memory settings</p>
+              <h2>Unified desktop controls</h2>
+            </div>
+          </div>
+          <div className="project-register-grid">
+            <label className="provider-field">
+              <span>Global toggle</span>
+              <select
+                value={memorySettings.global_enabled ? "on" : "off"}
+                onChange={(event) =>
+                  void saveMemorySettings({
+                    global_enabled: event.target.value === "on",
+                    project_enabled: memorySettings.project_enabled,
+                    backend: memorySettings.backend,
+                    search_top_k: memorySettings.search_top_k,
+                    search_threshold: memorySettings.search_threshold,
+                  })
+                }
+              >
+                <option value="on">On</option>
+                <option value="off">Off</option>
+              </select>
+            </label>
+            <label className="provider-field">
+              <span>Project toggle</span>
+              <select
+                value={memorySettings.project_enabled ? "on" : "off"}
+                onChange={(event) =>
+                  void saveMemorySettings({
+                    global_enabled: memorySettings.global_enabled,
+                    project_enabled: event.target.value === "on",
+                    backend: memorySettings.backend,
+                    search_top_k: memorySettings.search_top_k,
+                    search_threshold: memorySettings.search_threshold,
+                  })
+                }
+              >
+                <option value="on">On</option>
+                <option value="off">Off</option>
+              </select>
+            </label>
+            <label className="provider-field">
+              <span>Backend</span>
+              <select
+                value={memorySettings.backend}
+                onChange={(event) =>
+                  void saveMemorySettings({
+                    global_enabled: memorySettings.global_enabled,
+                    project_enabled: memorySettings.project_enabled,
+                    backend: event.target.value,
+                    search_top_k: memorySettings.search_top_k,
+                    search_threshold: memorySettings.search_threshold,
+                  })
+                }
+              >
+                <option value="file">file</option>
+                <option value="mem0_local">mem0_local</option>
+                <option value="mem0_qdrant">mem0_qdrant</option>
+                <option value="mem0_chroma">mem0_chroma</option>
+              </select>
+            </label>
+            <label className="provider-field">
+              <span>Search top_k</span>
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={memorySettings.search_top_k}
+                onChange={(event) =>
+                  void saveMemorySettings({
+                    global_enabled: memorySettings.global_enabled,
+                    project_enabled: memorySettings.project_enabled,
+                    backend: memorySettings.backend,
+                    search_top_k: Number(event.target.value || 5),
+                    search_threshold: memorySettings.search_threshold,
+                  })
+                }
+              />
+            </label>
+            <label className="provider-field">
+              <span>Search threshold</span>
+              <input
+                type="number"
+                min={0}
+                max={1}
+                step={0.05}
+                value={memorySettings.search_threshold}
+                onChange={(event) =>
+                  void saveMemorySettings({
+                    global_enabled: memorySettings.global_enabled,
+                    project_enabled: memorySettings.project_enabled,
+                    backend: memorySettings.backend,
+                    search_top_k: memorySettings.search_top_k,
+                    search_threshold: Number(event.target.value || 0.7),
+                  })
+                }
+              />
+            </label>
+          </div>
+        </div>
+      ) : null}
+
+      {memoryTypeSummary.length > 0 ? (
+        <div className="provider-summary-strip">
+          {memoryTypeSummary.map(([memoryType, count]) => (
+            <SummaryItem
+              key={memoryType}
+              label={memoryType.replace("workflow_", "")}
+              value={String(count)}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      <div className="provider-actions">
+        <button
+          type="button"
+          className="action-button"
+          onClick={() => void refreshMemory()}
+          disabled={memoryRefreshing}
+        >
+          {memoryRefreshing ? "Refreshing..." : "Refresh memory"}
+        </button>
+        {memoryStatus?.legacy_entry_count ? (
+          <button
+            type="button"
+            className="action-button"
+            onClick={() => void migrateMemory(true)}
+            disabled={memoryMigrating}
+          >
+            {memoryMigrating ? "Checking..." : "Preview import"}
+          </button>
+        ) : null}
+        {memoryStatus?.migration_ready ? (
+          <button
+            type="button"
+            className="action-button"
+            onClick={() => void migrateMemory(false)}
+            disabled={memoryMigrating}
+          >
+            {memoryMigrating ? "Importing..." : "Import legacy memory"}
+          </button>
+        ) : null}
+        <button type="button" className="action-button" onClick={() => setActiveView("providers")}>
+          Check providers
+        </button>
+        <button type="button" className="action-button action-button-accent" onClick={() => setActiveView("run")}>
+          Start another run
+        </button>
+      </div>
+
+      {lastMemoryMigrationResult ? (
+        <div
+          className={`install-result-card ${lastMemoryMigrationResult.success ? "install-result-good" : "install-result-bad"}`}
+        >
+          <strong>
+            {lastMemoryMigrationResult.dry_run
+              ? `Preview found ${lastMemoryMigrationResult.total_migrated} legacy entries`
+              : `Imported ${lastMemoryMigrationResult.total_migrated} legacy entries`}
+          </strong>
+          <p>
+            hypotheses {lastMemoryMigrationResult.source_counts.hypotheses || 0} / learnings{" "}
+            {lastMemoryMigrationResult.source_counts.learnings || 0} / project memory{" "}
+            {lastMemoryMigrationResult.source_counts.project_memory || 0}
+          </p>
+          {lastMemoryMigrationResult.errors.length > 0 ? (
+            <div className="provider-command-list">
+              {lastMemoryMigrationResult.errors.map((error) => (
+                <code key={error}>{error}</code>
+              ))}
+            </div>
+          ) : null}
+          {postMigrationGuidance ? <p>{postMigrationGuidance}</p> : null}
+        </div>
+      ) : null}
+
+      <div className="workflow-guidance-card">
+        <div>
+          <p className="panel-eyebrow">Memory focus</p>
+          <h3>Inspect the slice that matters most</h3>
+          <p>
+            Verification memory helps with repeated gaps, decision memory explains plan and completion choices, and learning memory captures what should change next time.
+          </p>
+        </div>
+        <div className="summary-row">
+          <SummaryItem label="Visible" value={String(visibleMemoryRecords.length)} />
+          <SummaryItem label="Filter" value={memoryFilter} />
+          <SummaryItem label="Latest run" value={visibleMemoryRecords[0]?.run_id || "-"} />
+          <SummaryItem label="Latest type" value={visibleMemoryRecords[0]?.memory_type || "-"} />
+        </div>
+        <div className="provider-actions">
+          <button
+            type="button"
+            className={`action-button ${memoryFilter === "all" ? "action-button-accent" : ""}`}
+            onClick={() => setMemoryFilter("all")}
+          >
+            All memory
+          </button>
+          <button
+            type="button"
+            className={`action-button ${memoryFilter === "verification" ? "action-button-accent" : ""}`}
+            onClick={() => setMemoryFilter("verification")}
+          >
+            Verification
+          </button>
+          <button
+            type="button"
+            className={`action-button ${memoryFilter === "decision" ? "action-button-accent" : ""}`}
+            onClick={() => setMemoryFilter("decision")}
+          >
+            Decisions
+          </button>
+          <button
+            type="button"
+            className={`action-button ${memoryFilter === "learning" ? "action-button-accent" : ""}`}
+            onClick={() => setMemoryFilter("learning")}
+          >
+            Learnings
+          </button>
+        </div>
+      </div>
+
+      {visibleMemoryRecords.length > 0 ? (
+        <div className="project-list-grid">
+          {visibleMemoryRecords.map((record) => (
+            <article key={record.memory_id} className="project-list-card">
+              <div className="run-top">
+                <div>
+                  <p className="panel-eyebrow">Memory</p>
+                  <h3>{record.memory_type}</h3>
+                </div>
+                <span className="pill pill-good">{record.phase || "general"}</span>
+              </div>
+              <div className="summary-row">
+                <SummaryItem label="Run" value={record.run_id || "-"} />
+                <SummaryItem label="Timestamp" value={record.timestamp.replace("T", " ").slice(0, 19) || "-"} />
+                <SummaryItem label="Id" value={record.memory_id.slice(0, 10)} />
+                <SummaryItem label="Project" value={selectedProject.name} />
+              </div>
+              <p>{record.content}</p>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <EmptyState
+          title={memoryRecords.length > 0 ? "No memory matches this filter" : "No workflow memories yet"}
+          body={
+            memoryRecords.length > 0
+              ? "Try another filter to inspect a different memory slice for this project."
+              : "Once workflow plan, verification, completion, or learning records are written, they will show up here."
+          }
+        />
+      )}
     </section>
   );
 }

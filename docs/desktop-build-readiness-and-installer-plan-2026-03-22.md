@@ -2,18 +2,20 @@
 
 ## Current validation status
 
-As of March 22, 2026, the desktop frontend build is working, but native Tauri packaging is blocked on this machine by missing Rust tooling.
+Updated on March 22, 2026:
 
-Validated:
+Validated on Windows:
 
 - `npm run build` in `desktop/` succeeds
 - AOP Python app runtime tests continue to pass
+- native `tauri build` has already succeeded on Windows
+- Windows MSI output has been verified locally
 
-Blocked locally:
+Current packaging focus:
 
-- `cargo --version` is unavailable
-- `rustc --version` is unavailable
-- Native `tauri build` cannot run until Rust is installed
+- standardize the Windows release flow
+- make repeatable MSI generation easier for future iterations
+- improve first-run installer and post-install guidance
 
 ## Required local prerequisites for native Tauri builds
 
@@ -77,9 +79,24 @@ It still does not auto-run:
 
 Those remain guided follow-up steps in the UI.
 
+## Windows release workflow
+
+Current helper:
+
+- `desktop/scripts/build-windows-release.ps1`
+- `npm run build:windows`
+
+The helper currently standardizes:
+
+- prerequisite checks
+- optional npm install
+- frontend build
+- MSI bundle build
+- final MSI output path reporting
+
 ## Next recommended work
 
-1. Add explicit build-readiness checks for Rust, Node, and Python into the desktop bridge.
-2. Create a dedicated Setup page instead of overloading Home and Providers.
-3. Improve the Setup page with clearer post-install refresh and recovery guidance.
-4. Re-validate native Tauri build once Rust is installed on the target machine.
+1. Add version stamping and release notes guidance to the Windows release helper.
+2. Improve the first-run Windows installer experience and post-install routing.
+3. Prepare a lightweight Windows release checklist for repeatable local packaging.
+4. Keep macOS validation deferred until the Windows release flow is fully comfortable.
