@@ -53,6 +53,16 @@ export type DesktopSetupCheck = {
   version: string;
   reason: string;
   install_hint: string;
+  install_commands: string[];
+};
+
+export type DesktopSetupInstallResult = {
+  check_id: string;
+  command: string;
+  success: boolean;
+  summary: string;
+  output: string;
+  next_steps: string[];
 };
 
 export type WorkflowRunSummary = {

@@ -93,6 +93,15 @@ class DesktopAppBridge:
             except ValueError as error:
                 return {"ok": False, "error": str(error)}
             return {"ok": True, "data": result.to_dict()}
+        if action == "install_setup_dependency":
+            check_id = str(data.get("check_id", "")).strip()
+            if not check_id:
+                return {"ok": False, "error": "check_id_required"}
+            try:
+                result = self.service.install_setup_dependency(check_id)
+            except ValueError as error:
+                return {"ok": False, "error": str(error)}
+            return {"ok": True, "data": result.to_dict()}
         if action == "start_run":
             project_id = str(data.get("project_id", "")).strip()
             prompt = str(data.get("prompt", ""))

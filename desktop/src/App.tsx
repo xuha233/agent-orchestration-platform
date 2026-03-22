@@ -9,6 +9,7 @@ import type {
   DesktopRunJob,
   DesktopRunLaunchResult,
   DesktopSetupCheck,
+  DesktopSetupInstallResult,
   WorkflowRunDetail,
   WorkflowRunSummary,
 } from "./types";
@@ -54,6 +55,9 @@ export function App() {
   const [jobPollCount, setJobPollCount] = useState(0);
   const [installingProviderId, setInstallingProviderId] = useState("");
   const [lastInstallResult, setLastInstallResult] = useState<DesktopInstallResult | null>(null);
+  const [installingSetupCheckId, setInstallingSetupCheckId] = useState("");
+  const [lastSetupInstallResult, setLastSetupInstallResult] =
+    useState<DesktopSetupInstallResult | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -382,6 +386,25 @@ export function App() {
     }
   }
 
+  async function refreshSetup() {
+    try {
+      const [providerData, setupData] = await Promise.all([
+        invokeAppRuntime<DesktopProviderStatus[]>("providers"),
+        invokeAppRuntime<DesktopSetupCheck[]>("setup_status"),
+      ]);
+      setProviders(providerData);
+      setSetupChecks(setupData);
+      setProviderDrafts(
+        Object.fromEntries(
+          providerData.map((provider) => [provider.provider_id, provider.stored_env_vars || {}]),
+        ),
+      );
+      setStatusMessage("Setup checks refreshed.");
+    } catch (refreshError) {
+      setError(refreshError instanceof Error ? refreshError.message : "Failed to refresh setup checks.");
+    }
+  }
+
   async function refreshWorkflowRuns(nextRunId?: string, projectIdOverride?: string) {
     const projectId = projectIdOverride || selectedProjectId;
     if (!projectId) {
@@ -459,6 +482,27 @@ export function App() {
       return null;
     } finally {
       setInstallingProviderId("");
+    }
+  }
+
+  async function installSetupDependency(checkId: string) {
+    setInstallingSetupCheckId(checkId);
+    setError("");
+    try {
+      const result = await invokeAppRuntime<DesktopSetupInstallResult>("install_setup_dependency", {
+        check_id: checkId,
+      });
+      setLastSetupInstallResult(result);
+      setStatusMessage(result.summary);
+      await refreshSetup();
+      return result;
+    } catch (installError) {
+      setError(
+        installError instanceof Error ? installError.message : "Failed to install system dependency.",
+      );
+      return null;
+    } finally {
+      setInstallingSetupCheckId("");
     }
   }
 
@@ -611,6 +655,10 @@ export function App() {
           <SetupWorkspace
             statusMessage={statusMessage}
             setupChecks={setupChecks}
+            refreshSetup={refreshSetup}
+            installSetupDependency={installSetupDependency}
+            installingSetupCheckId={installingSetupCheckId}
+            lastSetupInstallResult={lastSetupInstallResult}
             setActiveView={setActiveView}
           />
         ) : null}

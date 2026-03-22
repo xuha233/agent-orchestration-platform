@@ -178,6 +178,7 @@ def test_desktop_app_service_reports_setup_status(tmp_path, monkeypatch):
     checks = service.get_setup_status()
 
     assert any(check.check_id == "python" and check.detected for check in checks)
+    assert any(check.check_id == "node" and check.install_commands for check in checks)
     assert any(check.check_id == "cargo" and not check.detected for check in checks)
 
 
@@ -195,6 +196,68 @@ def test_desktop_app_bridge_returns_setup_status_payload(tmp_path, monkeypatch):
 
     assert response["ok"] is True
     assert any(check["check_id"] == "python" for check in response["data"])
+
+
+def test_desktop_app_service_installs_setup_dependency(tmp_path, monkeypatch):
+    workspace_home = tmp_path / "aop-home"
+    captured: dict[str, object] = {}
+
+    class Completed:
+        returncode = 0
+        stdout = "installed"
+        stderr = ""
+
+    service = DesktopAppService(
+        workspace_manager=WorkspaceManager(workspace_home),
+        settings_manager=SettingsManager(workspace_home),
+    )
+
+    monkeypatch.setattr(
+        "aop.app_runtime.service.shutil.which",
+        lambda name: None if str(name) == "cargo" else "C:/bin/tool.exe",
+    )
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["kwargs"] = kwargs
+        return Completed()
+
+    monkeypatch.setattr("aop.app_runtime.service.subprocess.run", fake_run)
+
+    result = service.install_setup_dependency("cargo")
+
+    assert result.check_id == "cargo"
+    assert result.success is True
+    assert "winget install" in result.command
+    assert captured["command"][:3] == ["powershell", "-NoProfile", "-Command"]
+
+
+def test_desktop_app_bridge_installs_setup_dependency_payload(tmp_path, monkeypatch):
+    workspace_home = tmp_path / "aop-home"
+
+    class Completed:
+        returncode = 1
+        stdout = ""
+        stderr = "install failed"
+
+    service = DesktopAppService(
+        workspace_manager=WorkspaceManager(workspace_home),
+        settings_manager=SettingsManager(workspace_home),
+    )
+
+    monkeypatch.setattr(
+        "aop.app_runtime.service.shutil.which",
+        lambda name: None if str(name) == "cargo" else "C:/bin/tool.exe",
+    )
+    monkeypatch.setattr("aop.app_runtime.service.subprocess.run", lambda *args, **kwargs: Completed())
+    bridge = DesktopAppBridge(service)
+
+    response = bridge.dispatch("install_setup_dependency", {"check_id": "cargo"})
+
+    assert response["ok"] is True
+    assert response["data"]["check_id"] == "cargo"
+    assert response["data"]["success"] is False
+    assert "failed" in response["data"]["summary"]
 
 
 def test_desktop_app_service_updates_provider_config(tmp_path, monkeypatch):

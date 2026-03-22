@@ -7,6 +7,7 @@ import type {
   DesktopProjectSummary,
   DesktopProviderStatus,
   DesktopSetupCheck,
+  DesktopSetupInstallResult,
 } from "./types";
 import { EmptyState, MetricCard, SummaryItem } from "./ui";
 
@@ -590,13 +591,32 @@ export function ProvidersWorkspace(props: ProvidersWorkspaceProps) {
 type SetupWorkspaceProps = {
   statusMessage: string;
   setupChecks: DesktopSetupCheck[];
+  refreshSetup: () => Promise<void>;
+  installSetupDependency: (checkId: string) => Promise<DesktopSetupInstallResult | null>;
+  installingSetupCheckId: string;
+  lastSetupInstallResult: DesktopSetupInstallResult | null;
   setActiveView: (view: "providers" | "run") => void;
 };
 
 export function SetupWorkspace(props: SetupWorkspaceProps) {
-  const { statusMessage, setupChecks, setActiveView } = props;
+  const {
+    statusMessage,
+    setupChecks,
+    refreshSetup,
+    installSetupDependency,
+    installingSetupCheckId,
+    lastSetupInstallResult,
+    setActiveView,
+  } = props;
   const requiredIssues = setupChecks.filter((check) => check.required && !check.detected);
   const optionalIssues = setupChecks.filter((check) => !check.required && !check.detected);
+  const readyChecks = setupChecks.filter((check) => check.detected);
+  const recommendedAction =
+    requiredIssues.length > 0
+      ? "Resolve required blockers first before relying on desktop runs."
+      : optionalIssues.length > 0
+        ? "Desktop runs can work now. Optional tooling only blocks native packaging and advanced workflows."
+        : "This machine looks ready for both desktop workflows and future packaging work.";
 
   return (
     <section className="panel">
@@ -613,7 +633,14 @@ export function SetupWorkspace(props: SetupWorkspaceProps) {
         <SummaryItem label="Optional gaps" value={String(optionalIssues.length)} />
         <SummaryItem label="Ready" value={requiredIssues.length === 0 ? "yes" : "not yet"} />
       </div>
+      <div className="install-result-card">
+        <strong>Recommended next action</strong>
+        <p>{recommendedAction}</p>
+      </div>
       <div className="provider-actions">
+        <button type="button" className="action-button" onClick={() => void refreshSetup()}>
+          Refresh checks
+        </button>
         <button type="button" className="action-button" onClick={() => setActiveView("providers")}>
           Open provider setup
         </button>
@@ -621,31 +648,153 @@ export function SetupWorkspace(props: SetupWorkspaceProps) {
           Open run workspace
         </button>
       </div>
-      <div className="project-list-grid">
-        {setupChecks.map((check) => (
-          <article key={check.check_id} className="project-list-card">
-            <div className="run-top">
-              <div>
-                <p className="panel-eyebrow">Dependency</p>
-                <h3>{check.label}</h3>
+      {requiredIssues.length > 0 ? (
+        <>
+          <div className="panel-head">
+            <div>
+              <p className="panel-eyebrow">Required</p>
+              <h2>Fix these before relying on the local app</h2>
+            </div>
+          </div>
+          <div className="project-list-grid">
+            {requiredIssues.map((check) => (
+              <article key={check.check_id} className="project-list-card">
+                <div className="run-top">
+                  <div>
+                    <p className="panel-eyebrow">Dependency</p>
+                    <h3>{check.label}</h3>
+                  </div>
+                  <span className="pill pill-bad">Required</span>
+                </div>
+                <div className="summary-row">
+                  <SummaryItem label="Version" value={check.version || "-"} />
+                  <SummaryItem label="Detected" value={check.detected ? "yes" : "no"} />
+                  <SummaryItem label="Required" value="yes" />
+                  <SummaryItem label="Id" value={check.check_id} />
+                </div>
+                <p>{check.reason || check.install_hint}</p>
+                <div className="provider-command-list">
+                  <code>{check.install_hint}</code>
+                  {check.install_commands.map((command) => (
+                    <code key={command}>{command}</code>
+                  ))}
+                </div>
+                {lastSetupInstallResult?.check_id === check.check_id ? (
+                  <div
+                    className={`install-result-card ${lastSetupInstallResult.success ? "install-result-good" : "install-result-bad"}`}
+                  >
+                    <strong>{lastSetupInstallResult.summary}</strong>
+                    <p>{lastSetupInstallResult.command}</p>
+                    {lastSetupInstallResult.next_steps.length > 0 ? (
+                      <div className="provider-command-list">
+                        {lastSetupInstallResult.next_steps.map((step) => (
+                          <code key={step}>{step}</code>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                {check.install_commands.length > 0 ? (
+                  <div className="provider-actions">
+                    <button
+                      type="button"
+                      className="action-button"
+                      onClick={() => void installSetupDependency(check.check_id)}
+                      disabled={installingSetupCheckId === check.check_id}
+                    >
+                      {installingSetupCheckId === check.check_id ? "Installing..." : "Install dependency"}
+                    </button>
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        </>
+      ) : null}
+      {optionalIssues.length > 0 ? (
+        <>
+          <div className="panel-head">
+            <div>
+              <p className="panel-eyebrow">Optional</p>
+              <h2>Nice to have for packaging and advanced flows</h2>
+            </div>
+          </div>
+          <div className="project-list-grid">
+            {optionalIssues.map((check) => (
+              <article key={check.check_id} className="project-list-card">
+                <div className="run-top">
+                  <div>
+                    <p className="panel-eyebrow">Dependency</p>
+                    <h3>{check.label}</h3>
+                  </div>
+                  <span className="pill pill-warn">Optional</span>
+                </div>
+                <div className="summary-row">
+                  <SummaryItem label="Version" value={check.version || "-"} />
+                  <SummaryItem label="Detected" value={check.detected ? "yes" : "no"} />
+                  <SummaryItem label="Required" value="no" />
+                  <SummaryItem label="Id" value={check.check_id} />
+                </div>
+                <p>{check.reason || check.install_hint}</p>
+                <div className="provider-command-list">
+                  <code>{check.install_hint}</code>
+                  {check.install_commands.map((command) => (
+                    <code key={command}>{command}</code>
+                  ))}
+                </div>
+                {lastSetupInstallResult?.check_id === check.check_id ? (
+                  <div
+                    className={`install-result-card ${lastSetupInstallResult.success ? "install-result-good" : "install-result-bad"}`}
+                  >
+                    <strong>{lastSetupInstallResult.summary}</strong>
+                    <p>{lastSetupInstallResult.command}</p>
+                    {lastSetupInstallResult.next_steps.length > 0 ? (
+                      <div className="provider-command-list">
+                        {lastSetupInstallResult.next_steps.map((step) => (
+                          <code key={step}>{step}</code>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                {check.install_commands.length > 0 ? (
+                  <div className="provider-actions">
+                    <button
+                      type="button"
+                      className="action-button"
+                      onClick={() => void installSetupDependency(check.check_id)}
+                      disabled={installingSetupCheckId === check.check_id}
+                    >
+                      {installingSetupCheckId === check.check_id ? "Installing..." : "Install dependency"}
+                    </button>
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        </>
+      ) : null}
+      {readyChecks.length > 0 ? (
+        <div className="project-list-grid">
+          {readyChecks.slice(0, 3).map((check) => (
+            <article key={check.check_id} className="project-list-card">
+              <div className="run-top">
+                <div>
+                  <p className="panel-eyebrow">Ready</p>
+                  <h3>{check.label}</h3>
+                </div>
+                <span className="pill pill-good">Ready</span>
               </div>
-              <span className={`pill ${check.detected ? "pill-good" : check.required ? "pill-bad" : "pill-warn"}`}>
-                {check.detected ? "Ready" : check.required ? "Required" : "Optional"}
-              </span>
-            </div>
-            <div className="summary-row">
-              <SummaryItem label="Version" value={check.version || "-"} />
-              <SummaryItem label="Detected" value={check.detected ? "yes" : "no"} />
-              <SummaryItem label="Required" value={check.required ? "yes" : "no"} />
-              <SummaryItem label="Id" value={check.check_id} />
-            </div>
-            <p>{check.reason || check.install_hint}</p>
-            <div className="provider-command-list">
-              <code>{check.install_hint}</code>
-            </div>
-          </article>
-        ))}
-      </div>
+              <div className="summary-row">
+                <SummaryItem label="Version" value={check.version || "-"} />
+                <SummaryItem label="Detected" value="yes" />
+                <SummaryItem label="Required" value={check.required ? "yes" : "no"} />
+                <SummaryItem label="Id" value={check.check_id} />
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }

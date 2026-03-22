@@ -10,6 +10,7 @@ type BridgePayload = {
   project_id?: string;
   run_id?: string;
   job_id?: string;
+  check_id?: string;
   limit?: number;
   provider_id?: string;
   env_values?: Record<string, string>;
@@ -39,6 +40,7 @@ const mockBridgeData = {
       version: "Python 3.12.0",
       reason: "",
       install_hint: "Install Python 3.11+ and keep it on PATH for the desktop sidecar.",
+      install_commands: ["winget install Python.Python.3.11"],
     },
     {
       check_id: "cargo",
@@ -48,6 +50,7 @@ const mockBridgeData = {
       version: "",
       reason: "Cargo was not found on PATH.",
       install_hint: "Install Cargo via rustup to build native desktop packages.",
+      install_commands: ["winget install Rustlang.Rustup"],
     },
   ],
   runs: [],
@@ -86,6 +89,14 @@ const mockBridgeData = {
     summary: "Mock install completed.",
     output: "installed",
     next_steps: ["mock auth login"],
+  },
+  install_setup_dependency: {
+    check_id: "cargo",
+    command: "winget install Rustlang.Rustup",
+    success: true,
+    summary: "Cargo install completed.",
+    output: "installed",
+    next_steps: [],
   },
   start_run: {
     project_id: "mock-project",
@@ -135,6 +146,7 @@ export async function invokeAppRuntime<T>(action: string, payload: BridgePayload
     projectId: payload.project_id,
     runId: payload.run_id,
     jobId: payload.job_id,
+    checkId: payload.check_id,
     limit: payload.limit,
     providerId: payload.provider_id,
     envValues: payload.env_values,

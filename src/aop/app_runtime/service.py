@@ -28,6 +28,7 @@ from .models import (
     DesktopRunJob,
     DesktopRunLaunchResult,
     DesktopSetupCheck,
+    DesktopSetupInstallResult,
 )
 
 
@@ -45,6 +46,22 @@ PROVIDER_LABELS: Dict[str, str] = {
     "gemini": "Gemini",
     "opencode": "OpenCode",
     "qwen": "Qwen",
+}
+
+WINDOWS_SETUP_COMMANDS: Dict[str, List[str]] = {
+    "python": ["winget install Python.Python.3.11"],
+    "node": ["winget install OpenJS.NodeJS.LTS"],
+    "npm": ["winget install OpenJS.NodeJS.LTS"],
+    "rustc": ["winget install Rustlang.Rustup"],
+    "cargo": ["winget install Rustlang.Rustup"],
+}
+
+MACOS_SETUP_COMMANDS: Dict[str, List[str]] = {
+    "python": ["brew install python@3.11"],
+    "node": ["brew install node"],
+    "npm": ["brew install node"],
+    "rustc": ["brew install rustup-init", "rustup-init -y"],
+    "cargo": ["brew install rustup-init", "rustup-init -y"],
 }
 
 
@@ -249,6 +266,44 @@ class DesktopAppService:
         ]
         return checks
 
+    def install_setup_dependency(self, check_id: str) -> DesktopSetupInstallResult:
+        """Run the primary install command for one system dependency."""
+        check = next(
+            (item for item in self.get_setup_status() if item.check_id == check_id),
+            None,
+        )
+        if check is None:
+            raise ValueError(f"setup_check_not_found:{check_id}")
+        if not check.install_commands:
+            raise ValueError(f"setup_install_command_missing:{check_id}")
+
+        command = check.install_commands[0]
+        completed = subprocess.run(
+            self._build_shell_command(command),
+            capture_output=True,
+            text=True,
+            timeout=900,
+            check=False,
+            cwd=str(Path.cwd()),
+        )
+        output = "\n".join(
+            chunk for chunk in [completed.stdout.strip(), completed.stderr.strip()] if chunk
+        ).strip()
+        success = completed.returncode == 0
+        summary = (
+            f"{check.label} install command finished successfully."
+            if success
+            else f"{check.label} install command failed with exit code {completed.returncode}."
+        )
+        return DesktopSetupInstallResult(
+            check_id=check_id,
+            command=command,
+            success=success,
+            summary=summary,
+            output=output,
+            next_steps=check.install_commands[1:],
+        )
+
     def update_provider_config(
         self,
         provider_id: str,
@@ -448,6 +503,7 @@ class DesktopAppService:
         install_hint: str,
     ) -> DesktopSetupCheck:
         executable = command[0]
+        install_commands = self._get_setup_install_commands(check_id)
         if not shutil.which(executable):
             return DesktopSetupCheck(
                 check_id=check_id,
@@ -456,6 +512,7 @@ class DesktopAppService:
                 required=required,
                 reason=f"{label} was not found on PATH.",
                 install_hint=install_hint,
+                install_commands=install_commands,
             )
 
         try:
@@ -474,6 +531,7 @@ class DesktopAppService:
                 required=required,
                 reason=str(error),
                 install_hint=install_hint,
+                install_commands=install_commands,
             )
 
         version = (completed.stdout or completed.stderr).strip().splitlines()
@@ -485,7 +543,16 @@ class DesktopAppService:
             version=version[0] if version else "",
             reason="" if completed.returncode == 0 else f"{label} check exited with code {completed.returncode}.",
             install_hint=install_hint,
+            install_commands=install_commands,
         )
+
+    def _get_setup_install_commands(self, check_id: str) -> List[str]:
+        detector = get_platform_detector()
+        if detector.is_windows():
+            return list(WINDOWS_SETUP_COMMANDS.get(check_id, []))
+        if detector.is_macos():
+            return list(MACOS_SETUP_COMMANDS.get(check_id, []))
+        return []
 
     def _build_shell_command(self, command: str) -> List[str]:
         detector = get_platform_detector()

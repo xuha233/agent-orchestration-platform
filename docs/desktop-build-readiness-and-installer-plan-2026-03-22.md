@@ -39,15 +39,18 @@ Short-term desktop UX:
 
 - Surface provider install commands directly in the app
 - Allow one-click execution of the primary dependency install command
+- Surface system dependency readiness in a dedicated Setup page
+- Allow one-click execution of the primary install command for supported system tools
 - Keep secondary steps like `auth login` and API key setup as guided follow-up
 
 Medium-term UX:
 
-- Add a dedicated setup/settings area with:
+- Expand Setup into a fuller settings workspace with:
   - Rust/Tauri readiness
   - Node/npm readiness
   - Python readiness
   - provider readiness
+- Group blockers into required and optional sections
 - Show actionable install buttons where safe
 
 ## Safety and scope of the current one-click install
@@ -60,7 +63,13 @@ Examples:
 - `npm install -g @anthropic-ai/claude-code`
 - `pip install google-generativeai`
 
-It does not auto-run:
+It now supports safe first-step installs for some system dependencies as well, such as:
+
+- `winget install Python.Python.3.11`
+- `winget install OpenJS.NodeJS.LTS`
+- `winget install Rustlang.Rustup`
+
+It still does not auto-run:
 
 - auth/login steps
 - API key export commands
@@ -72,5 +81,5 @@ Those remain guided follow-up steps in the UI.
 
 1. Add explicit build-readiness checks for Rust, Node, and Python into the desktop bridge.
 2. Create a dedicated Setup page instead of overloading Home and Providers.
-3. Add safer installation helpers for non-provider prerequisites where possible.
+3. Improve the Setup page with clearer post-install refresh and recovery guidance.
 4. Re-validate native Tauri build once Rust is installed on the target machine.

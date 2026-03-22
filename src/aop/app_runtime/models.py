@@ -88,6 +88,22 @@ class DesktopSetupCheck:
     version: str = ""
     reason: str = ""
     install_hint: str = ""
+    install_commands: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class DesktopSetupInstallResult:
+    """Result returned after attempting a system dependency install."""
+
+    check_id: str
+    command: str
+    success: bool
+    summary: str
+    output: str = ""
+    next_steps: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
