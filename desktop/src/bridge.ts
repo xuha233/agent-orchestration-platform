@@ -59,6 +59,14 @@ const mockBridgeData = {
     stored_env_vars: {},
     preferred: false,
   },
+  install_provider: {
+    provider_id: "mock",
+    command: "npm install -g mock",
+    success: true,
+    summary: "Mock install completed.",
+    output: "installed",
+    next_steps: ["mock auth login"],
+  },
   start_run: {
     project_id: "mock-project",
     sprint_id: "mock-sprint",

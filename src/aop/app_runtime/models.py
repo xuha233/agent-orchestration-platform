@@ -63,6 +63,21 @@ class DesktopProviderStatus:
 
 
 @dataclass
+class DesktopInstallResult:
+    """Result returned after attempting a provider dependency install."""
+
+    provider_id: str
+    command: str
+    success: bool
+    summary: str
+    output: str = ""
+    next_steps: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class DesktopRunLaunchResult:
     """Result returned after launching a run from the desktop shell."""
 

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { invokeAppRuntime } from "./bridge";
 import type {
   DesktopAppHealth,
+  DesktopInstallResult,
   DesktopProjectSummary,
   DesktopProviderStatus,
   DesktopRunJob,
@@ -48,6 +49,8 @@ export function App() {
   const [workflowRefreshing, setWorkflowRefreshing] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [jobPollCount, setJobPollCount] = useState(0);
+  const [installingProviderId, setInstallingProviderId] = useState("");
+  const [lastInstallResult, setLastInstallResult] = useState<DesktopInstallResult | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -431,6 +434,27 @@ export function App() {
     }
   }
 
+  async function installProviderDependency(providerId: string) {
+    setInstallingProviderId(providerId);
+    setError("");
+    try {
+      const result = await invokeAppRuntime<DesktopInstallResult>("install_provider", {
+        provider_id: providerId,
+      });
+      setLastInstallResult(result);
+      setStatusMessage(result.summary);
+      await refreshProjectData();
+      return result;
+    } catch (installError) {
+      setError(
+        installError instanceof Error ? installError.message : "Failed to install provider dependency.",
+      );
+      return null;
+    } finally {
+      setInstallingProviderId("");
+    }
+  }
+
   async function submitRun() {
     if (!selectedProjectId || !runPrompt.trim()) {
       setError("Please choose a project and enter a run prompt.");
@@ -570,6 +594,9 @@ export function App() {
             providerDrafts={providerDrafts}
             setProviderDrafts={setProviderDrafts}
             saveProviderConfig={saveProviderConfig}
+            installProviderDependency={installProviderDependency}
+            installingProviderId={installingProviderId}
+            lastInstallResult={lastInstallResult}
           />
         ) : null}
 

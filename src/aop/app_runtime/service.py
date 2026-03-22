@@ -21,6 +21,7 @@ from .config_store import DesktopConfigStore
 from .jobs import DesktopRunJobStore
 from .models import (
     DesktopAppHealth,
+    DesktopInstallResult,
     DesktopProjectSummary,
     DesktopProviderStatus,
     DesktopRunJob,
@@ -221,6 +222,44 @@ class DesktopAppService:
             None,
         )
 
+    def install_provider_dependency(self, provider_id: str) -> DesktopInstallResult:
+        """Run the primary install command for one provider."""
+        provider = next(
+            (status for status in self.get_provider_status() if status.provider_id == provider_id),
+            None,
+        )
+        if provider is None:
+            raise ValueError(f"provider_not_found:{provider_id}")
+        if not provider.install_commands:
+            raise ValueError(f"provider_install_command_missing:{provider_id}")
+
+        command = provider.install_commands[0]
+        completed = subprocess.run(
+            self._build_shell_command(command),
+            capture_output=True,
+            text=True,
+            timeout=900,
+            check=False,
+            cwd=str(Path.cwd()),
+        )
+        output = "\n".join(
+            chunk for chunk in [completed.stdout.strip(), completed.stderr.strip()] if chunk
+        ).strip()
+        success = completed.returncode == 0
+        summary = (
+            f"{provider.label} install command finished successfully."
+            if success
+            else f"{provider.label} install command failed with exit code {completed.returncode}."
+        )
+        return DesktopInstallResult(
+            provider_id=provider_id,
+            command=command,
+            success=success,
+            summary=summary,
+            output=output,
+            next_steps=provider.install_commands[1:],
+        )
+
     def start_run(self, project_id: str, prompt: str) -> DesktopRunLaunchResult:
         """Run one AOP workflow from the desktop shell."""
         clean_prompt, project_path, preferred_provider = self._validate_run_request(project_id, prompt)
@@ -356,6 +395,12 @@ class DesktopAppService:
         if os.name == "nt":
             kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW  # type: ignore[index]
         subprocess.Popen(command, **kwargs)
+
+    def _build_shell_command(self, command: str) -> List[str]:
+        detector = get_platform_detector()
+        if detector.is_windows():
+            return ["powershell", "-NoProfile", "-Command", command]
+        return ["bash", "-lc", command]
 
     def _build_provider_priority(self, preferred_provider: str) -> List[str]:
         ordered: List[str] = []

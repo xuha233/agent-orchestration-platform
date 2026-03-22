@@ -194,6 +194,57 @@ def test_desktop_app_bridge_updates_provider_payload(tmp_path):
     assert response["data"]["stored_env_vars"]["OPENAI_API_KEY"] == "bridge-token"
 
 
+def test_desktop_app_service_installs_provider_dependency(tmp_path, monkeypatch):
+    workspace_home = tmp_path / "aop-home"
+    captured: dict[str, object] = {}
+
+    class Completed:
+        returncode = 0
+        stdout = "installed"
+        stderr = ""
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["kwargs"] = kwargs
+        return Completed()
+
+    service = DesktopAppService(
+        workspace_manager=WorkspaceManager(workspace_home),
+        settings_manager=SettingsManager(workspace_home),
+    )
+    monkeypatch.setattr("aop.app_runtime.service.subprocess.run", fake_run)
+
+    result = service.install_provider_dependency("codex")
+
+    assert result.provider_id == "codex"
+    assert result.success is True
+    assert result.command.startswith("npm install -g")
+    assert captured["command"][:3] == ["powershell", "-NoProfile", "-Command"]
+
+
+def test_desktop_app_bridge_installs_provider_payload(tmp_path, monkeypatch):
+    workspace_home = tmp_path / "aop-home"
+
+    class Completed:
+        returncode = 1
+        stdout = ""
+        stderr = "install failed"
+
+    service = DesktopAppService(
+        workspace_manager=WorkspaceManager(workspace_home),
+        settings_manager=SettingsManager(workspace_home),
+    )
+    monkeypatch.setattr("aop.app_runtime.service.subprocess.run", lambda *args, **kwargs: Completed())
+    bridge = DesktopAppBridge(service)
+
+    response = bridge.dispatch("install_provider", {"provider_id": "codex"})
+
+    assert response["ok"] is True
+    assert response["data"]["provider_id"] == "codex"
+    assert response["data"]["success"] is False
+    assert "failed" in response["data"]["summary"]
+
+
 def test_desktop_app_service_starts_run_with_driver(tmp_path, monkeypatch):
     workspace_home = tmp_path / "aop-home"
     project_path = tmp_path / "project-run"

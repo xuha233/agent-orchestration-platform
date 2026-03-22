@@ -1,7 +1,12 @@
 import { useMemo } from "react";
 import type { Dispatch, SetStateAction } from "react";
 
-import type { DesktopAppHealth, DesktopProjectSummary, DesktopProviderStatus } from "./types";
+import type {
+  DesktopAppHealth,
+  DesktopInstallResult,
+  DesktopProjectSummary,
+  DesktopProviderStatus,
+} from "./types";
 import { EmptyState, MetricCard, SummaryItem } from "./ui";
 
 type HomeWorkspaceProps = {
@@ -424,10 +429,22 @@ type ProvidersWorkspaceProps = {
   providerDrafts: Record<string, Record<string, string>>;
   setProviderDrafts: Dispatch<SetStateAction<Record<string, Record<string, string>>>>;
   saveProviderConfig: (providerId: string, preferred: boolean) => Promise<void>;
+  installProviderDependency: (providerId: string) => Promise<DesktopInstallResult | null>;
+  installingProviderId: string;
+  lastInstallResult: DesktopInstallResult | null;
 };
 
 export function ProvidersWorkspace(props: ProvidersWorkspaceProps) {
-  const { statusMessage, providers, providerDrafts, setProviderDrafts, saveProviderConfig } = props;
+  const {
+    statusMessage,
+    providers,
+    providerDrafts,
+    setProviderDrafts,
+    saveProviderConfig,
+    installProviderDependency,
+    installingProviderId,
+    lastInstallResult,
+  } = props;
   const sortedProviders = useMemo(() => {
     return [...providers].sort((left, right) => {
       if (left.preferred !== right.preferred) {
@@ -533,7 +550,28 @@ export function ProvidersWorkspace(props: ProvidersWorkspaceProps) {
                 ))}
               </div>
             ) : null}
+            {lastInstallResult?.provider_id === provider.provider_id ? (
+              <div className={`install-result-card ${lastInstallResult.success ? "install-result-good" : "install-result-bad"}`}>
+                <strong>{lastInstallResult.summary}</strong>
+                <p>{lastInstallResult.command}</p>
+                {lastInstallResult.next_steps.length > 0 ? (
+                  <div className="provider-command-list">
+                    {lastInstallResult.next_steps.map((step) => (
+                      <code key={step}>{step}</code>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             <div className="provider-actions">
+              <button
+                type="button"
+                className="action-button"
+                onClick={() => void installProviderDependency(provider.provider_id)}
+                disabled={installingProviderId === provider.provider_id}
+              >
+                {installingProviderId === provider.provider_id ? "Installing..." : "Install dependency"}
+              </button>
               <button type="button" className="action-button" onClick={() => void saveProviderConfig(provider.provider_id, false)}>
                 Save values
               </button>

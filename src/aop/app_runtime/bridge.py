@@ -79,6 +79,15 @@ class DesktopAppBridge:
             if status is None:
                 return {"ok": False, "error": "provider_not_found"}
             return {"ok": True, "data": status.to_dict()}
+        if action == "install_provider":
+            provider_id = str(data.get("provider_id", "")).strip()
+            if not provider_id:
+                return {"ok": False, "error": "provider_id_required"}
+            try:
+                result = self.service.install_provider_dependency(provider_id)
+            except ValueError as error:
+                return {"ok": False, "error": str(error)}
+            return {"ok": True, "data": result.to_dict()}
         if action == "start_run":
             project_id = str(data.get("project_id", "")).strip()
             prompt = str(data.get("prompt", ""))
