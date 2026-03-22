@@ -1,0 +1,6 @@
+[registries.crates-io]
+protocol = "sparse"
+index = "sparse+https://index.crates.io/"
+
+[net]
+git-fetch-with-cli = true
